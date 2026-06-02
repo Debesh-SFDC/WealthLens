@@ -15,7 +15,9 @@ module.exports = defineConfig({
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
-        input: resolve(__dirname, 'src/main/preload.js')
+        input: {
+          index: resolve(__dirname, 'src/main/preload.js')
+        }
       }
     }
   },
