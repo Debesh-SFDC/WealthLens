@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createSalaryAllocation: (data) => ipcRenderer.invoke('salary:createAllocation', data),
   updateSalaryAllocation: (data) => ipcRenderer.invoke('salary:updateAllocation', data),
   deleteSalaryAllocation: (id) => ipcRenderer.invoke('salary:deleteAllocation', id),
+  replaceAllSalaryAllocations: (data) => ipcRenderer.invoke('salary:replaceAll', data),
 
   // Expenses
   getAllExpenses: (filter) => ipcRenderer.invoke('expenses:getAll', filter),

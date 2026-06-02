@@ -190,6 +190,34 @@ function setupIpcHandlers() {
     return { success: true }
   })
 
+  // Atomically replace all salary allocations (used by SalaryAllocator save)
+  ipcMain.handle('salary:replaceAll', (_, { salary, rows }) => {
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM salary_allocations').run()
+      const insert = db.prepare(`
+        INSERT INTO salary_allocations (category, label, percentage, amount, provider, bank, color)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `)
+      for (const r of rows) {
+        insert.run(
+          r.category, r.label, r.percentage ?? 0, r.amount ?? 0,
+          r.provider ?? null, r.bank ?? null, r.color ?? null
+        )
+      }
+      // Also update salary in profile (upsert)
+      const existing = db.prepare('SELECT id FROM profile LIMIT 1').get()
+      if (existing) {
+        db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now') WHERE id = ?`)
+          .run(salary, existing.id)
+      } else {
+        db.prepare(`INSERT INTO profile (name, monthly_salary, salary_updated_at) VALUES ('', ?, datetime('now'))`)
+          .run(salary)
+      }
+    })
+    tx()
+    return { success: true }
+  })
+
   // ── Expenses ──────────────────────────────────────────────────────────────
   ipcMain.handle('expenses:getAll', (_, filter) => {
     if (filter?.month && filter?.year) {
