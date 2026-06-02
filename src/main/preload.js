@@ -17,12 +17,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateInvestment: (data) => ipcRenderer.invoke('investments:update', data),
   deleteInvestment: (id) => ipcRenderer.invoke('investments:delete', id),
 
-  // Salary allocations
+  // Salary allocations (legacy — kept for Onboarding backward compat)
   getSalaryAllocations: () => ipcRenderer.invoke('salary:getAllocations'),
-  createSalaryAllocation: (data) => ipcRenderer.invoke('salary:createAllocation', data),
-  updateSalaryAllocation: (data) => ipcRenderer.invoke('salary:updateAllocation', data),
-  deleteSalaryAllocation: (id) => ipcRenderer.invoke('salary:deleteAllocation', id),
   replaceAllSalaryAllocations: (data) => ipcRenderer.invoke('salary:replaceAll', data),
+
+  // Salary plans (new versioned system)
+  getActivePlan: () => ipcRenderer.invoke('plans:getActive'),
+  getAllPlans: () => ipcRenderer.invoke('plans:getAll'),
+  getPlanById: (id) => ipcRenderer.invoke('plans:getById', id),
+  createPlan: (data) => ipcRenderer.invoke('plans:create', data),
+  updatePlanItems: (data) => ipcRenderer.invoke('plans:updateItems', data),
 
   // Expenses
   getAllExpenses: (filter) => ipcRenderer.invoke('expenses:getAll', filter),

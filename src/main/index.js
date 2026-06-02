@@ -287,6 +287,105 @@ function setupIpcHandlers() {
     return { success: true }
   })
 
+  // ── Salary Plans ──────────────────────────────────────────────────────────
+  function planWithItems(plan) {
+    if (!plan) return null
+    const items = db.prepare(
+      'SELECT * FROM salary_plan_items WHERE plan_id = ? ORDER BY sort_order'
+    ).all(plan.id)
+    return { ...plan, items }
+  }
+
+  function planSummary(plan) {
+    const items = db.prepare(
+      'SELECT category, SUM(amount) as total FROM salary_plan_items WHERE plan_id = ? GROUP BY category'
+    ).all(plan.id)
+    const bycat = {}
+    for (const r of items) bycat[r.category] = r.total
+    return {
+      ...plan,
+      totalNeeds: bycat.needs || 0,
+      totalWants: bycat.wants || 0,
+      totalInvestment: bycat.investment || 0,
+      itemCount: db.prepare('SELECT COUNT(*) as c FROM salary_plan_items WHERE plan_id = ?').get(plan.id).c,
+    }
+  }
+
+  ipcMain.handle('plans:getAll', () => {
+    const plans = db.prepare('SELECT * FROM salary_plans ORDER BY effective_from DESC').all()
+    return plans.map(planSummary)
+  })
+
+  ipcMain.handle('plans:getActive', () => {
+    const plan = db.prepare('SELECT * FROM salary_plans WHERE is_active = 1 LIMIT 1').get()
+    return planWithItems(plan)
+  })
+
+  ipcMain.handle('plans:getById', (_, id) => {
+    const plan = db.prepare('SELECT * FROM salary_plans WHERE id = ?').get(id)
+    return planWithItems(plan)
+  })
+
+  ipcMain.handle('plans:create', (_, { label, monthly_salary, effective_from, notes, items }) => {
+    const tx = db.transaction(() => {
+      // Close current active plan
+      const active = db.prepare('SELECT id FROM salary_plans WHERE is_active = 1 LIMIT 1').get()
+      if (active) {
+        const prevDay = new Date(new Date(effective_from).getTime() - 86_400_000)
+          .toISOString().slice(0, 10)
+        db.prepare('UPDATE salary_plans SET is_active = 0, effective_to = ? WHERE id = ?')
+          .run(prevDay, active.id)
+      }
+      // Insert new plan
+      const { lastInsertRowid: planId } = db.prepare(
+        `INSERT INTO salary_plans (label, monthly_salary, effective_from, is_active, notes)
+         VALUES (?, ?, ?, 1, ?)`
+      ).run(label, monthly_salary, effective_from, notes ?? null)
+      // Insert items
+      const ins = db.prepare(
+        `INSERT INTO salary_plan_items (plan_id, name, amount, category, bank_or_provider, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      ;(items || []).forEach((it, i) => {
+        ins.run(planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, i)
+      })
+      // Update profile salary
+      const prof = db.prepare('SELECT id FROM profile LIMIT 1').get()
+      if (prof) {
+        db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now') WHERE id = ?`)
+          .run(monthly_salary, prof.id)
+      } else {
+        db.prepare(`INSERT INTO profile (name, monthly_salary, salary_updated_at) VALUES ('', ?, datetime('now'))`)
+          .run(monthly_salary)
+      }
+      return planId
+    })
+    return { id: tx() }
+  })
+
+  ipcMain.handle('plans:updateItems', (_, { planId, items, monthly_salary, label }) => {
+    db.transaction(() => {
+      if (label != null)          db.prepare('UPDATE salary_plans SET label = ? WHERE id = ?').run(label, planId)
+      if (monthly_salary != null) {
+        db.prepare('UPDATE salary_plans SET monthly_salary = ? WHERE id = ?').run(monthly_salary, planId)
+        const prof = db.prepare('SELECT id FROM profile LIMIT 1').get()
+        if (prof) {
+          db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now') WHERE id = ?`)
+            .run(monthly_salary, prof.id)
+        }
+      }
+      db.prepare('DELETE FROM salary_plan_items WHERE plan_id = ?').run(planId)
+      const ins = db.prepare(
+        `INSERT INTO salary_plan_items (plan_id, name, amount, category, bank_or_provider, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      ;(items || []).forEach((it, i) => {
+        ins.run(planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, i)
+      })
+    })()
+    return { success: true }
+  })
+
   // ── Expenses ──────────────────────────────────────────────────────────────
   ipcMain.handle('expenses:getAll', (_, filter) => {
     if (filter?.month && filter?.year) {

@@ -45,12 +45,17 @@ export default function Onboarding({ onComplete }) {
   async function handleStep2(save) {
     if (save) {
       const sal = parseFloat(salary) || 0
-      const rows = [
-        { category: 'expenses', label: 'Needs',                percentage: needs,   amount: (needs   / 100) * sal, bank: '__bucket__', color: '#3B82F6' },
-        { category: 'other',    label: 'Wants',                percentage: wants,   amount: (wants   / 100) * sal, bank: '__bucket__', color: '#8B5CF6' },
-        { category: 'savings',  label: 'Savings & Investments', percentage: savings, amount: (savings / 100) * sal, bank: '__bucket__', color: '#10B981' },
-      ]
-      await window.electronAPI.replaceAllSalaryAllocations({ salary: sal, rows })
+      const today = new Date().toISOString().slice(0, 10)
+      await window.electronAPI.createPlan({
+        label: 'Initial Plan',
+        monthly_salary: sal,
+        effective_from: today,
+        items: [
+          { name: 'Needs',      amount: Math.round((needs   / 100) * sal), category: 'needs',      sort_order: 0 },
+          { name: 'Wants',      amount: Math.round((wants   / 100) * sal), category: 'wants',      sort_order: 1 },
+          { name: 'Investment', amount: Math.round((savings / 100) * sal), category: 'investment', sort_order: 2 },
+        ],
+      })
     }
     onComplete()
   }

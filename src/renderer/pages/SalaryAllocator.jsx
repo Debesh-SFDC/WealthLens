@@ -1,93 +1,88 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 
-// ── Constants ─────────────────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
-const fmt = (v) => INR.format(v || 0)
+const fmt = v => INR.format(v || 0)
+const todayISO = () => new Date().toISOString().slice(0, 10)
+const fmtDate = iso => iso
+  ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  : ''
 
-// Each bucket: key, label, color, description, 50/30/20 default
-const BUCKET_DEFS = {
-  needs: {
-    label: 'Needs',
-    color: '#3B82F6',
-    bg: '#eff6ff',
-    defaultPct: 50,
-    description: 'Rent, EMI, insurance, groceries, utilities',
-    icon: '🏠',
-    categories: [
-      { value: 'expenses',  label: 'Expenses / Groceries' },
-      { value: 'insurance', label: 'Insurance' },
-      { value: 'emergency', label: 'Emergency Fund' },
-    ],
-  },
-  wants: {
-    label: 'Wants',
-    color: '#8B5CF6',
-    bg: '#f5f3ff',
-    defaultPct: 30,
-    description: 'Dining, subscriptions, lifestyle, travel',
-    icon: '🎭',
-    categories: [
-      { value: 'other', label: 'Lifestyle / Other' },
-    ],
-  },
-  savings: {
-    label: 'Savings & Investments',
-    color: '#10B981',
-    bg: '#ecfdf5',
-    defaultPct: 20,
-    description: 'MF SIPs, PPF, NPS, FD, gold',
-    icon: '📈',
-    categories: [
-      { value: 'mutual_fund', label: 'Mutual Fund' },
-      { value: 'savings',     label: 'PPF / NPS / RD' },
-    ],
-  },
+const CATEGORY_DEFS = {
+  needs:      { label: 'Needs',      color: '#3B82F6', bg: '#eff6ff', icon: '🏠' },
+  wants:      { label: 'Wants',      color: '#8B5CF6', bg: '#f5f3ff', icon: '🎭' },
+  investment: { label: 'Investment', color: '#10B981', bg: '#ecfdf5', icon: '📈' },
 }
 
-const STEP_LABELS = ['Salary', 'Suggestions', 'Allocate', 'Details']
-
-const BLANK_ITEM = { label: '', category: 'expenses', amount: '', provider: '', bank: '' }
-
-// ── Utility components ────────────────────────────────────────────────────
+// ── Icons ─────────────────────────────────────────────────────────────────
 const TrashIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6m4-6v6"/><path d="M9 6V4h6v2"/>
   </svg>
 )
-
 const PlusIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
   </svg>
 )
+const CloseIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-500">
+    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+  </svg>
+)
 
-// ── Donut (mini inline chart) ─────────────────────────────────────────────
-function DonutMini({ buckets, salary }) {
-  const segs = Object.entries(BUCKET_DEFS).map(([k, def]) => ({
-    label: def.label, color: def.color,
-    pct: buckets[k].percentage,
-  }))
+// ── Plan Donut ────────────────────────────────────────────────────────────
+function PlanDonut({ plan }) {
+  const salary = plan.monthly_salary || 0
+  const totals = { needs: 0, wants: 0, investment: 0 }
+  for (const item of (plan.items || [])) {
+    if (totals[item.category] !== undefined) totals[item.category] += item.amount
+  }
+
+  const totalAllocated = totals.needs + totals.wants + totals.investment
+  const surplus = salary - totalAllocated
+
   let cum = 0
-  const gradient = segs.map(s => {
-    const start = cum
-    cum += s.pct
-    return `${s.color} ${start}% ${cum}%`
-  }).join(', ')
+  const segs = Object.entries(totals).map(([cat, amount]) => {
+    const def = CATEGORY_DEFS[cat]
+    const pct = salary > 0 ? (amount / salary) * 100 : 0
+    const start = cum; cum += pct
+    return { cat, amount, pct, start, ...def }
+  })
+
+  if (surplus > 0 && salary > 0) {
+    const pct = (surplus / salary) * 100
+    segs.push({ cat: 'unallocated', amount: surplus, pct, start: cum, label: 'Unallocated', color: '#E5E7EB', icon: '⬜', bg: '#f9fafb' })
+  }
+
+  const gradient = segs.length
+    ? segs.map(s => `${s.color} ${s.start.toFixed(2)}% ${(s.start + s.pct).toFixed(2)}%`).join(', ')
+    : '#E5E7EB 0% 100%'
 
   return (
-    <div className="flex items-center gap-6">
-      <div className="relative shrink-0 w-28 h-28">
-        <div className="w-28 h-28 rounded-full" style={{ background: `conic-gradient(${gradient})` }} />
-        <div className="absolute inset-5 bg-white rounded-full flex items-center justify-center">
-          <span className="text-xs font-bold text-gray-600">{segs.reduce((s, x) => s + x.pct, 0).toFixed(0)}%</span>
+    <div className="flex items-center gap-8">
+      <div className="relative shrink-0 w-36 h-36">
+        <div className="w-36 h-36 rounded-full" style={{ background: `conic-gradient(${gradient})` }} />
+        <div className="absolute inset-6 bg-white rounded-full flex flex-col items-center justify-center">
+          <p className="text-[9px] text-gray-400 leading-none">Monthly</p>
+          <p className="text-xs font-bold text-gray-800 mt-0.5">{fmt(salary)}</p>
         </div>
       </div>
-      <div className="space-y-2">
-        {segs.map((s, i) => (
-          <div key={i} className="flex items-center gap-2 text-sm">
-            <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-            <span className="text-gray-600">{s.label}</span>
-            <span className="font-semibold text-gray-800 ml-auto pl-4">{s.pct}%</span>
+      <div className="flex-1 space-y-3">
+        {segs.map(s => (
+          <div key={s.cat}>
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="text-sm font-medium text-gray-700">{s.icon} {s.label}</span>
+              </div>
+              <div className="text-right">
+                <span className="text-sm font-semibold text-gray-800">{fmt(s.amount)}</span>
+                <span className="text-xs text-gray-400 ml-1.5">({s.pct.toFixed(0)}%)</span>
+              </div>
+            </div>
+            <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-full rounded-full" style={{ width: `${s.pct}%`, backgroundColor: s.color }} />
+            </div>
           </div>
         ))}
       </div>
@@ -95,507 +90,225 @@ function DonutMini({ buckets, salary }) {
   )
 }
 
-// ── Step 1: Salary entry ──────────────────────────────────────────────────
-function StepSalary({ salary, setSalary, onNext }) {
-  const [input, setInput] = useState(salary > 0 ? String(salary) : '')
+// ── Running Balance Table ─────────────────────────────────────────────────
+function RunningBalanceTable({ plan }) {
+  const salary = plan.monthly_salary || 0
+  const items = plan.items || []
 
-  const proceed = () => {
-    const val = parseFloat(input)
-    if (val > 0) { setSalary(val); onNext() }
+  let balance = salary
+  const rows = []
+
+  for (const cat of ['needs', 'wants', 'investment']) {
+    const catItems = items
+      .filter(i => i.category === cat)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    if (!catItems.length) continue
+
+    const def = CATEGORY_DEFS[cat]
+    rows.push({ type: 'header', cat, def, total: catItems.reduce((s, i) => s + i.amount, 0) })
+
+    for (const item of catItems) {
+      balance -= item.amount
+      rows.push({ type: 'item', item, balance, def })
+    }
+  }
+
+  const surplus = balance
+
+  return (
+    <div>
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {/* Column header */}
+        <div className="grid grid-cols-12 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <div className="col-span-5">Name</div>
+          <div className="col-span-3">Bank / Provider</div>
+          <div className="col-span-2 text-right">Amount</div>
+          <div className="col-span-2 text-right">Balance After</div>
+        </div>
+
+        {/* Salary row */}
+        <div className="grid grid-cols-12 px-5 py-3 border-b border-gray-200 bg-gray-50/80">
+          <div className="col-span-5 text-sm font-bold text-gray-900">💰 Monthly Salary</div>
+          <div className="col-span-3" />
+          <div className="col-span-2 text-right text-sm font-bold text-gray-900">{fmt(salary)}</div>
+          <div className="col-span-2 text-right text-sm font-bold text-gray-900">{fmt(salary)}</div>
+        </div>
+
+        {rows.map((row, i) => {
+          if (row.type === 'header') {
+            return (
+              <div key={`h-${i}`} className="grid grid-cols-12 px-5 py-2.5 border-b border-gray-50"
+                style={{ backgroundColor: row.def.bg }}>
+                <div className="col-span-5 text-xs font-bold uppercase tracking-wide flex items-center gap-1.5" style={{ color: row.def.color }}>
+                  <span>{row.def.icon}</span> {row.def.label}
+                </div>
+                <div className="col-span-3" />
+                <div className="col-span-2 text-right text-xs font-bold" style={{ color: row.def.color }}>{fmt(row.total)}</div>
+                <div className="col-span-2" />
+              </div>
+            )
+          }
+          return (
+            <div key={`i-${i}`} className="grid grid-cols-12 px-5 py-3 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
+              <div className="col-span-5 text-sm font-medium text-gray-800 pl-4">{row.item.name}</div>
+              <div className="col-span-3 text-sm text-gray-500">{row.item.bank_or_provider || '—'}</div>
+              <div className="col-span-2 text-right text-sm text-gray-600">−{fmt(row.item.amount)}</div>
+              <div className="col-span-2 text-right text-sm font-semibold" style={{ color: row.balance >= 0 ? '#374151' : '#EF4444' }}>
+                {fmt(row.balance)}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Surplus / deficit */}
+      <div className={`mt-4 flex items-center justify-between px-5 py-4 rounded-xl border ${surplus >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+        <div>
+          <p className={`text-sm font-semibold ${surplus >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+            {surplus >= 0 ? '✓ Surplus' : '⚠ Deficit'}
+          </p>
+          <p className={`text-xs mt-0.5 ${surplus >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+            {surplus >= 0 ? 'Unallocated from salary' : 'Allocation exceeds salary'}
+          </p>
+        </div>
+        <p className={`text-2xl font-bold ${surplus >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(Math.abs(surplus))}</p>
+      </div>
+    </div>
+  )
+}
+
+// ── Items Editor ──────────────────────────────────────────────────────────
+function ItemsEditor({ items, onChange, salary }) {
+  const totalAllocated = items.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0)
+  const remaining = (salary || 0) - totalAllocated
+
+  const update = (idx, field, val) => {
+    const next = [...items]
+    next[idx] = { ...next[idx], [field]: val }
+    onChange(next)
   }
 
   return (
-    <div className="max-w-md mx-auto pt-8">
-      <div className="text-center mb-8">
-        <div className="text-4xl mb-3">💸</div>
-        <h3 className="text-xl font-bold text-gray-900 mb-1">What's your monthly take-home?</h3>
-        <p className="text-sm text-gray-500">We'll use this to suggest how to split your salary</p>
-      </div>
-
-      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-        <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Monthly Salary (₹)</label>
-        <div className="relative">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-semibold text-lg">₹</span>
-          <input
-            autoFocus
-            type="number"
-            className="w-full pl-9 pr-4 py-4 text-2xl font-bold rounded-xl border-2 border-gray-200 focus:outline-none focus:border-accent transition-colors"
-            placeholder="0"
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && proceed()}
-          />
+    <div>
+      {salary > 0 && (
+        <div className={`flex items-center justify-between px-4 py-2.5 rounded-xl mb-4 text-sm font-medium ${
+          Math.abs(remaining) < 1 ? 'bg-green-50 text-green-700' : remaining < 0 ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'
+        }`}>
+          <span>
+            {Math.abs(remaining) < 1 ? '✓ Fully allocated' : remaining > 0 ? `${fmt(remaining)} unallocated` : `${fmt(-remaining)} over budget`}
+          </span>
+          <span className="font-semibold">{fmt(totalAllocated)} / {fmt(salary)}</span>
         </div>
-        {parseFloat(input) > 0 && (
-          <p className="text-sm text-gray-500 mt-2">{fmt(parseFloat(input))} per month</p>
-        )}
+      )}
+
+      <div className="space-y-2 mb-3">
+        {items.map((item, idx) => (
+          <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+            <div className="col-span-4">
+              <input
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF]"
+                placeholder="Name (e.g. Rent)"
+                value={item.name}
+                onChange={e => update(idx, 'name', e.target.value)}
+              />
+            </div>
+            <div className="col-span-3">
+              <select
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF]"
+                value={item.category}
+                onChange={e => update(idx, 'category', e.target.value)}
+              >
+                {Object.entries(CATEGORY_DEFS).map(([k, d]) => (
+                  <option key={k} value={k}>{d.icon} {d.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="col-span-2">
+              <input
+                type="number" min="0"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF]"
+                placeholder="Amount"
+                value={item.amount}
+                onChange={e => update(idx, 'amount', e.target.value)}
+              />
+            </div>
+            <div className="col-span-2">
+              <input
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF]"
+                placeholder="Bank"
+                value={item.bank_or_provider}
+                onChange={e => update(idx, 'bank_or_provider', e.target.value)}
+              />
+            </div>
+            <div className="col-span-1 flex justify-center">
+              <button
+                onClick={() => onChange(items.filter((_, i) => i !== idx))}
+                className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"
+              >
+                <TrashIcon />
+              </button>
+            </div>
+          </div>
+        ))}
       </div>
 
       <button
-        onClick={proceed}
-        disabled={!(parseFloat(input) > 0)}
-        className="mt-6 w-full py-3 rounded-xl text-white font-semibold text-sm disabled:opacity-40 hover:opacity-90 transition-opacity"
-        style={{ backgroundColor: '#6C63FF' }}
+        onClick={() => onChange([...items, { name: '', amount: '', category: 'needs', bank_or_provider: '' }])}
+        className="flex items-center gap-1.5 text-sm font-medium text-[#6C63FF] hover:text-[#5a52e0] transition-colors"
       >
-        Continue →
+        <PlusIcon /> Add item
       </button>
     </div>
   )
 }
 
-// ── Step 2: 50/30/20 suggestions ─────────────────────────────────────────
-function StepSuggestions({ salary, buckets, setBuckets, onNext, onBack }) {
-  const apply = () => {
-    setBuckets(p => {
-      const updated = { ...p }
-      Object.entries(BUCKET_DEFS).forEach(([k, def]) => {
-        updated[k] = { ...updated[k], percentage: def.defaultPct }
-      })
-      return updated
-    })
-    onNext()
-  }
+// ── New Plan Wizard ───────────────────────────────────────────────────────
+const WIZARD_STEPS = ['Plan Details', 'Line Items', 'Preview & Create']
 
-  return (
-    <div className="max-w-xl mx-auto pt-6">
-      <div className="text-center mb-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-1">Suggested 50/30/20 Split</h3>
-        <p className="text-sm text-gray-500">A popular personal finance rule for <span className="font-semibold">{fmt(salary)}/month</span></p>
-      </div>
-
-      <div className="space-y-4 mb-8">
-        {Object.entries(BUCKET_DEFS).map(([key, def]) => {
-          const amount = salary * def.defaultPct / 100
-          return (
-            <div key={key} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex items-start gap-4">
-              <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl shrink-0" style={{ backgroundColor: def.bg }}>
-                {def.icon}
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-semibold text-gray-900">{def.label}</span>
-                  <div className="text-right">
-                    <span className="text-2xl font-bold" style={{ color: def.color }}>{def.defaultPct}%</span>
-                    <p className="text-xs text-gray-400">{fmt(amount)}</p>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500">{def.description}</p>
-                <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full" style={{ width: `${def.defaultPct}%`, backgroundColor: def.color }} />
-                </div>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="flex gap-3">
-        <button onClick={onBack} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
-          ← Back
-        </button>
-        <button onClick={apply}
-          className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#6C63FF' }}>
-          Use this split →
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Step 3: Tweak sliders ────────────────────────────────────────────────
-function StepAllocate({ salary, buckets, setBuckets, onNext, onBack }) {
-  const total = Object.values(buckets).reduce((s, b) => s + b.percentage, 0)
-  const isValid = Math.abs(total - 100) < 0.5
-
-  const setPercent = (key, raw) => {
-    const val = Math.min(100, Math.max(0, Number(raw)))
-    setBuckets(p => ({ ...p, [key]: { ...p[key], percentage: val } }))
-  }
-
-  return (
-    <div className="max-w-xl mx-auto pt-6">
-      <div className="text-center mb-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-1">Adjust Your Allocation</h3>
-        <p className="text-sm text-gray-500">Drag sliders or type percentages — must total 100%</p>
-      </div>
-
-      <div className="space-y-5 mb-6">
-        {Object.entries(BUCKET_DEFS).map(([key, def]) => {
-          const b = buckets[key]
-          const amount = salary * b.percentage / 100
-          return (
-            <div key={key} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-              <div className="flex items-center gap-3 mb-3">
-                <span className="text-xl">{def.icon}</span>
-                <div className="flex-1">
-                  <p className="font-semibold text-gray-900 text-sm">{def.label}</p>
-                  <p className="text-xs text-gray-400">{fmt(amount)}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0} max={100}
-                    value={b.percentage}
-                    onChange={e => setPercent(key, e.target.value)}
-                    className="w-16 text-center px-2 py-1 rounded-lg border border-gray-200 text-sm font-bold focus:outline-none focus:ring-2"
-                    style={{ color: def.color }}
-                  />
-                  <span className="text-sm text-gray-400">%</span>
-                </div>
-              </div>
-              <input
-                type="range" min={0} max={100} step={1}
-                value={b.percentage}
-                onChange={e => setPercent(key, e.target.value)}
-                className="w-full h-2 rounded-full appearance-none cursor-pointer"
-                style={{ accentColor: def.color }}
-              />
-            </div>
-          )
-        })}
-      </div>
-
-      {/* Total indicator */}
-      <div className={`flex items-center justify-between px-4 py-3 rounded-xl mb-5 ${isValid ? 'bg-green-50' : 'bg-red-50'}`}>
-        <span className={`text-sm font-semibold ${isValid ? 'text-green-700' : 'text-red-600'}`}>
-          {isValid ? '✓ Allocation adds up to 100%' : `⚠ Total is ${total.toFixed(0)}% — needs to be 100%`}
-        </span>
-        <span className={`text-lg font-bold ${isValid ? 'text-green-700' : 'text-red-600'}`}>{total.toFixed(0)}%</span>
-      </div>
-
-      <DonutMini buckets={buckets} salary={salary} />
-
-      <div className="flex gap-3 mt-6">
-        <button onClick={onBack} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
-          ← Back
-        </button>
-        <button onClick={onNext} disabled={!isValid}
-          className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-40 hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#6C63FF' }}>
-          Add Line Items →
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Step 4: Line items per bucket ─────────────────────────────────────────
-function StepDetails({ salary, buckets, setBuckets, onSave, onBack, saving }) {
-  const addItem = (bucketKey) => {
-    const def = BUCKET_DEFS[bucketKey]
-    const defaultCat = def.categories[0].value
-    setBuckets(p => ({
-      ...p,
-      [bucketKey]: {
-        ...p[bucketKey],
-        items: [...p[bucketKey].items, { ...BLANK_ITEM, category: defaultCat }],
-      },
-    }))
-  }
-
-  const updateItem = (bucketKey, idx, field, val) => {
-    setBuckets(p => {
-      const items = [...p[bucketKey].items]
-      items[idx] = { ...items[idx], [field]: val }
-      return { ...p, [bucketKey]: { ...p[bucketKey], items } }
-    })
-  }
-
-  const removeItem = (bucketKey, idx) => {
-    setBuckets(p => {
-      const items = p[bucketKey].items.filter((_, i) => i !== idx)
-      return { ...p, [bucketKey]: { ...p[bucketKey], items } }
-    })
-  }
-
-  return (
-    <div className="max-w-2xl mx-auto pt-6">
-      <div className="text-center mb-6">
-        <h3 className="text-xl font-bold text-gray-900 mb-1">Break Down Each Bucket</h3>
-        <p className="text-sm text-gray-500">Add specific line items with provider / bank details</p>
-      </div>
-
-      <div className="space-y-5 mb-6">
-        {Object.entries(BUCKET_DEFS).map(([key, def]) => {
-          const b = buckets[key]
-          const bucketAmount = salary * b.percentage / 100
-          const allocatedAmount = b.items.reduce((s, item) => s + (parseFloat(item.amount) || 0), 0)
-          const remaining = bucketAmount - allocatedAmount
-
-          return (
-            <div key={key} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-              {/* Bucket header */}
-              <div className="flex items-center justify-between px-5 py-4" style={{ backgroundColor: def.bg }}>
-                <div className="flex items-center gap-3">
-                  <span className="text-xl">{def.icon}</span>
-                  <div>
-                    <p className="font-semibold text-gray-900">{def.label}</p>
-                    <p className="text-xs text-gray-500">{b.percentage}% · {fmt(bucketAmount)}</p>
-                  </div>
-                </div>
-                <div className="text-right text-xs">
-                  <p className={`font-semibold ${remaining >= 0 ? 'text-gray-600' : 'text-red-600'}`}>
-                    {remaining >= 0 ? `${fmt(remaining)} unallocated` : `${fmt(-remaining)} over budget`}
-                  </p>
-                  <div className="mt-1 h-1 w-24 bg-gray-200 rounded-full overflow-hidden ml-auto">
-                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, (allocatedAmount / bucketAmount) * 100)}%`, backgroundColor: def.color }} />
-                  </div>
-                </div>
-              </div>
-
-              {/* Line items */}
-              <div className="divide-y divide-gray-50">
-                {b.items.map((item, idx) => (
-                  <div key={idx} className="px-5 py-3.5 grid grid-cols-12 gap-2 items-center">
-                    <div className="col-span-4">
-                      <input
-                        className="w-full px-2.5 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        placeholder="Label (e.g. HDFC MF SIP)"
-                        value={item.label}
-                        onChange={e => updateItem(key, idx, 'label', e.target.value)}
-                      />
-                    </div>
-                    <div className="col-span-3">
-                      <select
-                        className="w-full px-2.5 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-100 bg-white"
-                        value={item.category}
-                        onChange={e => updateItem(key, idx, 'category', e.target.value)}
-                      >
-                        {def.categories.map(c => (
-                          <option key={c.value} value={c.value}>{c.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="col-span-2">
-                      <input
-                        type="number"
-                        className="w-full px-2.5 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        placeholder="₹ Amount"
-                        value={item.amount}
-                        onChange={e => updateItem(key, idx, 'amount', e.target.value)}
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <input
-                        className="w-full px-2.5 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-100"
-                        placeholder="Provider"
-                        value={item.provider}
-                        onChange={e => updateItem(key, idx, 'provider', e.target.value)}
-                      />
-                    </div>
-                    <div className="col-span-1 flex justify-center">
-                      <button onClick={() => removeItem(key, idx)}
-                        className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
-                        <TrashIcon />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Add item */}
-              <div className="px-5 py-3 border-t border-gray-50">
-                <button
-                  onClick={() => addItem(key)}
-                  className="flex items-center gap-1.5 text-sm font-medium transition-colors"
-                  style={{ color: def.color }}
-                >
-                  <PlusIcon /> Add line item
-                </button>
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="flex gap-3">
-        <button onClick={onBack} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
-          ← Back
-        </button>
-        <button onClick={onSave} disabled={saving}
-          className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold disabled:opacity-50 hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#6C63FF' }}>
-          {saving ? 'Saving…' : '✓ Save Allocation'}
-        </button>
-      </div>
-    </div>
-  )
-}
-
-// ── Saved view ────────────────────────────────────────────────────────────
-function SavedView({ salary, buckets, onEdit }) {
-  const totalItems = Object.values(buckets).reduce((s, b) => s + b.items.length, 0)
-
-  let cum = 0
-  const segs = Object.entries(BUCKET_DEFS).map(([k, def]) => {
-    const pct = buckets[k].percentage
-    const start = cum
-    cum += pct
-    return { ...def, key: k, pct, start, amount: salary * pct / 100, items: buckets[k].items }
+function NewPlanWizard({ activePlan, onCreated, onClose }) {
+  const [step, setStep] = useState(0)
+  const [meta, setMeta] = useState({
+    label: '',
+    monthly_salary: activePlan?.monthly_salary ? String(activePlan.monthly_salary) : '',
+    effective_from: todayISO(),
+    notes: '',
   })
-
-  const gradient = segs.map(s => `${s.color} ${s.start}% ${s.start + s.pct}%`).join(', ')
-
-  return (
-    <div className="p-8 max-w-2xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Salary Allocator</h2>
-          <p className="mt-1 text-sm text-gray-500">{fmt(salary)}/month · {totalItems} line items</p>
-        </div>
-        <button onClick={onEdit}
-          className="px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#6C63FF' }}>
-          Edit Allocation
-        </button>
-      </div>
-
-      {/* Donut + legend */}
-      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-5 flex items-center gap-8">
-        <div className="relative shrink-0 w-40 h-40">
-          <div className="w-40 h-40 rounded-full" style={{ background: `conic-gradient(${gradient})` }} />
-          <div className="absolute inset-7 bg-white rounded-full flex flex-col items-center justify-center">
-            <p className="text-xs text-gray-400">Monthly</p>
-            <p className="text-sm font-bold text-gray-800">{fmt(salary)}</p>
-          </div>
-        </div>
-        <div className="flex-1 space-y-3">
-          {segs.map(s => (
-            <div key={s.key}>
-              <div className="flex items-center justify-between mb-1">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                  <span className="text-sm font-medium text-gray-700">{s.icon} {s.label}</span>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm font-bold text-gray-800">{fmt(s.amount)}</span>
-                  <span className="text-xs text-gray-400 ml-1">({s.pct}%)</span>
-                </div>
-              </div>
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${s.pct}%`, backgroundColor: s.color }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Line items per bucket */}
-      <div className="space-y-4">
-        {segs.map(s => s.items.length > 0 && (
-          <div key={s.key} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-3.5 border-b border-gray-100 flex items-center gap-2" style={{ backgroundColor: s.bg }}>
-              <span>{s.icon}</span>
-              <span className="font-semibold text-sm text-gray-800">{s.label}</span>
-              <span className="text-xs text-gray-500 ml-1">— {fmt(s.amount)}</span>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {s.items.map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-5 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-gray-800">{item.label || '—'}</p>
-                    <p className="text-xs text-gray-400">{item.category?.replace(/_/g, ' ')} · {item.provider || '—'}</p>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-800">{fmt(parseFloat(item.amount) || 0)}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+  const [items, setItems] = useState(
+    activePlan?.items?.map(i => ({
+      name: i.name,
+      amount: String(i.amount),
+      category: i.category,
+      bank_or_provider: i.bank_or_provider || '',
+    })) || []
   )
-}
-
-// ── Main component ────────────────────────────────────────────────────────
-function buildInitialBuckets() {
-  return Object.fromEntries(
-    Object.entries(BUCKET_DEFS).map(([k, def]) => [k, { percentage: def.defaultPct, items: [] }])
-  )
-}
-
-function allocationsToBuckets(rows) {
-  const buckets = buildInitialBuckets()
-  const bucketMap = { expenses: 'needs', insurance: 'needs', emergency: 'needs', other: 'wants', mutual_fund: 'savings', savings: 'savings' }
-
-  // Header rows carry bucket % (stored with bank = '__bucket__')
-  for (const r of rows.filter(r => r.bank === '__bucket__')) {
-    if (r.label === 'Needs') buckets.needs.percentage = r.percentage
-    else if (r.label === 'Wants') buckets.wants.percentage = r.percentage
-    else if (r.label === 'Savings') buckets.savings.percentage = r.percentage
-  }
-
-  // Line items
-  for (const r of rows.filter(r => r.bank !== '__bucket__')) {
-    const key = bucketMap[r.category] || 'needs'
-    buckets[key].items.push({ label: r.label, category: r.category, amount: String(r.amount || ''), provider: r.provider || '', bank: r.bank || '' })
-  }
-
-  return buckets
-}
-
-function bucketsToRows(salary, buckets) {
-  const rows = []
-  // 3 header rows
-  for (const [key, def] of Object.entries(BUCKET_DEFS)) {
-    rows.push({
-      category: def.categories[0].value,
-      label: def.label,  // 'Needs', 'Wants', 'Savings'
-      percentage: buckets[key].percentage,
-      amount: salary * buckets[key].percentage / 100,
-      provider: null,
-      bank: '__bucket__',
-      color: def.color,
-    })
-  }
-  // Line items
-  for (const [key, b] of Object.entries(buckets)) {
-    for (const item of b.items) {
-      if (!item.label && !item.amount) continue
-      rows.push({
-        category: item.category,
-        label: item.label || 'Item',
-        percentage: 0,
-        amount: parseFloat(item.amount) || 0,
-        provider: item.provider || null,
-        bank: item.bank || null,
-        color: BUCKET_DEFS[key].color,
-      })
-    }
-  }
-  return rows
-}
-
-export default function SalaryAllocator() {
-  const [loading, setLoading] = useState(true)
-  const [step, setStep] = useState(1)
-  const [salary, setSalary] = useState(0)
-  const [buckets, setBuckets] = useState(buildInitialBuckets)
-  const [saved, setSaved] = useState(false)
   const [saving, setSaving] = useState(false)
 
-  useEffect(() => {
-    Promise.all([
-      window.electronAPI.getProfile(),
-      window.electronAPI.getSalaryAllocations(),
-    ]).then(([profile, allocs]) => {
-      if (profile?.monthly_salary > 0) setSalary(profile.monthly_salary)
-      if (allocs?.length > 0) {
-        setBuckets(allocationsToBuckets(allocs))
-        setSaved(true)
-        setStep(4) // jump to details view
-      }
-    }).catch(console.error).finally(() => setLoading(false))
-  }, [])
+  const metaValid = meta.label.trim() && parseFloat(meta.monthly_salary) > 0 && meta.effective_from
 
-  const handleSave = async () => {
+  const previewPlan = {
+    monthly_salary: parseFloat(meta.monthly_salary) || 0,
+    items: items.filter(i => i.name.trim()).map((i, idx) => ({
+      ...i, amount: parseFloat(i.amount) || 0, sort_order: idx,
+    })),
+  }
+
+  async function handleCreate() {
     setSaving(true)
     try {
-      const rows = bucketsToRows(salary, buckets)
-      await window.electronAPI.replaceAllSalaryAllocations({ salary, rows })
-      setSaved(true)
-      setStep(4) // show saved view
+      await window.electronAPI.createPlan({
+        label: meta.label.trim(),
+        monthly_salary: parseFloat(meta.monthly_salary),
+        effective_from: meta.effective_from,
+        notes: meta.notes || null,
+        items: previewPlan.items.map(i => ({
+          name: i.name,
+          amount: i.amount,
+          category: i.category,
+          bank_or_provider: i.bank_or_provider || null,
+          sort_order: i.sort_order,
+        })),
+      })
+      onCreated()
     } catch (e) {
       console.error(e)
     } finally {
@@ -603,51 +316,628 @@ export default function SalaryAllocator() {
     }
   }
 
-  const handleEdit = () => { setSaved(false); setStep(3) }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl w-[660px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">New Salary Plan</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Step {step + 1} of {WIZARD_STEPS.length} — {WIZARD_STEPS[step]}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
+            <CloseIcon />
+          </button>
+        </div>
 
-  if (loading) {
-    return <div className="p-8 flex items-center justify-center h-64"><div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" style={{ borderColor: '#6C63FF', borderTopColor: 'transparent' }} /></div>
-  }
+        {/* Step pills */}
+        <div className="flex items-center gap-1.5 px-6 pt-4 pb-1">
+          {WIZARD_STEPS.map((s, i) => (
+            <div key={i} className="flex items-center gap-1.5">
+              <div
+                className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
+                style={{
+                  backgroundColor: i < step ? '#10B981' : i === step ? '#6C63FF' : '#F3F4F6',
+                  color: i <= step ? '#fff' : '#6B7280',
+                }}
+              >
+                {i < step ? `✓ ${s}` : `${i + 1}. ${s}`}
+              </div>
+              {i < WIZARD_STEPS.length - 1 && <div className="w-4 h-px bg-gray-200" />}
+            </div>
+          ))}
+        </div>
 
-  if (saved && step === 4) {
-    return <SavedView salary={salary} buckets={buckets} onEdit={handleEdit} />
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {step === 0 && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Plan Label *</label>
+                <input
+                  autoFocus type="text" placeholder="e.g. Plan 2 - Jan 2027"
+                  value={meta.label} onChange={e => setMeta(m => ({ ...m, label: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Monthly Salary (₹) *</label>
+                <input
+                  type="number" min="0" step="1000" placeholder="e.g. 200000"
+                  value={meta.monthly_salary} onChange={e => setMeta(m => ({ ...m, monthly_salary: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Effective From *</label>
+                <input
+                  type="date" value={meta.effective_from}
+                  onChange={e => setMeta(m => ({ ...m, effective_from: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Notes (optional)</label>
+                <textarea
+                  rows={2} placeholder="e.g. Post salary hike, changed allocations"
+                  value={meta.notes} onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 resize-none"
+                />
+              </div>
+            </div>
+          )}
+
+          {step === 1 && (
+            <div>
+              <div className="grid grid-cols-12 gap-2 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                <div className="col-span-4">Name</div>
+                <div className="col-span-3">Category</div>
+                <div className="col-span-2">Amount (₹)</div>
+                <div className="col-span-2">Bank/Provider</div>
+                <div className="col-span-1" />
+              </div>
+              <ItemsEditor items={items} onChange={setItems} salary={parseFloat(meta.monthly_salary) || 0} />
+            </div>
+          )}
+
+          {step === 2 && (
+            <div>
+              <div className="p-4 rounded-xl bg-gray-50 border border-gray-200 mb-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold text-gray-900">{meta.label}</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {fmt(parseFloat(meta.monthly_salary))}/month · from {fmtDate(meta.effective_from)}
+                    </p>
+                    {meta.notes && <p className="text-xs text-gray-400 mt-1 italic">{meta.notes}</p>}
+                  </div>
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#6C63FF]/10 text-[#6C63FF]">
+                    {previewPlan.items.length} items
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm mb-5">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Overview</p>
+                <PlanDonut plan={previewPlan} />
+              </div>
+
+              <RunningBalanceTable plan={previewPlan} />
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
+          {step > 0 ? (
+            <button onClick={() => setStep(s => s - 1)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+              ← Back
+            </button>
+          ) : (
+            <button onClick={onClose}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+              Cancel
+            </button>
+          )}
+
+          {step < 2 ? (
+            <button
+              onClick={() => setStep(s => s + 1)}
+              disabled={step === 0 && !metaValid}
+              className="px-6 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
+              style={{ backgroundColor: '#6C63FF' }}
+            >
+              Continue →
+            </button>
+          ) : (
+            <button
+              onClick={handleCreate} disabled={saving}
+              className="px-6 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+              style={{ backgroundColor: '#10B981' }}
+            >
+              {saving ? 'Creating…' : '✓ Create Plan'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Edit Plan Modal ───────────────────────────────────────────────────────
+function EditPlanModal({ plan, onUpdated, onClose }) {
+  const [label, setLabel] = useState(plan.label)
+  const [salary, setSalary] = useState(String(plan.monthly_salary))
+  const [items, setItems] = useState(
+    (plan.items || []).map(i => ({
+      name: i.name, amount: String(i.amount),
+      category: i.category, bank_or_provider: i.bank_or_provider || '',
+    }))
+  )
+  const [saving, setSaving] = useState(false)
+
+  async function handleSave() {
+    setSaving(true)
+    try {
+      await window.electronAPI.updatePlanItems({
+        planId: plan.id,
+        label: label.trim() || undefined,
+        monthly_salary: parseFloat(salary) || undefined,
+        items: items.filter(i => i.name.trim()).map((i, idx) => ({
+          name: i.name.trim(),
+          amount: parseFloat(i.amount) || 0,
+          category: i.category,
+          bank_or_provider: i.bank_or_provider || null,
+          sort_order: idx,
+        })),
+      })
+      onUpdated()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setSaving(false)
+    }
   }
 
   return (
-    <div className="p-8">
-      {/* Step progress bar */}
-      <div className="flex items-center gap-2 mb-8 max-w-lg">
-        {STEP_LABELS.map((label, i) => {
-          const num = i + 1
-          const done = step > num
-          const active = step === num
-          return (
-            <div key={label} className="flex items-center gap-2 flex-1 min-w-0">
-              <div className="flex items-center gap-2 shrink-0">
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
-                  style={{
-                    backgroundColor: done ? '#10B981' : active ? '#6C63FF' : '#e5e7eb',
-                    color: done || active ? '#fff' : '#9ca3af',
-                  }}
-                >
-                  {done ? '✓' : num}
-                </div>
-                <span className={`text-xs font-medium hidden sm:block ${active ? 'text-gray-900' : done ? 'text-green-600' : 'text-gray-400'}`}>{label}</span>
-              </div>
-              {i < STEP_LABELS.length - 1 && (
-                <div className="flex-1 h-px mx-2" style={{ backgroundColor: done ? '#10B981' : '#e5e7eb' }} />
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl w-[660px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Edit Active Plan</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{plan.label}</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
+            <CloseIcon />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Plan Label</label>
+              <input type="text" value={label} onChange={e => setLabel(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Monthly Salary (₹)</label>
+              <input type="number" min="0" value={salary} onChange={e => setSalary(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Line Items</p>
+            <div className="grid grid-cols-12 gap-2 mb-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+              <div className="col-span-4">Name</div>
+              <div className="col-span-3">Category</div>
+              <div className="col-span-2">Amount (₹)</div>
+              <div className="col-span-2">Bank/Provider</div>
+              <div className="col-span-1" />
+            </div>
+            <ItemsEditor items={items} onChange={setItems} salary={parseFloat(salary) || 0} />
+          </div>
+        </div>
+
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleSave} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+            style={{ backgroundColor: '#6C63FF' }}>
+            {saving ? 'Saving…' : '✓ Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Compare View ──────────────────────────────────────────────────────────
+function computeDiff(plan1, plan2) {
+  const items1 = plan1.items || []
+  const items2 = plan2.items || []
+  const map1 = new Map(items1.map(i => [i.name.toLowerCase(), i]))
+  const map2 = new Map(items2.map(i => [i.name.toLowerCase(), i]))
+  const allKeys = new Set([...map1.keys(), ...map2.keys()])
+
+  const rows = [...allKeys].map(key => {
+    const i1 = map1.get(key)
+    const i2 = map2.get(key)
+    const name = i1?.name || i2?.name || key
+    const oldAmt = i1?.amount || 0
+    const newAmt = i2?.amount || 0
+    let status = 'same'
+    if (!i1) status = 'added'
+    else if (!i2) status = 'removed'
+    else if (Math.abs(oldAmt - newAmt) > 0.5 || i1.category !== i2.category) status = 'changed'
+    return { name, oldAmt, newAmt, oldCat: i1?.category, newCat: i2?.category, status }
+  })
+
+  const order = { removed: 0, changed: 1, added: 2, same: 3 }
+  return rows.sort((a, b) => order[a.status] - order[b.status])
+}
+
+function CompareView({ plan1, plan2, onClose }) {
+  const diff = computeDiff(plan1, plan2)
+
+  const ROW_BG = { added: '#F0FDF4', removed: '#FFF5F5', changed: '#FFFBEB', same: 'transparent' }
+  const STATUS_LABEL = {
+    added:   <span className="text-green-600 font-semibold">✦ Added</span>,
+    removed: <span className="text-red-600 font-semibold">✖ Removed</span>,
+    changed: <span className="text-amber-600 font-semibold">~ Changed</span>,
+    same:    <span className="text-gray-400">— Unchanged</span>,
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-5">
+        <h2 className="text-xl font-bold text-gray-900">Compare Plans</h2>
+        <button onClick={onClose}
+          className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+          ✕ Close
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-5">
+        {[plan1, plan2].map((plan, i) => (
+          <div key={i} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <p className="font-semibold text-gray-900">{plan.label}</p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {fmt(plan.monthly_salary)}/month · {fmtDate(plan.effective_from)}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="grid grid-cols-12 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+          <div className="col-span-3">Name</div>
+          <div className="col-span-2 text-right">Old Amount</div>
+          <div className="col-span-2 text-center">Δ Change</div>
+          <div className="col-span-2 text-right">New Amount</div>
+          <div className="col-span-3">Status</div>
+        </div>
+        {diff.map((row, i) => (
+          <div key={i}
+            className="grid grid-cols-12 px-5 py-3 border-b border-gray-50 items-center"
+            style={{ backgroundColor: ROW_BG[row.status] }}
+          >
+            <div className="col-span-3 text-sm font-medium text-gray-800">{row.name}</div>
+            <div className="col-span-2 text-right text-sm text-gray-600">{row.oldAmt > 0 ? fmt(row.oldAmt) : '—'}</div>
+            <div className="col-span-2 text-center text-xs font-semibold">
+              {row.status === 'changed' && (
+                <span style={{ color: row.newAmt > row.oldAmt ? '#10B981' : '#EF4444' }}>
+                  {row.newAmt > row.oldAmt ? '+' : ''}{fmt(row.newAmt - row.oldAmt)}
+                </span>
               )}
+            </div>
+            <div className="col-span-2 text-right text-sm text-gray-600">{row.newAmt > 0 ? fmt(row.newAmt) : '—'}</div>
+            <div className="col-span-3 text-xs">{STATUS_LABEL[row.status]}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Plan History List ─────────────────────────────────────────────────────
+function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare }) {
+  const [selectedIds, setSelectedIds] = useState([])
+
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      if (prev.includes(id)) return prev.filter(x => x !== id)
+      if (prev.length >= 2) return [prev[1], id]
+      return [...prev, id]
+    })
+  }
+
+  const sorted = [...plans].sort((a, b) => new Date(b.effective_from) - new Date(a.effective_from))
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-xl font-bold text-gray-900">Plan History</h2>
+          <p className="text-sm text-gray-500 mt-0.5">{plans.length} plan{plans.length !== 1 ? 's' : ''} total</p>
+        </div>
+        <div className="flex items-center gap-3">
+          {selectedIds.length === 2 && (
+            <button
+              onClick={() => onCompare(selectedIds)}
+              className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: '#F59E0B' }}
+            >
+              ↔ Compare Selected
+            </button>
+          )}
+          <button onClick={onBack}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+            ← Back
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-3">
+        {sorted.map(plan => {
+          const isActive = plan.id === activePlanId
+          const isSel = selectedIds.includes(plan.id)
+
+          return (
+            <div key={plan.id}
+              className={`bg-white rounded-2xl p-5 border shadow-sm transition-all ${
+                isSel ? 'border-amber-400 ring-2 ring-amber-200' : isActive ? 'border-[#6C63FF]/40' : 'border-gray-100'
+              }`}
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <p className="font-semibold text-gray-900">{plan.label}</p>
+                    {isActive && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#6C63FF]/10 text-[#6C63FF]">Active</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    {fmtDate(plan.effective_from)}
+                    {plan.effective_to ? ` → ${fmtDate(plan.effective_to)}` : ' → Present'}
+                  </p>
+                  <p className="text-sm font-semibold text-gray-700 mt-1.5">{fmt(plan.monthly_salary)}/month</p>
+                </div>
+
+                <div className="flex items-start gap-4 ml-4 shrink-0">
+                  <div className="text-right text-xs text-gray-500 space-y-1 pt-0.5">
+                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#3B82F6] mr-1.5 align-middle" />Needs: {fmt(plan.totalNeeds)}</p>
+                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#8B5CF6] mr-1.5 align-middle" />Wants: {fmt(plan.totalWants)}</p>
+                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5 align-middle" />Invest: {fmt(plan.totalInvestment)}</p>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <button onClick={() => onViewPlan(plan.id)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#6C63FF] border border-[#6C63FF]/20 hover:bg-[#6C63FF]/5 transition-colors">
+                      View
+                    </button>
+                    <button
+                      onClick={() => toggleSelect(plan.id)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                        isSel
+                          ? 'bg-amber-100 text-amber-700 border border-amber-300'
+                          : 'text-gray-500 border border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {isSel ? '✓ Selected' : 'Compare'}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           )
         })}
       </div>
+    </div>
+  )
+}
 
-      {step === 1 && <StepSalary salary={salary} setSalary={setSalary} onNext={() => setStep(2)} />}
-      {step === 2 && <StepSuggestions salary={salary} buckets={buckets} setBuckets={setBuckets} onNext={() => setStep(3)} onBack={() => setStep(1)} />}
-      {step === 3 && <StepAllocate salary={salary} buckets={buckets} setBuckets={setBuckets} onNext={() => setStep(4)} onBack={() => setStep(2)} />}
-      {step === 4 && !saved && (
-        <StepDetails salary={salary} buckets={buckets} setBuckets={setBuckets} onSave={handleSave} onBack={() => setStep(3)} saving={saving} />
+// ── Plan Detail View ──────────────────────────────────────────────────────
+function PlanDetailView({ plan, onEdit, onNewPlan, onHistory }) {
+  return (
+    <div>
+      {/* Header */}
+      <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <h3 className="text-xl font-bold text-gray-900">{plan.label}</h3>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#6C63FF]/10 text-[#6C63FF]">Active</span>
+          </div>
+          <p className="text-sm text-gray-500">
+            {fmt(plan.monthly_salary)}/month · effective {fmtDate(plan.effective_from)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button onClick={onEdit}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-[#6C63FF] border border-[#6C63FF]/20 hover:bg-[#6C63FF]/5 transition-colors">
+            ✎ Edit
+          </button>
+          <button onClick={onNewPlan}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: '#6C63FF' }}>
+            + New Plan
+          </button>
+          <button onClick={onHistory}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+            🕐 History
+          </button>
+        </div>
+      </div>
+
+      {/* Donut */}
+      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-5">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Allocation Overview</p>
+        <PlanDonut plan={plan} />
+      </div>
+
+      {/* Running balance */}
+      <div>
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Running Balance</p>
+        <RunningBalanceTable plan={plan} />
+      </div>
+    </div>
+  )
+}
+
+// ── Main Component ────────────────────────────────────────────────────────
+export default function SalaryAllocator() {
+  const [loading, setLoading]           = useState(true)
+  const [activePlan, setActivePlan]     = useState(null)
+  const [allPlans, setAllPlans]         = useState([])
+  const [view, setView]                 = useState('detail') // 'detail' | 'history' | 'viewPlan' | 'compare'
+  const [showNewWizard, setShowNewWizard] = useState(false)
+  const [showEdit, setShowEdit]         = useState(false)
+  const [viewingPlan, setViewingPlan]   = useState(null)
+  const [comparePlans, setComparePlans] = useState(null) // [plan1, plan2]
+
+  async function loadData() {
+    setLoading(true)
+    try {
+      const [plan, plans] = await Promise.all([
+        window.electronAPI.getActivePlan(),
+        window.electronAPI.getAllPlans(),
+      ])
+      setActivePlan(plan || null)
+      setAllPlans(plans || [])
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  async function handleViewPlan(id) {
+    const plan = await window.electronAPI.getPlanById(id)
+    setViewingPlan(plan)
+    setView('viewPlan')
+  }
+
+  async function handleCompare(ids) {
+    const [p1, p2] = await Promise.all([
+      window.electronAPI.getPlanById(ids[0]),
+      window.electronAPI.getPlanById(ids[1]),
+    ])
+    setComparePlans([p1, p2])
+    setView('compare')
+  }
+
+  if (loading) {
+    return (
+      <div className="p-8 flex items-center justify-center h-64">
+        <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: '#6C63FF', borderTopColor: 'transparent' }} />
+      </div>
+    )
+  }
+
+  if (!activePlan) {
+    return (
+      <div className="p-8 flex flex-col items-center justify-center h-64 text-center">
+        <p className="text-3xl mb-3">📋</p>
+        <p className="text-lg font-bold text-gray-800 mb-1">No active plan</p>
+        <p className="text-sm text-gray-500 mb-5">Create your first salary plan to get started</p>
+        <button
+          onClick={() => setShowNewWizard(true)}
+          className="px-6 py-3 rounded-xl text-white font-semibold text-sm hover:opacity-90 transition-opacity"
+          style={{ backgroundColor: '#6C63FF' }}
+        >
+          + Create Plan
+        </button>
+        {showNewWizard && (
+          <NewPlanWizard
+            activePlan={null}
+            onCreated={() => { setShowNewWizard(false); loadData() }}
+            onClose={() => setShowNewWizard(false)}
+          />
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <div className="p-8 max-w-4xl">
+      {view === 'detail' && (
+        <PlanDetailView
+          plan={activePlan}
+          onEdit={() => setShowEdit(true)}
+          onNewPlan={() => setShowNewWizard(true)}
+          onHistory={() => setView('history')}
+        />
+      )}
+
+      {view === 'history' && (
+        <PlanHistoryList
+          plans={allPlans}
+          activePlanId={activePlan?.id}
+          onBack={() => setView('detail')}
+          onViewPlan={handleViewPlan}
+          onCompare={handleCompare}
+        />
+      )}
+
+      {view === 'viewPlan' && viewingPlan && (
+        <div>
+          <div className="flex items-center gap-3 mb-5 flex-wrap">
+            <button onClick={() => setView('history')}
+              className="px-3 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+              ← History
+            </button>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-bold text-gray-900">{viewingPlan.label}</h2>
+              {viewingPlan.is_active ? (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#6C63FF]/10 text-[#6C63FF]">Active</span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Inactive</span>
+              )}
+            </div>
+          </div>
+          <p className="text-sm text-gray-500 mb-5">
+            {fmt(viewingPlan.monthly_salary)}/month · {fmtDate(viewingPlan.effective_from)}
+            {viewingPlan.effective_to ? ` → ${fmtDate(viewingPlan.effective_to)}` : ' → Present'}
+          </p>
+          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Overview</p>
+            <PlanDonut plan={viewingPlan} />
+          </div>
+          <RunningBalanceTable plan={viewingPlan} />
+        </div>
+      )}
+
+      {view === 'compare' && comparePlans && (
+        <CompareView
+          plan1={comparePlans[0]}
+          plan2={comparePlans[1]}
+          onClose={() => setView('history')}
+        />
+      )}
+
+      {showNewWizard && (
+        <NewPlanWizard
+          activePlan={activePlan}
+          onCreated={() => { setShowNewWizard(false); loadData() }}
+          onClose={() => setShowNewWizard(false)}
+        />
+      )}
+
+      {showEdit && activePlan && (
+        <EditPlanModal
+          plan={activePlan}
+          onUpdated={() => { setShowEdit(false); loadData() }}
+          onClose={() => setShowEdit(false)}
+        />
       )}
     </div>
   )

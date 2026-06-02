@@ -10,11 +10,10 @@ const STAT_CARDS = [
   { key: 'goalsActive',    label: 'Goals Active',      icon: '🎯', accent: '#3B82F6', bg: '#eff6ff', description: 'Financial goals currently in progress', raw: true },
 ]
 
-const BUCKET_META = {
-  'Needs':                  { color: '#3B82F6', icon: '🏠' },
-  'Wants':                  { color: '#8B5CF6', icon: '🎭' },
-  'Savings & Investments':  { color: '#10B981', icon: '📈' },
-  'Savings':                { color: '#10B981', icon: '📈' },
+const CATEGORY_META = {
+  needs:      { label: 'Needs',       color: '#3B82F6', icon: '🏠' },
+  wants:      { label: 'Wants',       color: '#8B5CF6', icon: '🎭' },
+  investment: { label: 'Investment',  color: '#10B981', icon: '📈' },
 }
 
 function getGreeting(name) {
@@ -76,23 +75,35 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
 }
 
 // ── Salary donut ──────────────────────────────────────────────────────────
-function SalaryDonut({ allocations, salary }) {
-  const buckets = allocations.filter(r => r.bank === '__bucket__')
-  if (!buckets.length) return null
+function SalaryDonut({ plan }) {
+  if (!plan || !plan.items?.length) return null
+
+  const salary = plan.monthly_salary || 0
+  const totals = { needs: 0, wants: 0, investment: 0 }
+  for (const item of plan.items) {
+    if (totals[item.category] !== undefined) totals[item.category] += item.amount
+  }
 
   let cum = 0
-  const segs = buckets.map(b => {
-    const meta = BUCKET_META[b.label] || { color: '#6C63FF', icon: '●' }
-    const start = cum; cum += b.percentage
-    return { ...b, ...meta, start }
+  const segs = Object.entries(totals).map(([cat, amount]) => {
+    const meta  = CATEGORY_META[cat]
+    const pct   = salary > 0 ? (amount / salary) * 100 : 0
+    const start = cum; cum += pct
+    return { cat, amount, pct, start, ...meta }
   })
 
-  const gradient = segs.map(s => `${s.color} ${s.start}% ${s.start + s.percentage}%`).join(', ')
+  const gradient = segs.map(s => `${s.color} ${s.start.toFixed(2)}% ${(s.start + s.pct).toFixed(2)}%`).join(', ')
+  const effectiveFrom = plan.effective_from
+    ? new Date(plan.effective_from).toLocaleDateString('en-IN', { month: 'short', year: 'numeric' })
+    : ''
 
   return (
     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
       <h3 className="text-base font-semibold text-gray-800 mb-0.5">Salary Allocation</h3>
-      <p className="text-xs text-gray-400 mb-5">{fmt(salary)}/month</p>
+      <p className="text-xs text-gray-400 mb-1">{plan.label}</p>
+      <p className="text-xs text-gray-400 mb-4">
+        {fmt(salary)}/month · from {effectiveFrom}
+      </p>
 
       <div className="flex items-center gap-6">
         <div className="relative shrink-0 w-28 h-28">
@@ -102,17 +113,17 @@ function SalaryDonut({ allocations, salary }) {
           </div>
         </div>
         <div className="flex-1 space-y-2.5">
-          {segs.map((s, i) => (
-            <div key={i}>
+          {segs.map(s => (
+            <div key={s.cat}>
               <div className="flex items-center justify-between mb-1">
                 <div className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
                   <span className="text-xs font-medium text-gray-700">{s.icon} {s.label}</span>
                 </div>
-                <span className="text-xs font-bold text-gray-800">{s.percentage}%</span>
+                <span className="text-xs font-bold text-gray-800">{s.pct.toFixed(0)}%</span>
               </div>
               <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full" style={{ width: `${s.percentage}%`, backgroundColor: s.color }} />
+                <div className="h-full rounded-full" style={{ width: `${s.pct}%`, backgroundColor: s.color }} />
               </div>
             </div>
           ))}
@@ -257,8 +268,7 @@ function StatCard({ label, value, icon, accent, bg, description, loading }) {
 // ── Dashboard ─────────────────────────────────────────────────────────────
 export default function Dashboard() {
   const [stats, setStats]           = useState({ netWorth: 0, totalInvested: 0, thisMonthSpend: 0, goalsActive: 0 })
-  const [allocations, setAllocations] = useState([])
-  const [salary, setSalary]         = useState(0)
+  const [activePlan, setActivePlan] = useState(null)
   const [goals, setGoals]           = useState([])
   const [investments, setInvestments] = useState([])
   const [profileName, setProfileName] = useState('')
@@ -275,9 +285,9 @@ export default function Dashboard() {
       const month = now.getMonth() + 1
       const year  = now.getFullYear()
 
-      const [s, allocs, profile, g, inv, exStats, cats] = await Promise.all([
+      const [s, plan, profile, g, inv, exStats, cats] = await Promise.all([
         window.electronAPI.getDashboardStats(),
-        window.electronAPI.getSalaryAllocations(),
+        window.electronAPI.getActivePlan(),
         window.electronAPI.getProfile(),
         window.electronAPI.getAllGoals(),
         window.electronAPI.getAllInvestments(),
@@ -286,17 +296,18 @@ export default function Dashboard() {
       ])
 
       setStats(s || {})
-      setAllocations(allocs || [])
-      setSalary(profile?.monthly_salary || 0)
+      setActivePlan(plan || null)
       setProfileName(profile?.name || '')
       setGoals(g || [])
       setInvestments(inv || [])
       setMonthlyStats(exStats || null)
       setCategories(cats || [])
 
-      const needsRow = (allocs || []).find(r => r.bank === '__bucket__' && r.label === 'Needs')
-      if (needsRow && profile?.monthly_salary) {
-        setNeedsBudget((needsRow.percentage / 100) * profile.monthly_salary)
+      if (plan?.items) {
+        const needsTotal = plan.items
+          .filter(i => i.category === 'needs')
+          .reduce((s, i) => s + i.amount, 0)
+        setNeedsBudget(needsTotal)
       }
     } catch (e) {
       console.error(e)
@@ -312,7 +323,7 @@ export default function Dashboard() {
     loadData()
   }
 
-  const hasAllocations = allocations.some(r => r.bank === '__bucket__')
+  const hasAllocations = activePlan && activePlan.items?.length > 0
 
   return (
     <div className="p-8">
@@ -362,7 +373,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex-1 animate-pulse" />
           ) : hasAllocations ? (
-            <SalaryDonut allocations={allocations} salary={salary} />
+            <SalaryDonut plan={activePlan} />
           ) : (
             <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center flex-1">
               <p className="text-3xl mb-2">🗂️</p>
