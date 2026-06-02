@@ -10,7 +10,8 @@
     "postinstall": "electron-rebuild -w better-sqlite3"
   },
   "dependencies": {
-    "better-sqlite3": "^11.7.0"
+    "better-sqlite3": "^11.7.0",
+    "googleapis": "^173.0.0"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",

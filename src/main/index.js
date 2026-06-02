@@ -4,8 +4,8 @@ import { is } from '@electron-toolkit/utils'
 import { initDatabase, getDb } from '../db/database.js'
 import {
   initiateAuth, disconnect as driveDisconnect, backupDatabase, listBackups,
-  restoreFromDrive, getDriveStatus, getStoredCreds, saveCreds,
-  getAppSettings, saveAppSettings,
+  restoreFromDrive, getDriveStatus, getSyncStatus, getDbLastModified,
+  getStoredCreds, saveCreds, getAppSettings, saveAppSettings,
 } from './googleDrive.js'
 
 let mainWindow
@@ -387,21 +387,27 @@ function setupIpcHandlers() {
   })
 
   // ── Google Drive ──────────────────────────────────────────────────────────
-  ipcMain.handle('drive:getStatus',      ()           => getDriveStatus())
-  ipcMain.handle('drive:hasCreds',       ()           => Boolean(getStoredCreds()))
+  ipcMain.handle('drive:getStatus',       ()              => getDriveStatus())
+  ipcMain.handle('drive:getSyncStatus',   ()              => getSyncStatus(dbPath))
+  ipcMain.handle('drive:getDbLastModified', ()            => getDbLastModified(dbPath))
+  ipcMain.handle('drive:hasCreds',        ()              => Boolean(getStoredCreds()))
   ipcMain.handle('drive:saveCredentials', (_, id, secret) => { saveCreds(id, secret); return { success: true } })
-  ipcMain.handle('drive:connect',        async (_, ...args) => {
-    // If creds were passed inline (first-time setup from renderer), save them first
+  ipcMain.handle('drive:connect',         async ()        => {
     const creds = getStoredCreds()
     if (!creds) throw new Error('No credentials saved — call drive:saveCredentials first')
     return initiateAuth(creds.clientId, creds.clientSecret)
   })
-  ipcMain.handle('drive:disconnect',     ()           => { driveDisconnect(); return { success: true } })
-  ipcMain.handle('drive:backup',         async ()     => backupDatabase(dbPath))
-  ipcMain.handle('drive:listBackups',    async ()     => listBackups())
-  ipcMain.handle('drive:restore',        async (_, fileId) => restoreFromDrive(fileId, dbPath))
-  ipcMain.handle('drive:getAutoBackup',  ()           => getAppSettings().autoBackup)
-  ipcMain.handle('drive:setAutoBackup',  (_, val)     => {
+  ipcMain.handle('drive:disconnect',      ()              => { driveDisconnect(); return { success: true } })
+  ipcMain.handle('drive:backup',          async ()        => backupDatabase(dbPath))
+  ipcMain.handle('drive:listBackups',     async ()        => listBackups())
+  ipcMain.handle('drive:restore',         async (_, fileId) => {
+    await restoreFromDrive(fileId, dbPath)
+    // Restart the app so fresh data is loaded from the restored database
+    setTimeout(() => { app.relaunch(); app.exit(0) }, 600)
+    return { success: true }
+  })
+  ipcMain.handle('drive:getAutoBackup',   ()              => getAppSettings().autoBackup)
+  ipcMain.handle('drive:setAutoBackup',   (_, val)        => {
     saveAppSettings({ ...getAppSettings(), autoBackup: Boolean(val) })
     return { success: true }
   })

@@ -7,6 +7,13 @@ const PAGE_TITLES = {
   settings:    'Settings',
 }
 
+const SYNC_META = {
+  synced:       { color: '#10B981', label: 'Synced with Google Drive' },
+  unsynced:     { color: '#F59E0B', label: 'Unsynced changes — backup recommended' },
+  failed:       { color: '#EF4444', label: 'Last backup failed' },
+  disconnected: null,
+}
+
 function getMonthYear() {
   return new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
 }
@@ -16,7 +23,9 @@ function getInitials(name) {
   return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
-export default function TopBar({ activePage, profileName }) {
+export default function TopBar({ activePage, profileName, syncStatus }) {
+  const syncMeta = syncStatus ? SYNC_META[syncStatus.status] : null
+
   return (
     <header className="flex items-center justify-between px-8 py-4 bg-white border-b border-gray-100 shrink-0">
       <div>
@@ -38,6 +47,30 @@ export default function TopBar({ activePage, profileName }) {
           </svg>
           <span className="text-sm font-medium text-gray-600">{getMonthYear()}</span>
         </div>
+
+        {/* Drive sync status dot */}
+        {syncMeta && (
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold cursor-default"
+            style={{
+              backgroundColor: syncMeta.color + '15',
+              borderColor: syncMeta.color + '40',
+              color: syncMeta.color,
+            }}
+            title={syncMeta.label}
+          >
+            <div
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{
+                backgroundColor: syncMeta.color,
+                boxShadow: `0 0 0 3px ${syncMeta.color}30`,
+              }}
+            />
+            {syncStatus.status === 'synced'   && 'Synced'}
+            {syncStatus.status === 'unsynced' && 'Unsynced'}
+            {syncStatus.status === 'failed'   && 'Sync failed'}
+          </div>
+        )}
 
         {/* Avatar */}
         <div className="flex items-center gap-2">

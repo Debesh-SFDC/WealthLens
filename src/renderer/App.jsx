@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import Onboarding from './components/Onboarding'
@@ -19,24 +19,37 @@ const pages = {
 }
 
 export default function App() {
-  const [activePage, setActivePage]     = useState('dashboard')
-  const [profileName, setProfileName]   = useState(null)
+  const [activePage, setActivePage]         = useState('dashboard')
+  const [profileName, setProfileName]       = useState(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
-  const [appReady, setAppReady]         = useState(false)
+  const [appReady, setAppReady]             = useState(false)
+  const [syncStatus, setSyncStatus]         = useState(null)
 
-  useEffect(() => {
-    window.electronAPI.getProfile().then(profile => {
-      if (!profile || !profile.name) {
-        setShowOnboarding(true)
-      } else {
-        setProfileName(profile.name)
-      }
-      setAppReady(true)
-    }).catch(() => {
-      setShowOnboarding(true)
-      setAppReady(true)
-    })
+  // ── Load sync status (called on mount and periodically) ───────────────
+  const loadSyncStatus = useCallback(async () => {
+    try {
+      const s = await window.electronAPI.getDriveSyncStatus()
+      setSyncStatus(s)
+    } catch {}
   }, [])
+
+  // ── Bootstrap ─────────────────────────────────────────────────────────
+  useEffect(() => {
+    window.electronAPI.getProfile()
+      .then(profile => {
+        if (!profile || !profile.name) setShowOnboarding(true)
+        else setProfileName(profile.name)
+        setAppReady(true)
+      })
+      .catch(() => { setShowOnboarding(true); setAppReady(true) })
+  }, [])
+
+  // ── Sync status polling (every 30 s) ──────────────────────────────────
+  useEffect(() => {
+    loadSyncStatus()
+    const id = setInterval(loadSyncStatus, 30_000)
+    return () => clearInterval(id)
+  }, [loadSyncStatus])
 
   function handleOnboardingComplete() {
     setShowOnboarding(false)
@@ -56,9 +69,9 @@ export default function App() {
       <Sidebar activePage={activePage} onNavigate={setActivePage} />
 
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <TopBar activePage={activePage} profileName={profileName} />
+        <TopBar activePage={activePage} profileName={profileName} syncStatus={syncStatus} />
         <main className="flex-1 overflow-y-auto">
-          <PageComponent />
+          <PageComponent onSyncRefresh={loadSyncStatus} />
         </main>
       </div>
     </div>

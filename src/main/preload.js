@@ -44,6 +44,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Google Drive
   getDriveStatus: () => ipcRenderer.invoke('drive:getStatus'),
+  getDriveSyncStatus: () => ipcRenderer.invoke('drive:getSyncStatus'),
+  getDriveDbLastModified: () => ipcRenderer.invoke('drive:getDbLastModified'),
   hasDriveCreds: () => ipcRenderer.invoke('drive:hasCreds'),
   saveDriveCredentials: (clientId, clientSecret) => ipcRenderer.invoke('drive:saveCredentials', clientId, clientSecret),
   connectDrive: () => ipcRenderer.invoke('drive:connect'),
