@@ -12,6 +12,7 @@ export function initDatabase() {
   createTables()
   migrateInvestments()
   seedDefaultCategories()
+  migrateCategories()
   return db
 }
 
@@ -113,15 +114,28 @@ function seedDefaultCategories() {
     ['Transportation', '🚗', '#4ECDC4'],
     ['Shopping', '🛍️', '#45B7D1'],
     ['Entertainment', '🎬', '#96CEB4'],
-    ['Healthcare', '💊', '#FFEAA7'],
+    ['Healthcare', '💊', '#FF85A1'],
     ['Utilities', '⚡', '#DDA0DD'],
     ['Rent', '🏠', '#98D8C8'],
     ['Education', '📚', '#F7DC6F'],
     ['Travel', '✈️', '#82E0AA'],
-    ['Others', '💳', '#AEB6BF'],
+    ['Bills', '📄', '#6366F1'],
+    ['EMI', '🏦', '#EF4444'],
+    ['Others', '💸', '#AEB6BF'],
   ]
   for (const [name, icon, color] of defaults) {
     insert.run(name, icon, color)
+  }
+}
+
+function migrateCategories() {
+  const add = db.prepare('INSERT OR IGNORE INTO expense_categories (name, icon, color, is_default) VALUES (?, ?, ?, 1)')
+  const newCats = [
+    ['Bills', '📄', '#6366F1'],
+    ['EMI', '🏦', '#EF4444'],
+  ]
+  for (const [name, icon, color] of newCats) {
+    add.run(name, icon, color)
   }
 }
 

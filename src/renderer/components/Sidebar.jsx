@@ -56,6 +56,19 @@ const navItems = [
   },
 ]
 
+const bottomNavItems = [
+  {
+    id: 'settings',
+    label: 'Settings',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    ),
+  },
+]
+
 export default function Sidebar({ activePage, onNavigate }) {
   return (
     <aside
@@ -119,12 +132,44 @@ export default function Sidebar({ activePage, onNavigate }) {
         })}
       </nav>
 
-      {/* Bottom section */}
-      <div className="px-5 py-5">
-        <div className="mx-0 mb-4" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
-        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-          WealthLens v1.0.0
-        </p>
+      {/* Bottom nav */}
+      <div className="px-3 pb-2">
+        <div className="mb-2" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+        {bottomNavItems.map((item) => {
+          const isActive = activePage === item.id
+          return (
+            <button
+              key={item.id}
+              onClick={() => onNavigate(item.id)}
+              className="flex items-center w-full gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+              style={{
+                backgroundColor: isActive ? '#6C63FF' : 'transparent',
+                color: isActive ? '#ffffff' : 'rgba(255,255,255,0.55)',
+              }}
+              onMouseEnter={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)'
+                  e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!isActive) {
+                  e.currentTarget.style.backgroundColor = 'transparent'
+                  e.currentTarget.style.color = 'rgba(255,255,255,0.55)'
+                }
+              }}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+              {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white opacity-80" />}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Version */}
+      <div className="px-5 py-3">
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>WealthLens v1.0.0</p>
       </div>
     </aside>
   )

@@ -2,6 +2,11 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
 import { initDatabase, getDb } from '../db/database.js'
+import {
+  initiateAuth, disconnect as driveDisconnect, backupDatabase, listBackups,
+  restoreFromDrive, getDriveStatus, getStoredCreds, saveCreds,
+  getAppSettings, saveAppSettings,
+} from './googleDrive.js'
 
 let mainWindow
 
@@ -37,6 +42,8 @@ function createWindow() {
   }
 }
 
+const dbPath = join(app.getPath('userData'), 'wealthlens.db')
+
 app.whenReady().then(() => {
   initDatabase()
   setupIpcHandlers()
@@ -45,6 +52,14 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
+})
+
+app.on('before-quit', async () => {
+  const settings = getAppSettings()
+  if (!settings.autoBackup) return
+  const creds = getStoredCreds()
+  if (!creds) return
+  try { await backupDatabase(dbPath) } catch {}
 })
 
 app.on('window-all-closed', () => {
@@ -319,6 +334,36 @@ function setupIpcHandlers() {
     return { id: result.lastInsertRowid }
   })
 
+  ipcMain.handle('expenses:getMonthlyStats', (_, filter) => {
+    const month = String(filter.month).padStart(2, '0')
+    const year  = String(filter.year)
+    const rows  = db.prepare(
+      `SELECT * FROM expenses WHERE strftime('%m', date) = ? AND strftime('%Y', date) = ?`
+    ).all(month, year)
+
+    const total = rows.reduce((s, r) => s + r.amount, 0)
+
+    const catMap = {}
+    for (const r of rows) catMap[r.category] = (catMap[r.category] || 0) + r.amount
+    const byCategory = Object.entries(catMap)
+      .map(([category, amount]) => ({ category, amount }))
+      .sort((a, b) => b.amount - a.amount)
+
+    const daysInMonth = new Date(Number(year), Number(month), 0).getDate()
+    const dailyAvg = rows.length ? total / daysInMonth : 0
+
+    const dayMap = {}
+    for (const r of rows) dayMap[r.date] = (dayMap[r.date] || 0) + r.amount
+    const topDayEntry = Object.entries(dayMap).sort((a, b) => b[1] - a[1])[0]
+
+    return {
+      total,
+      byCategory,
+      dailyAvg,
+      topDay: topDayEntry ? { date: topDayEntry[0], amount: topDayEntry[1] } : null,
+    }
+  })
+
   // ── Dashboard stats ───────────────────────────────────────────────────────
   ipcMain.handle('dashboard:getStats', () => {
     const { totalInvested } = db.prepare(
@@ -339,5 +384,25 @@ function setupIpcHandlers() {
     ).get()
 
     return { netWorth, totalInvested, thisMonthSpend, goalsActive }
+  })
+
+  // ── Google Drive ──────────────────────────────────────────────────────────
+  ipcMain.handle('drive:getStatus',      ()           => getDriveStatus())
+  ipcMain.handle('drive:hasCreds',       ()           => Boolean(getStoredCreds()))
+  ipcMain.handle('drive:saveCredentials', (_, id, secret) => { saveCreds(id, secret); return { success: true } })
+  ipcMain.handle('drive:connect',        async (_, ...args) => {
+    // If creds were passed inline (first-time setup from renderer), save them first
+    const creds = getStoredCreds()
+    if (!creds) throw new Error('No credentials saved — call drive:saveCredentials first')
+    return initiateAuth(creds.clientId, creds.clientSecret)
+  })
+  ipcMain.handle('drive:disconnect',     ()           => { driveDisconnect(); return { success: true } })
+  ipcMain.handle('drive:backup',         async ()     => backupDatabase(dbPath))
+  ipcMain.handle('drive:listBackups',    async ()     => listBackups())
+  ipcMain.handle('drive:restore',        async (_, fileId) => restoreFromDrive(fileId, dbPath))
+  ipcMain.handle('drive:getAutoBackup',  ()           => getAppSettings().autoBackup)
+  ipcMain.handle('drive:setAutoBackup',  (_, val)     => {
+    saveAppSettings({ ...getAppSettings(), autoBackup: Boolean(val) })
+    return { success: true }
   })
 }

@@ -4,31 +4,86 @@ const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR',
 const fmt = (v) => INR.format(v || 0)
 
 const STAT_CARDS = [
-  { key: 'netWorth', label: 'Net Worth', icon: '💎', accent: '#6C63FF', bg: '#f0efff', description: 'Current market value of all investments' },
-  { key: 'totalInvested', label: 'Total Invested', icon: '📈', accent: '#10B981', bg: '#ecfdf5', description: 'Total amount invested across all assets' },
-  { key: 'thisMonthSpend', label: 'This Month Spend', icon: '💳', accent: '#F59E0B', bg: '#fffbeb', description: 'Total expenses recorded this month' },
-  { key: 'goalsActive', label: 'Goals Active', icon: '🎯', accent: '#3B82F6', bg: '#eff6ff', description: 'Financial goals currently in progress', raw: true },
+  { key: 'netWorth',       label: 'Net Worth',         icon: '💎', accent: '#6C63FF', bg: '#f0efff', description: 'Current market value of all investments' },
+  { key: 'totalInvested',  label: 'Total Invested',    icon: '📈', accent: '#10B981', bg: '#ecfdf5', description: 'Total amount invested across all assets' },
+  { key: 'thisMonthSpend', label: 'This Month Spend',  icon: '💳', accent: '#F59E0B', bg: '#fffbeb', description: 'Total expenses recorded this month' },
+  { key: 'goalsActive',    label: 'Goals Active',      icon: '🎯', accent: '#3B82F6', bg: '#eff6ff', description: 'Financial goals currently in progress', raw: true },
 ]
 
-// ── Salary donut chart ────────────────────────────────────────────────────
 const BUCKET_META = {
-  Needs:               { color: '#3B82F6', icon: '🏠' },
-  Wants:               { color: '#8B5CF6', icon: '🎭' },
-  'Savings & Investments': { color: '#10B981', icon: '📈' },
-  Savings:             { color: '#10B981', icon: '📈' },  // fallback
+  'Needs':                  { color: '#3B82F6', icon: '🏠' },
+  'Wants':                  { color: '#8B5CF6', icon: '🎭' },
+  'Savings & Investments':  { color: '#10B981', icon: '📈' },
+  'Savings':                { color: '#10B981', icon: '📈' },
 }
 
-function SalaryDonut({ allocations, salary }) {
-  if (!allocations.length) return null
+function getGreeting(name) {
+  const hour = new Date().getHours()
+  const time = hour < 12 ? 'morning' : hour < 17 ? 'afternoon' : 'evening'
+  return name ? `Good ${time}, ${name.split(' ')[0]} 👋` : `Good ${time} 👋`
+}
 
+// ── Quick-add expense modal ───────────────────────────────────────────────
+function QuickAddExpense({ categories, onAdded, onClose }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [form, setForm] = useState({ amount: '', category: categories[0]?.name || 'Food & Dining', note: '', date: today })
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!form.amount || !form.category) return
+    await window.electronAPI.createExpense({ ...form, amount: parseFloat(form.amount) })
+    onAdded()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl w-[420px] shadow-2xl overflow-hidden">
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-gray-900">Quick Add Expense</h2>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-500">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          <input
+            autoFocus
+            type="number" min="0" step="0.01" placeholder="₹ Amount" required
+            value={form.amount} onChange={e => set('amount', e.target.value)}
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+          />
+          <select
+            value={form.category} onChange={e => set('category', e.target.value)}
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+          >
+            {categories.map(c => <option key={c.id} value={c.name}>{c.icon} {c.name}</option>)}
+          </select>
+          <input
+            type="text" placeholder="Note (optional)"
+            value={form.note} onChange={e => set('note', e.target.value)}
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+          />
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
+            <button type="submit" className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>Add</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Salary donut ──────────────────────────────────────────────────────────
+function SalaryDonut({ allocations, salary }) {
   const buckets = allocations.filter(r => r.bank === '__bucket__')
   if (!buckets.length) return null
 
   let cum = 0
   const segs = buckets.map(b => {
     const meta = BUCKET_META[b.label] || { color: '#6C63FF', icon: '●' }
-    const start = cum
-    cum += b.percentage
+    const start = cum; cum += b.percentage
     return { ...b, ...meta, start }
   })
 
@@ -37,16 +92,15 @@ function SalaryDonut({ allocations, salary }) {
   return (
     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
       <h3 className="text-base font-semibold text-gray-800 mb-0.5">Salary Allocation</h3>
-      <p className="text-xs text-gray-400 mb-5">{fmt(salary)}/month · 50/30/20 breakdown</p>
+      <p className="text-xs text-gray-400 mb-5">{fmt(salary)}/month</p>
 
       <div className="flex items-center gap-6">
         <div className="relative shrink-0 w-28 h-28">
           <div className="w-28 h-28 rounded-full" style={{ background: `conic-gradient(${gradient})` }} />
-          <div className="absolute inset-4 bg-white rounded-full flex flex-col items-center justify-center">
-            <p className="text-xs font-bold text-gray-600">{fmt(salary)}</p>
+          <div className="absolute inset-4 bg-white rounded-full flex items-center justify-center">
+            <p className="text-[10px] font-bold text-gray-500 text-center leading-tight">{fmt(salary)}<br/>/ mo</p>
           </div>
         </div>
-
         <div className="flex-1 space-y-2.5">
           {segs.map((s, i) => (
             <div key={i}>
@@ -68,54 +122,25 @@ function SalaryDonut({ allocations, salary }) {
   )
 }
 
-// ── Stat card ─────────────────────────────────────────────────────────────
-function StatCard({ label, value, icon, accent, bg, description, loading }) {
-  return (
-    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
-      <div className="flex items-start justify-between mb-4">
-        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ backgroundColor: bg }}>
-          {icon}
-        </div>
-        <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: bg, color: accent }}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
-          </svg>
-          Live
-        </div>
-      </div>
-      <div className="space-y-1">
-        {loading
-          ? <div className="h-8 w-32 bg-gray-100 rounded-lg animate-pulse" />
-          : <p className="text-2xl font-bold text-gray-900">{value}</p>
-        }
-        <p className="text-sm font-semibold text-gray-700">{label}</p>
-        <p className="text-xs text-gray-400">{description}</p>
-      </div>
-    </div>
-  )
-}
-
-// ── Goals progress mini list ──────────────────────────────────────────────
+// ── Goals mini list ───────────────────────────────────────────────────────
 function GoalsMini({ goals, investments }) {
-  if (!goals.length) {
+  const active = goals.filter(g => !g.is_achieved).slice(0, 3)
+  if (!active.length) {
     return (
       <div className="flex items-center justify-center h-28 rounded-xl bg-gray-50 border border-dashed border-gray-200">
         <p className="text-sm text-gray-400">No active goals</p>
       </div>
     )
   }
-
   const curYear = new Date().getFullYear()
-  const active = goals.filter(g => !g.is_achieved).slice(0, 3)
-
   return (
     <div className="space-y-3">
       {active.map(g => {
         const linked = investments.filter(i => i.goal_id === g.id)
-        const saved = linked.reduce((s, i) => s + (i.current_value || 0), 0)
-        const years = Math.max(0, (g.target_year || curYear) - curYear)
+        const saved  = linked.reduce((s, i) => s + (i.current_value || 0), 0)
+        const years  = Math.max(0, (g.target_year || curYear) - curYear)
         const target = (g.target_amount || 0) * Math.pow(1 + (g.inflation_rate || 6) / 100, years)
-        const pct = target > 0 ? Math.min(100, (saved / target) * 100) : 0
+        const pct    = target > 0 ? Math.min(100, (saved / target) * 100) : 0
         const accent = g.color || '#6C63FF'
         return (
           <div key={g.id} className="flex items-center gap-3">
@@ -138,40 +163,162 @@ function GoalsMini({ goals, investments }) {
   )
 }
 
+// ── Expenses widget ───────────────────────────────────────────────────────
+function ExpensesWidget({ stats, needsBudget, onAddExpense }) {
+  if (!stats) return null
+
+  const total = stats.total || 0
+  const budgetWarning = needsBudget > 0 && total > needsBudget * 0.5
+
+  return (
+    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h3 className="text-base font-semibold text-gray-800">This Month</h3>
+          <p className="text-xs text-gray-400">Expenses overview</p>
+        </div>
+        <button
+          onClick={onAddExpense}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+          style={{ backgroundColor: '#6C63FF' }}
+        >
+          <span>+</span> Add
+        </button>
+      </div>
+
+      {budgetWarning && (
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-yellow-50 border border-yellow-200 mb-4">
+          <span className="text-sm">⚠️</span>
+          <p className="text-xs font-semibold text-yellow-800">Over 50% of Needs budget spent</p>
+        </div>
+      )}
+
+      <p className="text-3xl font-bold text-gray-900 mb-1">{fmt(total)}</p>
+      {needsBudget > 0 && (
+        <div className="mt-3">
+          <div className="flex justify-between text-xs text-gray-400 mb-1">
+            <span>Needs budget</span>
+            <span>{fmt(needsBudget)}</span>
+          </div>
+          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${Math.min(100, (total / needsBudget) * 100)}%`,
+                backgroundColor: budgetWarning ? '#F59E0B' : '#10B981',
+              }}
+            />
+          </div>
+          <p className="text-xs text-gray-400 mt-1">
+            {needsBudget > total ? `${fmt(needsBudget - total)} remaining` : `${fmt(total - needsBudget)} over budget`}
+          </p>
+        </div>
+      )}
+
+      {stats.byCategory?.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {stats.byCategory.slice(0, 3).map(({ category, amount }) => (
+            <div key={category} className="flex items-center justify-between">
+              <span className="text-xs text-gray-500 truncate">{category}</span>
+              <span className="text-xs font-semibold text-gray-700 shrink-0 ml-2">{fmt(amount)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Stat card ─────────────────────────────────────────────────────────────
+function StatCard({ label, value, icon, accent, bg, description, loading }) {
+  return (
+    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-shadow duration-200">
+      <div className="flex items-start justify-between mb-4">
+        <div className="w-12 h-12 rounded-xl flex items-center justify-center text-2xl" style={{ backgroundColor: bg }}>{icon}</div>
+        <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-semibold" style={{ backgroundColor: bg, color: accent }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+            <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+          </svg>
+          Live
+        </div>
+      </div>
+      <div className="space-y-1">
+        {loading
+          ? <div className="h-8 w-32 bg-gray-100 rounded-lg animate-pulse" />
+          : <p className="text-2xl font-bold text-gray-900">{value}</p>
+        }
+        <p className="text-sm font-semibold text-gray-700">{label}</p>
+        <p className="text-xs text-gray-400">{description}</p>
+      </div>
+    </div>
+  )
+}
+
 // ── Dashboard ─────────────────────────────────────────────────────────────
 export default function Dashboard() {
-  const [stats, setStats] = useState({ netWorth: 0, totalInvested: 0, thisMonthSpend: 0, goalsActive: 0 })
+  const [stats, setStats]           = useState({ netWorth: 0, totalInvested: 0, thisMonthSpend: 0, goalsActive: 0 })
   const [allocations, setAllocations] = useState([])
-  const [salary, setSalary] = useState(0)
-  const [goals, setGoals] = useState([])
+  const [salary, setSalary]         = useState(0)
+  const [goals, setGoals]           = useState([])
   const [investments, setInvestments] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [profileName, setProfileName] = useState('')
+  const [monthlyStats, setMonthlyStats] = useState(null)
+  const [needsBudget, setNeedsBudget] = useState(0)
+  const [categories, setCategories] = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [showQuickAdd, setShowQuickAdd] = useState(false)
 
-  useEffect(() => {
-    Promise.all([
-      window.electronAPI.getDashboardStats(),
-      window.electronAPI.getSalaryAllocations(),
-      window.electronAPI.getProfile(),
-      window.electronAPI.getAllGoals(),
-      window.electronAPI.getAllInvestments(),
-    ])
-      .then(([s, allocs, profile, g, inv]) => {
-        setStats(s || {})
-        setAllocations(allocs || [])
-        setSalary(profile?.monthly_salary || 0)
-        setGoals(g || [])
-        setInvestments(inv || [])
-      })
-      .catch(console.error)
-      .finally(() => setLoading(false))
-  }, [])
+  async function loadData() {
+    setLoading(true)
+    try {
+      const now = new Date()
+      const month = now.getMonth() + 1
+      const year  = now.getFullYear()
+
+      const [s, allocs, profile, g, inv, exStats, cats] = await Promise.all([
+        window.electronAPI.getDashboardStats(),
+        window.electronAPI.getSalaryAllocations(),
+        window.electronAPI.getProfile(),
+        window.electronAPI.getAllGoals(),
+        window.electronAPI.getAllInvestments(),
+        window.electronAPI.getExpenseMonthlyStats({ month, year }),
+        window.electronAPI.getExpenseCategories(),
+      ])
+
+      setStats(s || {})
+      setAllocations(allocs || [])
+      setSalary(profile?.monthly_salary || 0)
+      setProfileName(profile?.name || '')
+      setGoals(g || [])
+      setInvestments(inv || [])
+      setMonthlyStats(exStats || null)
+      setCategories(cats || [])
+
+      const needsRow = (allocs || []).find(r => r.bank === '__bucket__' && r.label === 'Needs')
+      if (needsRow && profile?.monthly_salary) {
+        setNeedsBudget((needsRow.percentage / 100) * profile.monthly_salary)
+      }
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { loadData() }, [])
+
+  function handleQuickAdded() {
+    setShowQuickAdd(false)
+    loadData()
+  }
 
   const hasAllocations = allocations.some(r => r.bank === '__bucket__')
 
   return (
     <div className="p-8">
+      {/* Greeting */}
       <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900">Good morning 👋</h2>
+        <h2 className="text-2xl font-bold text-gray-900">{getGreeting(profileName)}</h2>
         <p className="mt-1 text-sm text-gray-500">Here's a snapshot of your financial health.</p>
       </div>
 
@@ -191,7 +338,7 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* Bottom row */}
+      {/* Bottom grid */}
       <div className="grid grid-cols-3 gap-5">
         {/* Goals mini */}
         <div className="col-span-2 bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
@@ -203,25 +350,36 @@ export default function Dashboard() {
           }
         </div>
 
-        {/* Salary donut */}
-        <div>
+        {/* Right column */}
+        <div className="flex flex-col gap-5">
+          {/* Expenses widget */}
+          {loading
+            ? <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm h-36 animate-pulse" />
+            : <ExpensesWidget stats={monthlyStats} needsBudget={needsBudget} onAddExpense={() => setShowQuickAdd(true)} />
+          }
+
+          {/* Salary donut or empty state */}
           {loading ? (
-            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm h-full">
-              <div className="h-4 w-32 bg-gray-100 rounded animate-pulse mb-2" />
-              <div className="h-3 w-24 bg-gray-100 rounded animate-pulse mb-6" />
-              <div className="h-28 w-28 rounded-full bg-gray-100 animate-pulse mx-auto" />
-            </div>
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex-1 animate-pulse" />
           ) : hasAllocations ? (
             <SalaryDonut allocations={allocations} salary={salary} />
           ) : (
-            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center h-full text-center">
+            <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex flex-col items-center justify-center text-center flex-1">
               <p className="text-3xl mb-2">🗂️</p>
               <p className="text-sm font-semibold text-gray-700">No allocation set</p>
-              <p className="text-xs text-gray-400 mt-1">Set up the Salary Allocator to see your breakdown</p>
+              <p className="text-xs text-gray-400 mt-1">Set up the Salary Allocator</p>
             </div>
           )}
         </div>
       </div>
+
+      {showQuickAdd && (
+        <QuickAddExpense
+          categories={categories}
+          onAdded={handleQuickAdded}
+          onClose={() => setShowQuickAdd(false)}
+        />
+      )}
     </div>
   )
 }

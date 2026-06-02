@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteExpense: (id) => ipcRenderer.invoke('expenses:delete', id),
   getExpenseCategories: () => ipcRenderer.invoke('expenses:getCategories'),
   createExpenseCategory: (data) => ipcRenderer.invoke('expenses:createCategory', data),
+  getExpenseMonthlyStats: (filter) => ipcRenderer.invoke('expenses:getMonthlyStats', filter),
 
   // Dashboard
   getDashboardStats: () => ipcRenderer.invoke('dashboard:getStats'),
@@ -40,4 +41,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   fetchMFNav: (schemeCode) => ipcRenderer.invoke('api:fetchMFNav', schemeCode),
   fetchStockPrice: (symbol, exchange) => ipcRenderer.invoke('api:fetchStockPrice', symbol, exchange),
   fetchGoldPrice: () => ipcRenderer.invoke('api:fetchGoldPrice'),
+
+  // Google Drive
+  getDriveStatus: () => ipcRenderer.invoke('drive:getStatus'),
+  hasDriveCreds: () => ipcRenderer.invoke('drive:hasCreds'),
+  saveDriveCredentials: (clientId, clientSecret) => ipcRenderer.invoke('drive:saveCredentials', clientId, clientSecret),
+  connectDrive: () => ipcRenderer.invoke('drive:connect'),
+  disconnectDrive: () => ipcRenderer.invoke('drive:disconnect'),
+  driveBackupNow: () => ipcRenderer.invoke('drive:backup'),
+  listDriveBackups: () => ipcRenderer.invoke('drive:listBackups'),
+  driveRestore: (fileId) => ipcRenderer.invoke('drive:restore', fileId),
+  getDriveAutoBackup: () => ipcRenderer.invoke('drive:getAutoBackup'),
+  setDriveAutoBackup: (val) => ipcRenderer.invoke('drive:setAutoBackup', val),
 })
