@@ -128,13 +128,17 @@ function setupIpcHandlers() {
     const result = db.prepare(`
       INSERT INTO investments (name, type, provider, bank_or_amc, account_number,
         invested_amount, current_value, monthly_sip_amount, start_date, maturity_date,
-        goal_id, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        goal_id, notes, units, purchase_price, scheme_code, interest_rate,
+        ticker_symbol, exchange, purity)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       d.name, d.type, d.provider ?? null, d.bank_or_amc ?? null,
       d.account_number ?? null, d.invested_amount ?? 0, d.current_value ?? 0,
       d.monthly_sip_amount ?? 0, d.start_date ?? null, d.maturity_date ?? null,
-      d.goal_id ?? null, d.notes ?? null
+      d.goal_id ?? null, d.notes ?? null,
+      d.units ?? 0, d.purchase_price ?? 0, d.scheme_code ?? null,
+      d.interest_rate ?? 0, d.ticker_symbol ?? null,
+      d.exchange ?? 'NSE', d.purity ?? '24K'
     )
     return { id: result.lastInsertRowid }
   })
@@ -144,13 +148,18 @@ function setupIpcHandlers() {
       UPDATE investments SET name = ?, type = ?, provider = ?, bank_or_amc = ?,
         account_number = ?, invested_amount = ?, current_value = ?, monthly_sip_amount = ?,
         start_date = ?, maturity_date = ?, goal_id = ?, notes = ?,
+        units = ?, purchase_price = ?, scheme_code = ?, interest_rate = ?,
+        ticker_symbol = ?, exchange = ?, purity = ?,
         last_updated_at = datetime('now')
       WHERE id = ?
     `).run(
       d.name, d.type, d.provider ?? null, d.bank_or_amc ?? null,
       d.account_number ?? null, d.invested_amount, d.current_value,
-      d.monthly_sip_amount, d.start_date ?? null, d.maturity_date ?? null,
-      d.goal_id ?? null, d.notes ?? null, d.id
+      d.monthly_sip_amount ?? 0, d.start_date ?? null, d.maturity_date ?? null,
+      d.goal_id ?? null, d.notes ?? null,
+      d.units ?? 0, d.purchase_price ?? 0, d.scheme_code ?? null,
+      d.interest_rate ?? 0, d.ticker_symbol ?? null,
+      d.exchange ?? 'NSE', d.purity ?? '24K', d.id
     )
     return { success: true }
   })
@@ -158,6 +167,51 @@ function setupIpcHandlers() {
   ipcMain.handle('investments:delete', (_, id) => {
     db.prepare('DELETE FROM investments WHERE id = ?').run(id)
     return { success: true }
+  })
+
+  // ── External price / NAV APIs (called from main to avoid CORS) ────────────
+  ipcMain.handle('api:searchMF', async (_, query) => {
+    const url = `https://api.mfapi.in/mf/search?q=${encodeURIComponent(query)}`
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`MF search failed: ${res.status}`)
+    return res.json()
+  })
+
+  ipcMain.handle('api:fetchMFNav', async (_, schemeCode) => {
+    const res = await fetch(`https://api.mfapi.in/mf/${schemeCode}/latest`)
+    if (!res.ok) throw new Error(`NAV fetch failed: ${res.status}`)
+    const body = await res.json()
+    const nav = parseFloat(body.data?.[0]?.nav)
+    if (!nav) throw new Error('NAV not found in response')
+    return { nav, date: body.data?.[0]?.date, name: body.meta?.scheme_name }
+  })
+
+  ipcMain.handle('api:fetchStockPrice', async (_, symbol, exchange) => {
+    const suffix = exchange === 'BSE' ? '.BO' : '.NS'
+    const ticker = `${symbol.trim().toUpperCase()}${suffix}`
+    const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 WealthLens/1.0' } })
+    if (!res.ok) throw new Error(`Yahoo Finance error: ${res.status}`)
+    const body = await res.json()
+    const meta = body.chart?.result?.[0]?.meta
+    if (!meta?.regularMarketPrice) throw new Error('Price not found')
+    return { price: meta.regularMarketPrice, currency: meta.currency, symbol: meta.symbol }
+  })
+
+  ipcMain.handle('api:fetchGoldPrice', async () => {
+    const headers = { 'User-Agent': 'Mozilla/5.0 WealthLens/1.0' }
+    const [goldRes, fxRes] = await Promise.all([
+      fetch('https://query2.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=1d', { headers }),
+      fetch('https://query2.finance.yahoo.com/v8/finance/chart/USDINR=X?interval=1d&range=1d', { headers }),
+    ])
+    if (!goldRes.ok || !fxRes.ok) throw new Error('Gold/FX price fetch failed')
+    const [goldBody, fxBody] = await Promise.all([goldRes.json(), fxRes.json()])
+    const goldUSD = goldBody.chart?.result?.[0]?.meta?.regularMarketPrice
+    const usdInr  = fxBody.chart?.result?.[0]?.meta?.regularMarketPrice
+    if (!goldUSD || !usdInr) throw new Error('Could not parse gold or FX price')
+    // GC=F is USD per troy oz; 1 troy oz = 31.1035 g
+    const inrPerGram = (goldUSD * usdInr) / 31.1035
+    return { inrPerGram: Math.round(inrPerGram), goldUSD, usdInr }
   })
 
   // ── Salary Allocations ────────────────────────────────────────────────────

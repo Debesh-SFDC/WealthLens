@@ -34,4 +34,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Dashboard
   getDashboardStats: () => ipcRenderer.invoke('dashboard:getStats'),
+
+  // External price / NAV APIs
+  searchMF: (query) => ipcRenderer.invoke('api:searchMF', query),
+  fetchMFNav: (schemeCode) => ipcRenderer.invoke('api:fetchMFNav', schemeCode),
+  fetchStockPrice: (symbol, exchange) => ipcRenderer.invoke('api:fetchStockPrice', symbol, exchange),
+  fetchGoldPrice: () => ipcRenderer.invoke('api:fetchGoldPrice'),
 })

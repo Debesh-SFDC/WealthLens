@@ -10,6 +10,7 @@ export function initDatabase() {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   createTables()
+  migrateInvestments()
   seedDefaultCategories()
   return db
 }
@@ -84,6 +85,20 @@ function createTables() {
       is_default INTEGER DEFAULT 0
     );
   `)
+}
+
+// Add columns introduced after initial schema — safe to run on existing DBs
+function migrateInvestments() {
+  const add = (col, type) => {
+    try { db.exec(`ALTER TABLE investments ADD COLUMN ${col} ${type}`) } catch {}
+  }
+  add('units',          'REAL DEFAULT 0')
+  add('purchase_price', 'REAL DEFAULT 0')
+  add('scheme_code',    'TEXT')
+  add('interest_rate',  'REAL DEFAULT 0')
+  add('ticker_symbol',  'TEXT')
+  add('exchange',       'TEXT DEFAULT "NSE"')
+  add('purity',         'TEXT DEFAULT "24K"')
 }
 
 function seedDefaultCategories() {
