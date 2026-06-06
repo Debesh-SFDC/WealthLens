@@ -684,6 +684,11 @@ function setupIpcHandlers() {
     return { id: result.lastInsertRowid }
   })
 
+  ipcMain.handle('expenses:deleteCategory', (_, id) => {
+    db.prepare('DELETE FROM expense_categories WHERE id = ? AND is_default = 0').run(id)
+    return { success: true }
+  })
+
   ipcMain.handle('expenses:getMonthlyStats', (_, filter) => {
     const month = String(filter.month).padStart(2, '0')
     const year  = String(filter.year)

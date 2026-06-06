@@ -3,6 +3,7 @@ import AppLogoIcon from './AppLogoIcon'
 import TrackerHome from '../pages/TrackerHome'
 import TrackerDashboard from '../pages/TrackerDashboard'
 import TrackerInsights from '../pages/TrackerInsights'
+import TrackerCategories from '../pages/TrackerCategories'
 
 function HomeIcon() {
   return (
@@ -34,6 +35,16 @@ function InsightsIcon() {
   )
 }
 
+function CategoriesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <circle cx="9" cy="9" r="3" />
+      <circle cx="15" cy="15" r="3" />
+      <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+    </svg>
+  )
+}
+
 function SignOutIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -45,9 +56,10 @@ function SignOutIcon() {
 }
 
 const navItems = [
-  { id: 'home',      label: 'Home',      Icon: HomeIcon },
-  { id: 'dashboard', label: 'Dashboard', Icon: DashboardIcon },
-  { id: 'insights',  label: 'Insights',  Icon: InsightsIcon },
+  { id: 'home',       label: 'Home',       Icon: HomeIcon },
+  { id: 'dashboard',  label: 'Dashboard',  Icon: DashboardIcon },
+  { id: 'insights',   label: 'Insights',   Icon: InsightsIcon },
+  { id: 'categories', label: 'Categories', Icon: CategoriesIcon },
 ]
 
 function NavButton({ item, isActive, onClick }) {
@@ -157,9 +169,10 @@ export default function TrackerApp({ user, onSignOut }) {
       </aside>
 
       <main className="flex-1 overflow-y-auto bg-gray-50">
-        {page === 'home'      && <TrackerHome      user={user} />}
-        {page === 'dashboard' && <TrackerDashboard user={user} />}
-        {page === 'insights'  && <TrackerInsights  user={user} />}
+        {page === 'home'       && <TrackerHome       user={user} />}
+        {page === 'dashboard'  && <TrackerDashboard  user={user} />}
+        {page === 'insights'   && <TrackerInsights   user={user} />}
+        {page === 'categories' && <TrackerCategories user={user} />}
       </main>
     </div>
   )

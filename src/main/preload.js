@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteExpense: (id) => ipcRenderer.invoke('expenses:delete', id),
   getExpenseCategories: () => ipcRenderer.invoke('expenses:getCategories'),
   createExpenseCategory: (data) => ipcRenderer.invoke('expenses:createCategory', data),
+  deleteExpenseCategory: (id) => ipcRenderer.invoke('expenses:deleteCategory', id),
   getExpenseMonthlyStats: (filter) => ipcRenderer.invoke('expenses:getMonthlyStats', filter),
 
   // Dashboard

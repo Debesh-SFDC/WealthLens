@@ -12,330 +12,302 @@ const CATEGORIES = [
   { name: 'Others',        icon: '💸', color: '#8B93A5', bg: '#F8FAFC' },
 ]
 
-const fmt = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0)
+const fmt  = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0)
+const fmtK = v => v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(Math.round(v))
 
-function ym(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+function currentYM() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
-
-function offsetMonth(base, offset) {
-  const d = new Date(base.getFullYear(), base.getMonth() + offset, 1)
-  return ym(d)
+function offsetMonth(offset) {
+  const d = new Date()
+  d.setMonth(d.getMonth() + offset)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 }
-
-function monthLabel(ymStr) {
-  const [y, m] = ymStr.split('-')
+function monthLabel(ym) {
+  const [y, m] = ym.split('-')
   return new Date(+y, +m - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })
 }
-
-function shortMonthLabel(ymStr) {
-  const [y, m] = ymStr.split('-')
+function shortMonth(ym) {
+  const [y, m] = ym.split('-')
   return new Date(+y, +m - 1).toLocaleString('en-IN', { month: 'short' })
 }
-
-function daysInMonth(ymStr) {
-  const [y, m] = ymStr.split('-')
+function daysInMonth(ym) {
+  const [y, m] = ym.split('-')
   return new Date(+y, +m, 0).getDate()
 }
 
-export default function TrackerDashboard({ user }) {
-  const now = new Date()
-  const currentYM = ym(now)
+function BarChart({ data, height = 160, barColor = '#6C63FF', labelFontSize = 9 }) {
+  const svgW = 560, padL = 4, padR = 4, padT = 16, padB = 24
+  const svgH = height + padB + padT
+  const chartW = svgW - padL - padR
+  const chartH = height
+  const maxVal = Math.max(...data.map(d => d.value), 1)
+  const n = data.length
+  const slot = chartW / n
+  const barW = Math.max(3, Math.min(slot * 0.55, 28))
+  const guides = [0.33, 0.66, 1].map(r => Math.round(maxVal * r))
 
-  const [period, setPeriod]           = useState('month')
+  return (
+    <svg viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet" className="w-full" style={{ height: svgH }}>
+      {/* Guide lines */}
+      {guides.map((gv, i) => {
+        const y = padT + chartH - (gv / maxVal) * chartH
+        return (
+          <g key={i}>
+            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#F3F4F6" strokeWidth={1} />
+            <text x={padL + 2} y={y - 3} fill="#D1D5DB" fontSize={8} textAnchor="start">{fmtK(gv)}</text>
+          </g>
+        )
+      })}
+      {/* Bars */}
+      {data.map((d, i) => {
+        const barH = Math.max(d.value > 0 ? 3 : 0, (d.value / maxVal) * chartH)
+        const x = padL + i * slot + (slot - barW) / 2
+        const y = padT + chartH - barH
+        const isToday = d.isToday
+        return (
+          <g key={i}>
+            <rect x={x} y={y} width={barW} height={barH} rx={3}
+              fill={isToday ? '#F59E0B' : d.value > 0 ? barColor : '#E5E7EB'}
+              opacity={d.value > 0 ? 1 : 0.3}>
+              <title>{fmt(d.value)}</title>
+            </rect>
+            {d.label && (
+              <text x={x + barW / 2} y={svgH - 6} textAnchor="middle" fill={isToday ? '#F59E0B' : '#9CA3AF'} fontSize={labelFontSize} fontWeight={isToday ? '700' : '400'}>
+                {d.label}
+              </text>
+            )}
+          </g>
+        )
+      })}
+    </svg>
+  )
+}
+
+export default function TrackerDashboard({ user }) {
+  const now        = new Date()
+  const todayStr   = now.toISOString().split('T')[0]
+  const cymStr     = currentYM()
+
   const [monthOffset, setMonthOffset] = useState(0)
-  const [expenses, setExpenses]       = useState([])
+  const [dayTab, setDayTab]           = useState('week') // 'week' | 'month'
+  const [allData, setAllData]         = useState({})     // { 'YYYY-MM': expenses[] }
   const [budget, setBudget]           = useState(0)
   const [loading, setLoading]         = useState(true)
 
-  const targetMonth = offsetMonth(now, monthOffset)
+  const targetMonth = offsetMonth(monthOffset)
 
+  // Load 13 months of data once
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const b = await window.electronAPI.getTrackerBudget().catch(() => 0)
+      const [b, ...results] = await Promise.all([
+        window.electronAPI.getTrackerBudget().catch(() => 0),
+        ...Array.from({ length: 13 }, (_, i) => {
+          const m = offsetMonth(-12 + i)
+          return window.electronAPI.getAllExpenses({ month: m }).then(data => [m, data])
+        }),
+      ])
       setBudget(b || 0)
-
-      if (period === 'week' || period === 'month') {
-        const m = period === 'week' ? currentYM : targetMonth
-        const data = await window.electronAPI.getAllExpenses({ month: m })
-        setExpenses(data)
-      } else if (period === '3m') {
-        const months = [0, -1, -2].map(o => offsetMonth(now, o))
-        const all = await Promise.all(months.map(m => window.electronAPI.getAllExpenses({ month: m })))
-        setExpenses(all.flat())
-      } else {
-        const months = Array.from({ length: 12 }, (_, i) => offsetMonth(now, -i))
-        const all = await Promise.all(months.map(m => window.electronAPI.getAllExpenses({ month: m })))
-        setExpenses(all.flat())
-      }
+      const map = {}
+      results.forEach(([m, data]) => { map[m] = data })
+      setAllData(map)
     } catch {}
     setLoading(false)
-  }, [period, monthOffset])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
-  const filteredExpenses = (() => {
-    if (period === 'week') {
-      const cutoff = new Date()
-      cutoff.setDate(cutoff.getDate() - 6)
-      const cutoffStr = cutoff.toISOString().split('T')[0]
-      return expenses.filter(e => e.date >= cutoffStr)
-    }
-    if (period === 'month') return expenses.filter(e => e.date.startsWith(targetMonth))
-    return expenses
-  })()
-
-  const total = filteredExpenses.reduce((s, e) => s + e.amount, 0)
-
-  const days = period === 'week'
-    ? Math.min(7, new Set(filteredExpenses.map(e => e.date)).size || 1)
-    : period === 'month'
-    ? Math.min(now.getDate(), daysInMonth(targetMonth))
-    : period === '3m' ? 90 : 365
-
-  const avgPerDay = total / (days || 1)
+  const monthExpenses = allData[targetMonth] || []
+  const total = monthExpenses.reduce((s, e) => s + e.amount, 0)
+  const daysElapsed = targetMonth === cymStr ? now.getDate() : daysInMonth(targetMonth)
+  const avgPerDay = total / (daysElapsed || 1)
+  const budgetPct = budget > 0 ? Math.min((total / budget) * 100, 100) : 0
+  const budgetColor = budgetPct >= 90 ? '#EF4444' : budgetPct >= 70 ? '#F59E0B' : '#6C63FF'
 
   const catTotals = CATEGORIES.map(cat => ({
     ...cat,
-    value: filteredExpenses.filter(e => e.category === cat.name).reduce((s, e) => s + e.amount, 0),
+    value: monthExpenses.filter(e => e.category === cat.name).reduce((s, e) => s + e.amount, 0),
   })).sort((a, b) => b.value - a.value)
 
-  const topCat = catTotals[0]
+  const topCat = catTotals.find(c => c.value > 0)
 
-  const budgetPct = budget > 0 && period === 'month' ? Math.min((total / budget) * 100, 100) : 0
-  const budgetBarColor = budgetPct >= 90 ? '#EF4444' : budgetPct >= 70 ? '#F59E0B' : '#6C63FF'
-
-  const chartData = (() => {
-    if (period === 'week') {
-      const result = []
-      for (let i = 6; i >= 0; i--) {
+  // ── Day-by-day chart data ────────────────────────────────────────────────
+  const dailyData = (() => {
+    if (dayTab === 'week') {
+      return Array.from({ length: 7 }, (_, i) => {
         const d = new Date()
-        d.setDate(d.getDate() - i)
-        const dateStr = d.toISOString().split('T')[0]
-        const dayTotal = filteredExpenses.filter(e => e.date === dateStr).reduce((s, e) => s + e.amount, 0)
-        result.push({ label: d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 3), value: dayTotal })
-      }
-      return result
-    }
-    if (period === 'month') {
-      const nDays = daysInMonth(targetMonth)
-      return Array.from({ length: nDays }, (_, i) => {
-        const day = String(i + 1).padStart(2, '0')
-        const dateStr = `${targetMonth}-${day}`
-        const dayTotal = filteredExpenses.filter(e => e.date === dateStr).reduce((s, e) => s + e.amount, 0)
-        return { label: i % 5 === 0 ? String(i + 1) : '', value: dayTotal }
+        d.setDate(d.getDate() - (6 - i))
+        const ds = d.toISOString().split('T')[0]
+        const ym = ds.slice(0, 7)
+        const val = (allData[ym] || []).filter(e => e.date === ds).reduce((s, e) => s + e.amount, 0)
+        const isToday = ds === todayStr
+        return {
+          label: d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 3),
+          value: val,
+          isToday,
+        }
       })
     }
-    if (period === '3m') {
-      return [0, -1, -2].reverse().map(o => {
-        const m = offsetMonth(now, o)
-        const val = expenses.filter(e => e.date.startsWith(m)).reduce((s, e) => s + e.amount, 0)
-        return { label: shortMonthLabel(m), value: val }
-      })
-    }
-    return Array.from({ length: 12 }, (_, i) => {
-      const m = offsetMonth(now, -(11 - i))
-      const val = expenses.filter(e => e.date.startsWith(m)).reduce((s, e) => s + e.amount, 0)
-      return { label: shortMonthLabel(m), value: val }
+    // month view
+    const n = daysInMonth(targetMonth)
+    return Array.from({ length: n }, (_, i) => {
+      const day = String(i + 1).padStart(2, '0')
+      const ds  = `${targetMonth}-${day}`
+      const val = monthExpenses.filter(e => e.date === ds).reduce((s, e) => s + e.amount, 0)
+      const isToday = ds === todayStr
+      const showLabel = (i + 1) % 5 === 1 || i + 1 === n
+      return { label: showLabel ? String(i + 1) : '', value: val, isToday }
     })
   })()
 
-  const maxBar = Math.max(...chartData.map(d => d.value), 1)
+  // ── Month-by-month chart (last 6 months) ─────────────────────────────────
+  const monthlyData = Array.from({ length: 6 }, (_, i) => {
+    const m   = offsetMonth(-(5 - i))
+    const val = (allData[m] || []).reduce((s, e) => s + e.amount, 0)
+    const isCurrent = m === cymStr
+    return { label: shortMonth(m), value: val, isToday: isCurrent }
+  })
 
-  const svgW = 560
-  const svgH = 180
-  const padL = 8
-  const padR = 8
-  const padT = 10
-  const padB = 28
-  const chartW = svgW - padL - padR
-  const chartH = svgH - padT - padB
-  const n = chartData.length
-  const barW = Math.max(4, Math.floor((chartW / n) * 0.6))
-  const gap = chartW / n
-
-  const guideVals = [0, Math.round(maxBar * 0.33), Math.round(maxBar * 0.66), maxBar]
-
-  const PERIODS = ['week', 'month', '3m', 'year']
-  const PERIOD_LABELS = { week: 'Week', month: 'Month', '3m': '3M', year: 'Year' }
+  const prevMonth    = offsetMonth(-1)
+  const prevTotal    = (allData[prevMonth] || []).reduce((s, e) => s + e.amount, 0)
+  const monthDelta   = total - prevTotal
+  const deltaSign    = monthDelta >= 0 ? '+' : ''
+  const deltaColor   = monthDelta > 0 ? '#EF4444' : '#10B981'
 
   return (
     <>
       <style>{`
         @keyframes fadeInUp {
-          from { opacity: 0; transform: translateY(18px); }
+          from { opacity: 0; transform: translateY(14px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .tracker-dash { animation: fadeInUp 0.3s ease; }
+        .dash-page { animation: fadeInUp 0.3s ease; }
       `}</style>
 
-      <div className="tracker-dash p-6 max-w-2xl mx-auto">
-        <div className="mb-6">
-          <p className="text-xl font-bold text-gray-900">Dashboard</p>
-          <p className="text-sm text-gray-400 mt-0.5">Your spending overview</p>
+      <div className="dash-page p-6 space-y-5 max-w-3xl mx-auto">
+
+        {/* Header + month nav */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-sm text-gray-400">Your spending overview</p>
+          </div>
+          <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-2xl px-3 py-2 shadow-sm">
+            <button onClick={() => setMonthOffset(o => o - 1)}
+              className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 font-bold transition-colors">‹</button>
+            <span className="text-sm font-semibold text-gray-800 min-w-[110px] text-center">{monthLabel(targetMonth)}</span>
+            <button onClick={() => setMonthOffset(o => o + 1)}
+              disabled={targetMonth >= cymStr}
+              className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 font-bold transition-colors disabled:opacity-30">›</button>
+          </div>
         </div>
 
-        <div className="flex items-center gap-2 mb-5">
-          {PERIODS.map(p => (
-            <button
-              key={p}
-              onClick={() => { setPeriod(p); setMonthOffset(0) }}
-              className="px-4 py-2 rounded-full text-sm font-semibold transition-all duration-150"
-              style={{
-                backgroundColor: period === p ? '#6C63FF' : 'transparent',
-                color: period === p ? '#ffffff' : '#6B7280',
-                border: `2px solid ${period === p ? '#6C63FF' : '#E5E7EB'}`,
-              }}
-            >
-              {PERIOD_LABELS[p]}
-            </button>
-          ))}
-
-          {period === 'month' && (
-            <div className="flex items-center gap-2 ml-auto">
-              <button
-                onClick={() => setMonthOffset(o => o - 1)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 font-bold text-lg transition-colors"
-              >
-                ‹
-              </button>
-              <span className="text-sm font-semibold text-gray-800 whitespace-nowrap">{monthLabel(targetMonth)}</span>
-              <button
-                onClick={() => setMonthOffset(o => o + 1)}
-                disabled={targetMonth >= currentYM}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-gray-100 text-gray-600 font-bold text-lg transition-colors disabled:opacity-30"
-              >
-                ›
-              </button>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-3 gap-3 mb-5">
+        {/* Stats row */}
+        <div className="grid grid-cols-3 gap-3">
           {[
-            { label: 'Total Spent', value: fmt(total) },
-            { label: 'Avg / Day', value: fmt(avgPerDay) },
-            { label: 'Top Category', value: topCat?.value > 0 ? `${topCat.icon} ${topCat.name}` : '—' },
-          ].map(card => (
-            <div key={card.label} className="bg-white rounded-2xl shadow-sm p-4 text-center">
-              <p className="text-xs text-gray-400 mb-1">{card.label}</p>
-              <p className="text-base font-bold text-gray-900">{card.value}</p>
+            { label: 'Month Total',  value: fmt(total),    sub: targetMonth === cymStr ? 'This month' : monthLabel(targetMonth) },
+            { label: 'Daily Average', value: fmt(avgPerDay), sub: `over ${daysElapsed} days` },
+            { label: 'vs Last Month', value: `${deltaSign}${fmt(Math.abs(monthDelta))}`, sub: prevTotal > 0 ? `Last: ${fmt(prevTotal)}` : 'No data', color: prevTotal > 0 ? deltaColor : '#9CA3AF' },
+          ].map(c => (
+            <div key={c.label} className="bg-white rounded-2xl shadow-sm p-4 text-center border border-gray-50">
+              <p className="text-xs text-gray-400 mb-1">{c.label}</p>
+              <p className="text-lg font-bold" style={{ color: c.color || '#111827' }}>{c.value}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
             </div>
           ))}
         </div>
 
-        {period === 'month' && budget > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm p-4 mb-5">
+        {/* Budget bar */}
+        {budget > 0 && (
+          <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-50">
             <div className="flex justify-between mb-2">
-              <span className="text-sm font-semibold text-gray-700">{fmt(total)} of {fmt(budget)}</span>
-              <span className="text-sm font-semibold" style={{ color: budgetBarColor }}>{Math.round(budgetPct)}%</span>
+              <span className="text-sm font-semibold text-gray-700">Monthly Budget</span>
+              <span className="text-sm font-bold" style={{ color: budgetColor }}>{Math.round(budgetPct)}% used</span>
             </div>
-            <div className="h-3 rounded-full" style={{ backgroundColor: '#F3F4F6' }}>
-              <div
-                className="h-full rounded-full transition-all duration-500"
-                style={{ width: `${budgetPct}%`, backgroundColor: budgetBarColor }}
-              />
+            <div className="h-3 bg-gray-100 rounded-full overflow-hidden mb-1.5">
+              <div className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${budgetPct}%`, backgroundColor: budgetColor }} />
             </div>
-            <p className="text-xs text-gray-400 mt-1.5">
-              {total > budget
-                ? `Over budget by ${fmt(total - budget)}`
-                : `${fmt(budget - total)} remaining`}
-            </p>
+            <div className="flex justify-between text-xs text-gray-400">
+              <span>{fmt(total)} spent</span>
+              <span>{total > budget ? `${fmt(total - budget)} over` : `${fmt(budget - total)} left`}</span>
+            </div>
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-sm p-5 mb-5">
-          <p className="text-sm font-bold text-gray-800 mb-4">Spending Chart</p>
-          {loading ? (
-            <div className="flex items-center justify-center h-40 text-gray-300 text-sm">Loading…</div>
-          ) : (
-            <svg
-              viewBox={`0 0 ${svgW} ${svgH}`}
-              preserveAspectRatio="xMidYMid meet"
-              className="w-full"
-              style={{ height: 180 }}
-            >
-              {guideVals.map((gv, gi) => {
-                const y = padT + chartH - (gv / maxBar) * chartH
-                return (
-                  <g key={gi}>
-                    <line
-                      x1={padL} y1={y} x2={svgW - padR} y2={y}
-                      stroke="#F3F4F6" strokeWidth={1}
-                    />
-                    {gv > 0 && (
-                      <text x={padL} y={y - 3} fill="#D1D5DB" fontSize={9} textAnchor="start">
-                        {gv >= 1000 ? `${Math.round(gv / 1000)}k` : gv}
-                      </text>
-                    )}
-                  </g>
-                )
-              })}
+        {/* ── Day-by-Day chart ─────────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-bold text-gray-800">Day-by-Day Spend</p>
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              {[['week', 'Last 7 days'], ['month', 'This month']].map(([id, label]) => (
+                <button key={id} onClick={() => setDayTab(id)}
+                  className="px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-150"
+                  style={{
+                    backgroundColor: dayTab === id ? '#6C63FF' : 'transparent',
+                    color: dayTab === id ? 'white' : '#6B7280',
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {loading
+            ? <div className="h-40 flex items-center justify-center text-gray-300 text-sm">Loading…</div>
+            : <BarChart data={dailyData} height={160} barColor="#6C63FF" labelFontSize={dayTab === 'month' ? 8 : 10} />
+          }
+          <p className="text-xs text-gray-400 mt-2 text-center">
+            {dayTab === 'week' ? '🟡 = today' : '🟡 = today  · Every 5th day labeled'}
+          </p>
+        </div>
 
-              {chartData.map((d, i) => {
-                const barH = maxBar > 0 ? Math.max(2, (d.value / maxBar) * chartH) : 2
-                const x = padL + i * gap + (gap - barW) / 2
-                const y = padT + chartH - barH
+        {/* ── Month-by-Month chart ─────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-bold text-gray-800">Month-by-Month</p>
+            <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">Last 6 months</span>
+          </div>
+          {loading
+            ? <div className="h-40 flex items-center justify-center text-gray-300 text-sm">Loading…</div>
+            : <BarChart data={monthlyData} height={160} barColor="#6C63FF" labelFontSize={11} />
+          }
+          <p className="text-xs text-gray-400 mt-2 text-center">🟡 = current month</p>
+        </div>
+
+        {/* Category breakdown */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+          <p className="text-sm font-bold text-gray-800 mb-4">By Category · {monthLabel(targetMonth)}</p>
+          {monthExpenses.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">No expenses this month</p>
+          ) : (
+            <div className="space-y-3">
+              {catTotals.map(cat => {
+                const pct = total > 0 ? (cat.value / total) * 100 : 0
                 return (
-                  <g key={i}>
-                    <rect
-                      x={x} y={y} width={barW} height={barH}
-                      rx={3}
-                      fill={d.value > 0 ? '#6C63FF' : '#E5E7EB'}
-                      opacity={d.value > 0 ? 1 : 0.4}
-                    >
-                      <title>{d.value > 0 ? fmt(d.value) : '₹0'}</title>
-                    </rect>
-                    {d.label ? (
-                      <text
-                        x={x + barW / 2}
-                        y={svgH - 6}
-                        textAnchor="middle"
-                        fill="#9CA3AF"
-                        fontSize={period === 'month' ? 8 : 10}
-                      >
-                        {d.label}
-                      </text>
-                    ) : null}
-                  </g>
+                  <div key={cat.name} className="flex items-center gap-3"
+                    style={{ opacity: cat.value > 0 ? 1 : 0.3 }}>
+                    <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0"
+                      style={{ backgroundColor: cat.bg }}>{cat.icon}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm font-medium text-gray-700">{cat.name}</span>
+                        <span className="text-sm font-bold text-gray-900">{fmt(cat.value)}</span>
+                      </div>
+                      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%`, backgroundColor: cat.color }} />
+                      </div>
+                    </div>
+                    <span className="text-xs text-gray-400 w-8 text-right shrink-0">{Math.round(pct)}%</span>
+                  </div>
                 )
               })}
-            </svg>
+            </div>
           )}
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm p-5">
-          <p className="text-sm font-bold text-gray-800 mb-4">By Category</p>
-          <div className="space-y-3">
-            {catTotals.map(cat => {
-              const pct = total > 0 ? (cat.value / total) * 100 : 0
-              const hasSpend = cat.value > 0
-              return (
-                <div key={cat.name} className="flex items-center gap-3" style={{ opacity: hasSpend ? 1 : 0.35 }}>
-                  <div
-                    className="flex items-center justify-center rounded-xl shrink-0 text-xl"
-                    style={{ width: 40, height: 40, backgroundColor: cat.bg }}
-                  >
-                    {cat.icon}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex justify-between mb-1">
-                      <span className="text-sm font-medium text-gray-700">{cat.name}</span>
-                      <span className="text-sm font-bold text-gray-900">{fmt(cat.value)}</span>
-                    </div>
-                    <div className="h-2 rounded-full" style={{ backgroundColor: '#F3F4F6' }}>
-                      <div
-                        className="h-full rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%`, backgroundColor: cat.color }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
       </div>
     </>
   )
