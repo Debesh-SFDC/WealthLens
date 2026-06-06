@@ -2,6 +2,7 @@ import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
 import bcrypt from 'bcryptjs'
+import { randomUUID } from 'crypto'
 
 let db
 
@@ -20,6 +21,7 @@ export function initDatabase() {
   seedSalaryPlan()
   createUsersTable()
   migrateExpensesAddUser()
+  migrateExpensesAddSyncId()
   seedUsers()
   migrateUserPinsToSixDigit()
   seedTrackerBudget()
@@ -307,6 +309,14 @@ function migrateExpensesAddUser() {
   try { db.exec('ALTER TABLE expenses ADD COLUMN logged_by_user_id INTEGER REFERENCES users(id)') } catch {}
 }
 
+function migrateExpensesAddSyncId() {
+  try { db.exec('ALTER TABLE expenses ADD COLUMN sync_id TEXT') } catch {}
+  const rows = db.prepare('SELECT id FROM expenses WHERE sync_id IS NULL').all()
+  const upd  = db.prepare('UPDATE expenses SET sync_id = ? WHERE id = ?')
+  for (const row of rows) upd.run(randomUUID(), row.id)
+  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_sync_id ON expenses(sync_id)') } catch {}
+}
+
 function seedUsers() {
   const { count } = db.prepare('SELECT COUNT(*) as count FROM users').get()
   if (count > 0) return
@@ -361,4 +371,47 @@ export function updateUserLastLogin(db, id) {
 
 export function getDb() {
   return db
+}
+
+export function generateExpenseSyncId() {
+  return randomUUID()
+}
+
+export function getAllExpensesForSync(db) {
+  return db.prepare(`
+    SELECT e.sync_id, e.amount, e.category, e.note, e.date, e.created_at,
+           u.name AS user_name, u.role AS user_role
+    FROM expenses e
+    LEFT JOIN users u ON e.logged_by_user_id = u.id
+    WHERE e.sync_id IS NOT NULL
+    ORDER BY e.date ASC, e.created_at ASC
+  `).all()
+}
+
+export function mergeExpensesFromSync(db, expenses) {
+  const findUser    = db.prepare('SELECT id FROM users WHERE name = ? LIMIT 1')
+  const checkExists = db.prepare('SELECT id FROM expenses WHERE sync_id = ?')
+  const insert      = db.prepare(`
+    INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `)
+  let merged = 0
+  const tx = db.transaction(() => {
+    for (const exp of expenses) {
+      if (!exp.sync_id || checkExists.get(exp.sync_id)) continue
+      const user   = exp.user_name ? findUser.get(exp.user_name) : null
+      insert.run(
+        exp.sync_id,
+        Number(exp.amount),
+        exp.category,
+        exp.note || null,
+        exp.date,
+        user?.id ?? null,
+        exp.created_at || new Date().toISOString()
+      )
+      merged++
+    }
+  })
+  tx()
+  return merged
 }

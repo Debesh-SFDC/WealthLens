@@ -7,11 +7,13 @@ import bcrypt from 'bcryptjs'
 import {
   initDatabase, getDb,
   getAllUsers, getAllUsersWithHash, getUserById, updateUser, updateUserPin, updateUserLastLogin,
+  generateExpenseSyncId, getAllExpensesForSync, mergeExpensesFromSync,
 } from '../db/database.js'
 import {
   initiateAuth, disconnect as driveDisconnect, backupDatabase, listBackups,
   restoreFromDrive, getDriveStatus, getSyncStatus, getDbLastModified,
   getStoredCreds, saveCreds, getAppSettings, saveAppSettings,
+  getOrCreateDeviceId, pushExpensesSync, pullExpensesSync,
 } from './googleDrive.js'
 
 let mainWindow
@@ -653,9 +655,17 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('expenses:create', (_, d) => {
-    const result = db.prepare(
-      'INSERT INTO expenses (amount, category, note, date, logged_by_user_id) VALUES (?, ?, ?, ?, ?)'
-    ).run(d.amount, d.category, d.note ?? null, d.date, d.logged_by_user_id ?? null)
+    const syncId  = generateExpenseSyncId()
+    const result  = db.prepare(
+      'INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(syncId, d.amount, d.category, d.note ?? null, d.date, currentUserSession?.id ?? null)
+    // Auto-push to Drive in background (fire and forget)
+    const { connected } = getDriveStatus()
+    if (connected) {
+      const deviceId = getOrCreateDeviceId()
+      getAllExpensesForSync(db)
+      pushExpensesSync(getAllExpensesForSync(db), deviceId).catch(() => {})
+    }
     return { id: result.lastInsertRowid }
   })
 
@@ -682,6 +692,24 @@ function setupIpcHandlers() {
       INSERT INTO expense_categories (name, icon, color, is_default) VALUES (?, ?, ?, 0)
     `).run(d.name, d.icon ?? null, d.color ?? null)
     return { id: result.lastInsertRowid }
+  })
+
+  ipcMain.handle('drive:syncPush', async () => {
+    const deviceId = getOrCreateDeviceId()
+    const expenses = getAllExpensesForSync(db)
+    await pushExpensesSync(expenses, deviceId)
+    return { success: true, count: expenses.length }
+  })
+
+  ipcMain.handle('drive:syncPull', async () => {
+    const deviceId       = getOrCreateDeviceId()
+    const remoteExpenses = await pullExpensesSync(deviceId)
+    const merged         = mergeExpensesFromSync(db, remoteExpenses)
+    // Push own data back so the other device also gets it next time they sync
+    if (remoteExpenses.length > 0) {
+      pushExpensesSync(getAllExpensesForSync(db), deviceId).catch(() => {})
+    }
+    return { success: true, merged, total: remoteExpenses.length }
   })
 
   ipcMain.handle('expenses:deleteCategory', (_, id) => {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 const CATEGORIES = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
@@ -82,6 +82,55 @@ function BarChart({ data, height = 160, barColor = '#6C63FF', labelFontSize = 9 
         )
       })}
     </svg>
+  )
+}
+
+function SyncButton({ onAfterSync }) {
+  const [state, setState] = useState('idle') // idle | pushing | pulling | done | error
+  const [merged, setMerged] = useState(0)
+  const timerRef = useRef(null)
+
+  async function sync() {
+    if (state === 'pushing' || state === 'pulling') return
+    setState('pushing')
+    try {
+      await window.electronAPI.driveSyncPush()
+      setState('pulling')
+      const result = await window.electronAPI.driveSyncPull()
+      setMerged(result.merged)
+      setState('done')
+      if (onAfterSync) onAfterSync()
+      timerRef.current = setTimeout(() => setState('idle'), 4000)
+    } catch {
+      setState('error')
+      timerRef.current = setTimeout(() => setState('idle'), 4000)
+    }
+  }
+
+  useEffect(() => () => clearTimeout(timerRef.current), [])
+
+  const label = state === 'pushing' ? 'Uploading…'
+    : state === 'pulling'  ? 'Fetching…'
+    : state === 'done'     ? (merged > 0 ? `✓ ${merged} new` : '✓ Up to date')
+    : state === 'error'    ? '✗ Drive not connected'
+    : '↓ Sync from Drive'
+
+  const bg = state === 'done'  ? '#10B981'
+    : state === 'error'        ? '#EF4444'
+    : '#6C63FF'
+
+  return (
+    <button onClick={sync}
+      disabled={state === 'pushing' || state === 'pulling'}
+      className="flex items-center gap-2 px-4 py-2 rounded-2xl text-white text-sm font-semibold transition-all disabled:opacity-70"
+      style={{ background: bg }}>
+      {(state === 'pushing' || state === 'pulling') && (
+        <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+        </svg>
+      )}
+      {label}
+    </button>
   )
 }
 
@@ -194,13 +243,16 @@ export default function TrackerDashboard({ user }) {
             <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
             <p className="text-sm text-gray-400">Your spending overview</p>
           </div>
-          <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-2xl px-3 py-2 shadow-sm">
-            <button onClick={() => setMonthOffset(o => o - 1)}
-              className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 font-bold transition-colors">‹</button>
-            <span className="text-sm font-semibold text-gray-800 min-w-[110px] text-center">{monthLabel(targetMonth)}</span>
-            <button onClick={() => setMonthOffset(o => o + 1)}
-              disabled={targetMonth >= cymStr}
-              className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 font-bold transition-colors disabled:opacity-30">›</button>
+          <div className="flex items-center gap-2">
+            <SyncButton onAfterSync={load} />
+            <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-2xl px-3 py-2 shadow-sm">
+              <button onClick={() => setMonthOffset(o => o - 1)}
+                className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 font-bold transition-colors">‹</button>
+              <span className="text-sm font-semibold text-gray-800 min-w-[110px] text-center">{monthLabel(targetMonth)}</span>
+              <button onClick={() => setMonthOffset(o => o + 1)}
+                disabled={targetMonth >= cymStr}
+                className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 font-bold transition-colors disabled:opacity-30">›</button>
+            </div>
           </div>
         </div>
 

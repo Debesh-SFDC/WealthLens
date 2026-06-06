@@ -4,6 +4,7 @@ import { createReadStream, createWriteStream, readFileSync, writeFileSync, exist
 import { join } from 'path'
 import { shell, app, safeStorage } from 'electron'
 import { google } from 'googleapis'
+import { randomUUID } from 'crypto'
 
 const SCOPES = [
   'https://www.googleapis.com/auth/drive.file',
@@ -259,4 +260,68 @@ export function getSyncStatus(dbPath) {
 
 export function getDbLastModified(dbPath) {
   try { return statSync(dbPath).mtime.toISOString() } catch { return null }
+}
+
+// ── Device ID (persisted in app_settings.json) ────────────────────────────
+export function getOrCreateDeviceId() {
+  const settings = getAppSettings()
+  if (settings.deviceId) return settings.deviceId
+  const id = randomUUID()
+  saveAppSettings({ ...settings, deviceId: id })
+  return id
+}
+
+// ── Incremental expense sync ──────────────────────────────────────────────
+const SYNC_PREFIX = 'wealthlens_sync_'
+
+export async function pushExpensesSync(expenses, deviceId) {
+  const auth     = getAuthorizedClient()
+  const drive    = google.drive({ version: 'v3', auth })
+  const folderId = await ensureFolder(drive)
+  const fileName = `${SYNC_PREFIX}${deviceId}.json`
+  const body     = JSON.stringify({ device_id: deviceId, updated_at: new Date().toISOString(), expenses })
+
+  const existing = await drive.files.list({
+    q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
+    fields: 'files(id)',
+    spaces: 'drive',
+  })
+
+  if (existing.data.files?.length) {
+    await drive.files.update({
+      fileId: existing.data.files[0].id,
+      media:  { mimeType: 'application/json', body },
+    })
+  } else {
+    await drive.files.create({
+      requestBody: { name: fileName, parents: [folderId] },
+      media:       { mimeType: 'application/json', body },
+      fields:      'id',
+    })
+  }
+}
+
+export async function pullExpensesSync(deviceId) {
+  const auth     = getAuthorizedClient()
+  const drive    = google.drive({ version: 'v3', auth })
+  const folderId = await ensureFolder(drive)
+
+  const res = await drive.files.list({
+    q:      `name contains '${SYNC_PREFIX}' and '${folderId}' in parents and trashed=false`,
+    fields: 'files(id,name)',
+    spaces: 'drive',
+  })
+
+  const otherFiles = (res.data.files || []).filter(f => !f.name.includes(deviceId))
+  const allExpenses = []
+
+  for (const file of otherFiles) {
+    try {
+      const resp = await drive.files.get({ fileId: file.id, alt: 'media' }, { responseType: 'text' })
+      const data = JSON.parse(typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data))
+      if (Array.isArray(data.expenses)) allExpenses.push(...data.expenses)
+    } catch {}
+  }
+
+  return allExpenses
 }

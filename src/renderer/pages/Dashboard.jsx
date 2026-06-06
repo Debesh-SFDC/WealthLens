@@ -1,4 +1,50 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+
+function AdminSyncButton({ onAfterSync }) {
+  const [state, setState]   = useState('idle')
+  const [merged, setMerged] = useState(0)
+  const timerRef            = useRef(null)
+
+  async function sync() {
+    if (state === 'pushing' || state === 'pulling') return
+    setState('pushing')
+    try {
+      await window.electronAPI.driveSyncPush()
+      setState('pulling')
+      const result = await window.electronAPI.driveSyncPull()
+      setMerged(result.merged)
+      setState('done')
+      if (onAfterSync) onAfterSync()
+      timerRef.current = setTimeout(() => setState('idle'), 4000)
+    } catch {
+      setState('error')
+      timerRef.current = setTimeout(() => setState('idle'), 4000)
+    }
+  }
+
+  useEffect(() => () => clearTimeout(timerRef.current), [])
+
+  const busy  = state === 'pushing' || state === 'pulling'
+  const label = busy                ? (state === 'pushing' ? 'Uploading…' : 'Fetching…')
+    : state === 'done'              ? (merged > 0 ? `↓ ${merged} new expense${merged !== 1 ? 's' : ''}` : '✓ Up to date')
+    : state === 'error'             ? '✗ Drive not connected'
+    : '↓ Sync Expenses'
+
+  const bg = state === 'done' ? '#10B981' : state === 'error' ? '#EF4444' : '#6C63FF'
+
+  return (
+    <button onClick={sync} disabled={busy}
+      className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold transition-all disabled:opacity-70"
+      style={{ backgroundColor: bg }}>
+      {busy && (
+        <svg className="animate-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+          <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+        </svg>
+      )}
+      {label}
+    </button>
+  )
+}
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const fmt = (v) => INR.format(v || 0)
@@ -332,20 +378,23 @@ export default function Dashboard({ onLockApp }) {
           <h2 className="text-2xl font-bold text-gray-900">{getGreeting(profileName)}</h2>
           <p className="mt-1 text-sm text-gray-500">Here's a snapshot of your financial health.</p>
         </div>
-        {onLockApp && (
-          <button
-            onClick={onLockApp}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-150"
-            style={{ backgroundColor: '#f9fafb', color: '#6B7280', borderColor: '#E5E7EB' }}
-            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; e.currentTarget.style.color = '#dc2626' }}
-            onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#f9fafb'; e.currentTarget.style.borderColor = '#E5E7EB'; e.currentTarget.style.color = '#6B7280' }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            Lock App
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <AdminSyncButton onAfterSync={loadData} />
+          {onLockApp && (
+            <button
+              onClick={onLockApp}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-150"
+              style={{ backgroundColor: '#f9fafb', color: '#6B7280', borderColor: '#E5E7EB' }}
+              onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; e.currentTarget.style.color = '#dc2626' }}
+              onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#f9fafb'; e.currentTarget.style.borderColor = '#E5E7EB'; e.currentTarget.style.color = '#6B7280' }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              Lock App
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Stat cards */}
