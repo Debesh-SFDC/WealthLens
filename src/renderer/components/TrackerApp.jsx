@@ -1,40 +1,166 @@
 import { useState } from 'react'
+import AppLogoIcon from './AppLogoIcon'
 import TrackerHome from '../pages/TrackerHome'
-import TrackerMonth from '../pages/TrackerMonth'
+import TrackerDashboard from '../pages/TrackerDashboard'
+import TrackerInsights from '../pages/TrackerInsights'
+
+function HomeIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z" />
+      <polyline points="9 21 9 12 15 12 15 21" />
+    </svg>
+  )
+}
+
+function DashboardIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <rect x="3" y="3" width="7" height="7" rx="1.5" />
+      <rect x="14" y="3" width="7" height="7" rx="1.5" />
+      <rect x="3" y="14" width="7" height="7" rx="1.5" />
+      <rect x="14" y="14" width="7" height="7" rx="1.5" />
+    </svg>
+  )
+}
+
+function InsightsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <path d="M12 2a7 7 0 0 1 7 7c0 2.6-1.4 4.9-3.5 6.2V17a1 1 0 0 1-1 1h-5a1 1 0 0 1-1-1v-1.8C6.4 13.9 5 11.6 5 9a7 7 0 0 1 7-7z" />
+      <line x1="9" y1="21" x2="15" y2="21" />
+      <line x1="10" y1="19" x2="14" y2="19" />
+    </svg>
+  )
+}
+
+function SignOutIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <polyline points="16 17 21 12 16 7" />
+      <line x1="21" y1="12" x2="9" y2="12" />
+    </svg>
+  )
+}
+
+const navItems = [
+  { id: 'home',      label: 'Home',      Icon: HomeIcon },
+  { id: 'dashboard', label: 'Dashboard', Icon: DashboardIcon },
+  { id: 'insights',  label: 'Insights',  Icon: InsightsIcon },
+]
+
+function NavButton({ item, isActive, onClick }) {
+  const { label, Icon } = item
+  return (
+    <button
+      onClick={onClick}
+      className="flex items-center w-full gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+      style={{
+        backgroundColor: isActive ? '#6C63FF' : 'transparent',
+        color: isActive ? '#ffffff' : 'rgba(255,255,255,0.4)',
+        boxShadow: isActive ? '0 4px 14px rgba(108,99,255,0.35)' : 'none',
+      }}
+      onMouseEnter={e => {
+        if (!isActive) {
+          e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)'
+          e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
+        }
+      }}
+      onMouseLeave={e => {
+        if (!isActive) {
+          e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.style.color = 'rgba(255,255,255,0.4)'
+        }
+      }}
+    >
+      <Icon />
+      <span>{label}</span>
+      {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white opacity-80" />}
+    </button>
+  )
+}
 
 export default function TrackerApp({ user, onSignOut }) {
-  const [tab, setTab] = useState('home')
+  const [page, setPage] = useState('home')
 
-  const tabs = [
-    { id: 'home',  label: 'Home',      icon: '🏠' },
-    { id: 'month', label: 'This Month', icon: '📅' },
-  ]
+  const initials = (user.name || 'T').charAt(0).toUpperCase()
+
+  const avatarColors = ['#6C63FF', '#EC4899', '#10B981', '#F59E0B', '#06B6D4']
+  const avatarBg = avatarColors[(user.name || '').charCodeAt(0) % avatarColors.length] || '#6C63FF'
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
-      {/* Content */}
-      <div className="flex-1 overflow-y-auto">
-        {tab === 'home'  && <TrackerHome  user={user} />}
-        {tab === 'month' && <TrackerMonth user={user} />}
-      </div>
+    <div className="flex h-screen overflow-hidden">
+      <aside
+        className="flex flex-col shrink-0 h-screen"
+        style={{
+          width: 224,
+          background: 'linear-gradient(180deg, #0F0E1A 0%, #13112A 100%)',
+        }}
+      >
+        <div className="flex items-center gap-3 px-5 py-6">
+          <AppLogoIcon size={36} />
+          <span className="text-white font-bold text-lg tracking-tight">WealthLens</span>
+        </div>
 
-      {/* Bottom nav */}
-      <div className="shrink-0 border-t border-gray-200 bg-white flex items-center px-4 py-2 gap-1">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className="flex-1 flex flex-col items-center gap-0.5 py-2 rounded-xl transition-colors"
-            style={{ color: tab === t.id ? '#6C63FF' : '#9CA3AF' }}>
-            <span className="text-xl">{t.icon}</span>
-            <span className="text-[10px] font-semibold">{t.label}</span>
+        <div className="mx-5 mb-4" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+
+        <div className="mx-3 mb-4 rounded-xl px-3 py-3" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+          <div className="flex items-center gap-3">
+            <div
+              className="flex items-center justify-center rounded-full shrink-0 text-white font-bold text-base"
+              style={{ width: 38, height: 38, backgroundColor: avatarBg }}
+            >
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <p className="text-white text-sm font-semibold truncate">{user.name}</p>
+              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Tracker</p>
+            </div>
+          </div>
+        </div>
+
+        <p className="px-5 mb-2 text-xs font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
+          Menu
+        </p>
+
+        <nav className="flex-1 px-3 space-y-1">
+          {navItems.map(item => (
+            <NavButton
+              key={item.id}
+              item={item}
+              isActive={page === item.id}
+              onClick={() => setPage(item.id)}
+            />
+          ))}
+        </nav>
+
+        <div className="px-3 pb-5">
+          <div className="mb-3" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+          <button
+            onClick={onSignOut}
+            className="flex items-center w-full gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+            style={{ color: 'rgba(255,255,255,0.4)' }}
+            onMouseEnter={e => {
+              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)'
+              e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.backgroundColor = 'transparent'
+              e.currentTarget.style.color = 'rgba(255,255,255,0.4)'
+            }}
+          >
+            <SignOutIcon />
+            <span>Sign Out</span>
           </button>
-        ))}
-        <button onClick={onSignOut}
-          className="flex flex-col items-center gap-0.5 py-2 px-4 rounded-xl transition-colors"
-          style={{ color: '#9CA3AF' }}>
-          <span className="text-xl">🚪</span>
-          <span className="text-[10px] font-semibold">Sign Out</span>
-        </button>
-      </div>
+        </div>
+      </aside>
+
+      <main className="flex-1 overflow-y-auto bg-gray-50">
+        {page === 'home'      && <TrackerHome      user={user} />}
+        {page === 'dashboard' && <TrackerDashboard user={user} />}
+        {page === 'insights'  && <TrackerInsights  user={user} />}
+      </main>
     </div>
   )
 }
