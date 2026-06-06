@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Users & session
   getUsers:           ()              => ipcRenderer.invoke('users:getAll'),
   verifyUserPin:      (data)          => ipcRenderer.invoke('users:verifyPin', data),
+  verifyAnyPin:       (pin)           => ipcRenderer.invoke('users:verifyPinAny', pin),
   updateUserProfile:  (data)          => ipcRenderer.invoke('users:updateProfile', data),
   updateUserPin:      (data)          => ipcRenderer.invoke('users:updatePin', data),
   getCurrentSession:  ()              => ipcRenderer.invoke('users:getCurrentSession'),

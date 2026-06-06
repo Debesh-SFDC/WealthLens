@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import bcrypt from 'bcryptjs'
 import {
   initDatabase, getDb,
-  getAllUsers, getUserById, updateUser, updateUserPin, updateUserLastLogin,
+  getAllUsers, getAllUsersWithHash, getUserById, updateUser, updateUserPin, updateUserLastLogin,
 } from '../db/database.js'
 import {
   initiateAuth, disconnect as driveDisconnect, backupDatabase, listBackups,
@@ -256,6 +256,18 @@ function setupIpcHandlers() {
     updateUserLastLogin(db, userId)
     currentUserSession = { id: user.id, name: user.name, role: user.role, lastActivity: Date.now() }
     return { success: true, user: { id: user.id, name: user.name, role: user.role, avatar_color: user.avatar_color } }
+  })
+
+  ipcMain.handle('users:verifyPinAny', (_, pin) => {
+    const users = getAllUsersWithHash(db)
+    for (const user of users) {
+      if (bcrypt.compareSync(pin, user.pin_hash)) {
+        updateUserLastLogin(db, user.id)
+        currentUserSession = { id: user.id, name: user.name, role: user.role, lastActivity: Date.now() }
+        return { success: true, user: { id: user.id, name: user.name, role: user.role, avatar_color: user.avatar_color } }
+      }
+    }
+    return { success: false }
   })
 
   ipcMain.handle('users:updateProfile', (_, { id, name, avatar_color }) => {

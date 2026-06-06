@@ -21,6 +21,7 @@ export function initDatabase() {
   createUsersTable()
   migrateExpensesAddUser()
   seedUsers()
+  migrateUserPinsToSixDigit()
   seedTrackerBudget()
   return db
 }
@@ -313,8 +314,19 @@ function seedUsers() {
   const insert = db.prepare(
     'INSERT INTO users (name, role, pin_hash, avatar_color) VALUES (?, ?, ?, ?)'
   )
-  insert.run('Debesh', 'admin', bcrypt.hashSync('1234', 10), '#6C63FF')
-  insert.run('Spouse', 'tracker', bcrypt.hashSync('0000', 10), '#EC4899')
+  insert.run('Debesh', 'admin', bcrypt.hashSync('123456', 10), '#6C63FF')
+  insert.run('Spouse', 'tracker', bcrypt.hashSync('000000', 10), '#EC4899')
+}
+
+function migrateUserPinsToSixDigit() {
+  try { db.exec('ALTER TABLE users ADD COLUMN pin_version INTEGER DEFAULT 1') } catch {}
+  const users = db.prepare('SELECT id, role FROM users WHERE pin_version IS NULL OR pin_version < 2').all()
+  if (users.length === 0) return
+  const update = db.prepare('UPDATE users SET pin_hash = ?, pin_version = 2 WHERE id = ?')
+  for (const user of users) {
+    const defaultPin = user.role === 'admin' ? '123456' : '000000'
+    update.run(bcrypt.hashSync(defaultPin, 10), user.id)
+  }
 }
 
 function seedTrackerBudget() {
@@ -325,6 +337,10 @@ function seedTrackerBudget() {
 
 export function getAllUsers(db) {
   return db.prepare('SELECT id, name, role, avatar_color, last_login_at FROM users ORDER BY role DESC').all()
+}
+
+export function getAllUsersWithHash(db) {
+  return db.prepare('SELECT id, name, role, avatar_color, pin_hash FROM users').all()
 }
 
 export function getUserById(db, id) {

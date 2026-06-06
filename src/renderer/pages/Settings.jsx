@@ -274,7 +274,7 @@ export default function Settings({ onSyncRefresh }) {
 
   async function saveUserPin(user) {
     const form = pinForms[user.id]
-    if (!form?.newPin || form.newPin.length < 4) { showToast('PIN must be at least 4 digits', 'error'); return }
+    if (!form?.newPin || form.newPin.length < 6) { showToast('PIN must be at least 6 digits', 'error'); return }
     if (!/^\d+$/.test(form.newPin)) { showToast('PIN must contain only digits', 'error'); return }
     if (form.newPin !== form.confirmPin) { showToast('PINs do not match', 'error'); return }
     await window.electronAPI.updateUserPin({ id: user.id, newPin: form.newPin })
@@ -510,7 +510,7 @@ export default function Settings({ onSyncRefresh }) {
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Change PIN</p>
                   <div className="grid grid-cols-2 gap-2">
                     <input
-                      type="password" placeholder="New PIN (4+ digits)"
+                      type="password" placeholder="New PIN (6+ digits)"
                       value={pinForms[adminUser.id]?.newPin || ''}
                       onChange={e => setPinField(adminUser.id, 'newPin', e.target.value)}
                       inputMode="numeric"
@@ -591,7 +591,7 @@ export default function Settings({ onSyncRefresh }) {
                   <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Change PIN</p>
                   <div className="grid grid-cols-2 gap-2">
                     <input
-                      type="password" placeholder="New PIN (4+ digits)"
+                      type="password" placeholder="New PIN (6+ digits)"
                       value={pinForms[trackerUser.id]?.newPin || ''}
                       onChange={e => setPinField(trackerUser.id, 'newPin', e.target.value)}
                       inputMode="numeric"
