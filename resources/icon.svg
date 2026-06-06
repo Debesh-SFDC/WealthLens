@@ -1,46 +1,90 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#8B5CF6"/>
-      <stop offset="100%" stop-color="#6C63FF"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#0D0B26"/>
+      <stop offset="55%" stop-color="#14113E"/>
+      <stop offset="100%" stop-color="#1E1A6E"/>
     </linearGradient>
-    <linearGradient id="area" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="rgba(255,255,255,0.22)"/>
-      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    <linearGradient id="gold" x1="200" y1="200" x2="780" y2="780" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFE082"/>
+      <stop offset="50%" stop-color="#F5A623"/>
+      <stop offset="100%" stop-color="#C17D0A"/>
     </linearGradient>
-    <clipPath id="clip">
-      <circle cx="490" cy="490" r="210"/>
+    <linearGradient id="chart-line" x1="260" y1="600" x2="700" y2="340" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#A78BFA"/>
+      <stop offset="100%" stop-color="#FFFFFF"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="430" cy="430" r="260" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#6C63FF" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#6C63FF" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="lens-inner" cx="50%" cy="40%" r="55%">
+      <stop offset="0%" stop-color="#1C1745"/>
+      <stop offset="100%" stop-color="#0E0C28"/>
+    </radialGradient>
+    <radialGradient id="vignette" cx="50%" cy="50%" r="60%">
+      <stop offset="0%" stop-color="transparent"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.35"/>
+    </radialGradient>
+    <clipPath id="lens-clip">
+      <circle cx="430" cy="420" r="218"/>
     </clipPath>
   </defs>
 
-  <!-- Rounded rectangle background with purple gradient -->
-  <rect width="1024" height="1024" rx="200" fill="url(#bg)"/>
+  <!-- Background squircle -->
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <rect width="1024" height="1024" rx="230" fill="url(#vignette)"/>
 
-  <!-- Rising chart area fill (clipped inside lens) -->
-  <g clip-path="url(#clip)">
-    <path
-      d="M 290 565 L 380 490 L 455 515 L 530 430 L 610 360 L 670 330 L 700 700 L 280 700 Z"
-      fill="url(#area)"
+  <!-- Glow halo behind lens -->
+  <circle cx="430" cy="420" r="300" fill="url(#glow)"/>
+
+  <!-- Lens glass interior -->
+  <circle cx="430" cy="420" r="218" fill="url(#lens-inner)"/>
+
+  <!-- Clipped chart content -->
+  <g clip-path="url(#lens-clip)">
+    <!-- Horizontal guide lines -->
+    <line x1="212" y1="480" x2="648" y2="480" stroke="rgba(255,255,255,0.05)" stroke-width="2"/>
+    <line x1="212" y1="420" x2="648" y2="420" stroke="rgba(255,255,255,0.05)" stroke-width="2"/>
+    <line x1="212" y1="360" x2="648" y2="360" stroke="rgba(255,255,255,0.05)" stroke-width="2"/>
+
+    <!-- Area fill under chart line -->
+    <polygon
+      points="262,545 330,498 400,520 490,435 590,388 648,355 648,638 262,638"
+      fill="rgba(108,99,255,0.18)"
     />
-    <!-- Upward trend line -->
+
+    <!-- Chart line -->
     <polyline
-      points="290,565 380,490 455,515 530,430 610,360 670,330"
+      points="262,545 330,498 400,520 490,435 590,388 648,355"
       fill="none"
-      stroke="white"
-      stroke-width="26"
+      stroke="url(#chart-line)"
+      stroke-width="28"
       stroke-linecap="round"
       stroke-linejoin="round"
     />
+
     <!-- Data point dots -->
-    <circle cx="380" cy="490" r="13" fill="white"/>
-    <circle cx="455" cy="515" r="13" fill="white"/>
-    <circle cx="530" cy="430" r="13" fill="white"/>
-    <circle cx="610" cy="360" r="13" fill="white"/>
+    <circle cx="330" cy="498" r="16" fill="rgba(255,255,255,0.4)"/>
+    <circle cx="490" cy="435" r="16" fill="rgba(255,255,255,0.4)"/>
+
+    <!-- Peak dot — gold glow -->
+    <circle cx="648" cy="355" r="28" fill="rgba(245,166,35,0.25)"/>
+    <circle cx="648" cy="355" r="18" fill="#F5A623"/>
+    <circle cx="648" cy="355" r="9" fill="#FFE082"/>
   </g>
 
-  <!-- Magnifying glass ring -->
-  <circle cx="490" cy="490" r="210" fill="none" stroke="white" stroke-width="46"/>
+  <!-- Lens ring — gold -->
+  <circle cx="430" cy="420" r="218" fill="none" stroke="url(#gold)" stroke-width="32"/>
 
-  <!-- Handle at 45° from lens edge -->
-  <line x1="638" y1="638" x2="760" y2="760" stroke="white" stroke-width="46" stroke-linecap="round"/>
+  <!-- Inner thin ring depth effect -->
+  <circle cx="430" cy="420" r="200" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="2"/>
+
+  <!-- Handle -->
+  <line x1="605" y1="595" x2="760" y2="755"
+    stroke="url(#gold)" stroke-width="58" stroke-linecap="round"/>
+
+  <!-- Handle inner highlight -->
+  <line x1="610" y1="600" x2="755" y2="748"
+    stroke="rgba(255,255,255,0.18)" stroke-width="16" stroke-linecap="round"/>
 </svg>
