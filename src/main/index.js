@@ -1,7 +1,13 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, shell, safeStorage } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
-import { initDatabase, getDb } from '../db/database.js'
+import { pbkdf2Sync, randomBytes } from 'crypto'
+import { readFileSync, writeFileSync, existsSync } from 'fs'
+import bcrypt from 'bcryptjs'
+import {
+  initDatabase, getDb,
+  getAllUsers, getUserById, updateUser, updateUserPin, updateUserLastLogin,
+} from '../db/database.js'
 import {
   initiateAuth, disconnect as driveDisconnect, backupDatabase, listBackups,
   restoreFromDrive, getDriveStatus, getSyncStatus, getDbLastModified,
@@ -9,6 +15,8 @@ import {
 } from './googleDrive.js'
 
 let mainWindow
+
+const iconPath = join(__dirname, '../../resources/icon.icns')
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -18,6 +26,7 @@ function createWindow() {
     minHeight: 640,
     show: false,
     titleBarStyle: 'default',
+    icon: iconPath,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -42,9 +51,49 @@ function createWindow() {
   }
 }
 
-const dbPath = join(app.getPath('userData'), 'wealthlens.db')
+const dbPath      = join(app.getPath('userData'), 'wealthlens.db')
+const authFilePath = join(app.getPath('userData'), 'auth.enc')
+
+// ── Auth session state (in-memory; resets every app restart) ─────────────
+let sessionUnlocked   = false
+let authFailedAttempts = 0
+let authLockoutUntil   = 0
+
+// ── User session (replaces single-password lock for role-based access) ────
+let currentUserSession = null // { id, name, role, lastActivity }
+
+function authHash(password, salt) {
+  return pbkdf2Sync(password, salt, 600_000, 32, 'sha256').toString('hex')
+}
+
+function loadAuthData() {
+  try {
+    if (!existsSync(authFilePath)) return null
+    const buf = readFileSync(authFilePath)
+    if (safeStorage.isEncryptionAvailable()) {
+      try {
+        return JSON.parse(safeStorage.decryptString(buf))
+      } catch {
+        return JSON.parse(buf.toString('utf8'))
+      }
+    }
+    return JSON.parse(buf.toString('utf8'))
+  } catch { return null }
+}
+
+function saveAuthData(data) {
+  const json = JSON.stringify(data)
+  if (safeStorage.isEncryptionAvailable()) {
+    writeFileSync(authFilePath, safeStorage.encryptString(json))
+  } else {
+    writeFileSync(authFilePath, json, 'utf8')
+  }
+}
 
 app.whenReady().then(() => {
+  if (process.platform === 'darwin') {
+    app.dock.setIcon(join(__dirname, '../../resources/icon.png'))
+  }
   initDatabase()
   setupIpcHandlers()
   createWindow()
@@ -66,8 +115,192 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
+// Credits elapsed SIP periods (monthly or weekly) to invested_amount and current_value.
+// Called on every investments:getAll so amounts are always up to date when the user views them.
+function autoApplySIPs(db) {
+  const sips = db.prepare(`
+    SELECT id, monthly_sip_amount, sip_frequency, sip_last_applied_at, start_date
+    FROM investments
+    WHERE type = 'mf_sip' AND monthly_sip_amount > 0 AND sip_last_applied_at IS NOT NULL
+  `).all()
+
+  const applyUpdate = db.prepare(`
+    UPDATE investments
+    SET invested_amount      = invested_amount + ?,
+        current_value        = current_value   + ?,
+        sip_last_applied_at  = datetime('now'),
+        last_updated_at      = datetime('now')
+    WHERE id = ?
+  `)
+
+  const now = new Date()
+
+  for (const inv of sips) {
+    const last = new Date(inv.sip_last_applied_at)
+    if (isNaN(last.getTime())) continue
+
+    let periods = 0
+
+    if (inv.sip_frequency === 'weekly') {
+      periods = Math.floor((now - last) / (7 * 24 * 60 * 60 * 1000))
+    } else {
+      // Monthly: advance month-by-month checking whether the SIP day has arrived
+      const sipDay = inv.start_date ? new Date(inv.start_date).getDate() : 1
+      let cursor = new Date(last)
+
+      for (;;) {
+        const nextYear  = cursor.getMonth() === 11 ? cursor.getFullYear() + 1 : cursor.getFullYear()
+        const nextMonth = cursor.getMonth() === 11 ? 0 : cursor.getMonth() + 1
+        const maxDay    = new Date(nextYear, nextMonth + 1, 0).getDate()
+        const sipDate   = new Date(nextYear, nextMonth, Math.min(sipDay, maxDay))
+
+        if (sipDate <= now) {
+          periods++
+          cursor = sipDate
+        } else {
+          break
+        }
+      }
+    }
+
+    if (periods > 0) {
+      const addition = periods * inv.monthly_sip_amount
+      applyUpdate.run(addition, addition, inv.id)
+    }
+  }
+}
+
 function setupIpcHandlers() {
   const db = getDb()
+
+  // ── App lock / auth ───────────────────────────────────────────────────────
+  ipcMain.handle('auth:hasPassword', () =>
+    existsSync(authFilePath) && loadAuthData() !== null
+  )
+
+  ipcMain.handle('auth:isUnlocked', () => sessionUnlocked)
+
+  ipcMain.handle('auth:getLockoutStatus', () => {
+    const now = Date.now()
+    if (now < authLockoutUntil) {
+      return { locked: true, waitSec: Math.ceil((authLockoutUntil - now) / 1000), attempts: authFailedAttempts }
+    }
+    return { locked: false, attempts: authFailedAttempts }
+  })
+
+  ipcMain.handle('auth:verify', (_, password) => {
+    const now = Date.now()
+    if (now < authLockoutUntil) {
+      return { success: false, lockout: true, waitSec: Math.ceil((authLockoutUntil - now) / 1000) }
+    }
+    const data = loadAuthData()
+    if (!data) return { success: false, error: 'No password set' }
+
+    const hash = authHash(password, data.salt)
+    if (hash === data.hash) {
+      sessionUnlocked = true
+      authFailedAttempts = 0
+      authLockoutUntil = 0
+      return { success: true }
+    }
+
+    authFailedAttempts++
+    if (authFailedAttempts >= 5) {
+      // Exponential backoff: 30s, 60s, 120s, 240s … capped at 1 hour
+      const delaySec = Math.min(30 * Math.pow(2, authFailedAttempts - 5), 3600)
+      authLockoutUntil = now + delaySec * 1000
+      return { success: false, lockout: true, waitSec: delaySec, attempts: authFailedAttempts, error: `Too many attempts. Locked for ${delaySec}s.` }
+    }
+    const remaining = 5 - authFailedAttempts
+    return {
+      success: false,
+      error: `Incorrect password. ${remaining} attempt${remaining !== 1 ? 's' : ''} remaining before lockout.`,
+      attempts: authFailedAttempts,
+    }
+  })
+
+  ipcMain.handle('auth:setPassword', (_, password) => {
+    const salt = randomBytes(32).toString('hex')
+    const hash = authHash(password, salt)
+    saveAuthData({ salt, hash, createdAt: new Date().toISOString() })
+    sessionUnlocked = true
+    authFailedAttempts = 0
+    authLockoutUntil = 0
+    return { success: true }
+  })
+
+  ipcMain.handle('auth:changePassword', (_, { currentPassword, newPassword }) => {
+    const data = loadAuthData()
+    if (!data) return { success: false, error: 'No password set' }
+    const hash = authHash(currentPassword, data.salt)
+    if (hash !== data.hash) return { success: false, error: 'Current password is incorrect' }
+    const newSalt = randomBytes(32).toString('hex')
+    const newHash = authHash(newPassword, newSalt)
+    saveAuthData({ salt: newSalt, hash: newHash, createdAt: new Date().toISOString() })
+    return { success: true }
+  })
+
+  ipcMain.handle('auth:lock', () => {
+    sessionUnlocked = false
+    return { success: true }
+  })
+
+  // ── Users ─────────────────────────────────────────────────────────────────
+  ipcMain.handle('users:getAll', () => getAllUsers(db))
+
+  ipcMain.handle('users:verifyPin', (_, { userId, pin }) => {
+    const user = getUserById(db, userId)
+    if (!user) return { success: false, error: 'User not found' }
+    const match = bcrypt.compareSync(pin, user.pin_hash)
+    if (!match) return { success: false }
+    updateUserLastLogin(db, userId)
+    currentUserSession = { id: user.id, name: user.name, role: user.role, lastActivity: Date.now() }
+    return { success: true, user: { id: user.id, name: user.name, role: user.role, avatar_color: user.avatar_color } }
+  })
+
+  ipcMain.handle('users:updateProfile', (_, { id, name, avatar_color }) => {
+    updateUser(db, { id, name, avatar_color })
+    return { success: true }
+  })
+
+  ipcMain.handle('users:updatePin', (_, { id, newPin }) => {
+    const hash = bcrypt.hashSync(newPin, 10)
+    updateUserPin(db, id, hash)
+    return { success: true }
+  })
+
+  ipcMain.handle('users:getCurrentSession', () => {
+    if (!currentUserSession) return null
+    // Auto-logout tracker after 30 min inactivity
+    if (currentUserSession.role === 'tracker') {
+      const inactivMs = Date.now() - currentUserSession.lastActivity
+      if (inactivMs > 30 * 60 * 1000) {
+        currentUserSession = null
+        return null
+      }
+    }
+    return currentUserSession
+  })
+
+  ipcMain.handle('users:signOut', () => {
+    currentUserSession = null
+    return { success: true }
+  })
+
+  ipcMain.handle('users:refreshActivity', () => {
+    if (currentUserSession) currentUserSession.lastActivity = Date.now()
+    return { success: true }
+  })
+
+  ipcMain.handle('users:getTrackerBudget', () => {
+    const profile = db.prepare('SELECT tracker_monthly_budget FROM profile LIMIT 1').get()
+    return profile?.tracker_monthly_budget || 0
+  })
+
+  ipcMain.handle('users:setTrackerBudget', (_, amount) => {
+    db.prepare('UPDATE profile SET tracker_monthly_budget = ?').run(amount)
+    return { success: true }
+  })
 
   // ── Profile ──────────────────────────────────────────────────────────────
   ipcMain.handle('profile:get', () => {
@@ -126,30 +359,33 @@ function setupIpcHandlers() {
 
   // ── Investments ───────────────────────────────────────────────────────────
   ipcMain.handle('investments:getAll', (_, goalId) => {
+    autoApplySIPs(db)
+    const norm = rows => rows.map(r => ({ ...r, sip_frequency: r.sip_frequency ?? 'monthly' }))
     if (goalId) {
-      return db.prepare(
+      return norm(db.prepare(
         'SELECT * FROM investments WHERE goal_id = ? ORDER BY last_updated_at DESC'
-      ).all(goalId)
+      ).all(goalId))
     }
-    return db.prepare(`
+    return norm(db.prepare(`
       SELECT i.*, g.title as goal_title
       FROM investments i
       LEFT JOIN goals g ON i.goal_id = g.id
       ORDER BY i.last_updated_at DESC
-    `).all()
+    `).all())
   })
 
   ipcMain.handle('investments:create', (_, d) => {
     const result = db.prepare(`
       INSERT INTO investments (name, type, provider, bank_or_amc, account_number,
-        invested_amount, current_value, monthly_sip_amount, start_date, maturity_date,
-        goal_id, notes, units, purchase_price, scheme_code, interest_rate,
-        ticker_symbol, exchange, purity)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        invested_amount, current_value, monthly_sip_amount, sip_frequency,
+        start_date, maturity_date, goal_id, notes, units, purchase_price,
+        scheme_code, interest_rate, ticker_symbol, exchange, purity, sip_last_applied_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).run(
       d.name, d.type, d.provider ?? null, d.bank_or_amc ?? null,
       d.account_number ?? null, d.invested_amount ?? 0, d.current_value ?? 0,
-      d.monthly_sip_amount ?? 0, d.start_date ?? null, d.maturity_date ?? null,
+      d.monthly_sip_amount ?? 0, d.sip_frequency ?? 'monthly',
+      d.start_date ?? null, d.maturity_date ?? null,
       d.goal_id ?? null, d.notes ?? null,
       d.units ?? 0, d.purchase_price ?? 0, d.scheme_code ?? null,
       d.interest_rate ?? 0, d.ticker_symbol ?? null,
@@ -162,7 +398,7 @@ function setupIpcHandlers() {
     db.prepare(`
       UPDATE investments SET name = ?, type = ?, provider = ?, bank_or_amc = ?,
         account_number = ?, invested_amount = ?, current_value = ?, monthly_sip_amount = ?,
-        start_date = ?, maturity_date = ?, goal_id = ?, notes = ?,
+        sip_frequency = ?, start_date = ?, maturity_date = ?, goal_id = ?, notes = ?,
         units = ?, purchase_price = ?, scheme_code = ?, interest_rate = ?,
         ticker_symbol = ?, exchange = ?, purity = ?,
         last_updated_at = datetime('now')
@@ -170,7 +406,8 @@ function setupIpcHandlers() {
     `).run(
       d.name, d.type, d.provider ?? null, d.bank_or_amc ?? null,
       d.account_number ?? null, d.invested_amount, d.current_value,
-      d.monthly_sip_amount ?? 0, d.start_date ?? null, d.maturity_date ?? null,
+      d.monthly_sip_amount ?? 0, d.sip_frequency ?? 'monthly',
+      d.start_date ?? null, d.maturity_date ?? null,
       d.goal_id ?? null, d.notes ?? null,
       d.units ?? 0, d.purchase_price ?? 0, d.scheme_code ?? null,
       d.interest_rate ?? 0, d.ticker_symbol ?? null,
@@ -387,24 +624,26 @@ function setupIpcHandlers() {
   })
 
   // ── Expenses ──────────────────────────────────────────────────────────────
-  ipcMain.handle('expenses:getAll', (_, filter) => {
-    if (filter?.month && filter?.year) {
-      return db.prepare(`
-        SELECT * FROM expenses
-        WHERE strftime('%m', date) = ? AND strftime('%Y', date) = ?
-        ORDER BY date DESC, created_at DESC
-      `).all(
-        String(filter.month).padStart(2, '0'),
-        String(filter.year)
-      )
+  ipcMain.handle('expenses:getAll', (_, filter = {}) => {
+    let query = 'SELECT e.*, u.name as logged_by_name FROM expenses e LEFT JOIN users u ON e.logged_by_user_id = u.id WHERE 1=1'
+    const params = []
+    // filter.month is a 'YYYY-MM' string
+    if (filter?.month) {
+      query += " AND strftime('%Y-%m', e.date) = ?"
+      params.push(filter.month)
     }
-    return db.prepare('SELECT * FROM expenses ORDER BY date DESC, created_at DESC').all()
+    if (filter?.logged_by) {
+      query += ' AND e.logged_by_user_id = ?'
+      params.push(filter.logged_by)
+    }
+    query += ' ORDER BY e.date DESC, e.created_at DESC'
+    return db.prepare(query).all(...params)
   })
 
   ipcMain.handle('expenses:create', (_, d) => {
-    const result = db.prepare(`
-      INSERT INTO expenses (amount, category, note, date) VALUES (?, ?, ?, ?)
-    `).run(d.amount, d.category, d.note ?? null, d.date)
+    const result = db.prepare(
+      'INSERT INTO expenses (amount, category, note, date, logged_by_user_id) VALUES (?, ?, ?, ?, ?)'
+    ).run(d.amount, d.category, d.note ?? null, d.date, d.logged_by_user_id ?? null)
     return { id: result.lastInsertRowid }
   })
 
@@ -491,10 +730,29 @@ function setupIpcHandlers() {
   ipcMain.handle('drive:getDbLastModified', ()            => getDbLastModified(dbPath))
   ipcMain.handle('drive:hasCreds',        ()              => Boolean(getStoredCreds()))
   ipcMain.handle('drive:saveCredentials', (_, id, secret) => { saveCreds(id, secret); return { success: true } })
-  ipcMain.handle('drive:connect',         async ()        => {
+
+  ipcMain.handle('drive:getInstalledBrowsers', () => {
+    const browsers = [{ name: 'System Default', app: null, icon: '🌐' }]
+    if (process.platform === 'darwin') {
+      const candidates = [
+        { name: 'Safari',          app: 'Safari',          path: '/Applications/Safari.app',                   icon: '🧭' },
+        { name: 'Chrome',          app: 'Google Chrome',   path: '/Applications/Google Chrome.app',            icon: '🟡' },
+        { name: 'Firefox',         app: 'Firefox',         path: '/Applications/Firefox.app',                  icon: '🦊' },
+        { name: 'Edge',            app: 'Microsoft Edge',  path: '/Applications/Microsoft Edge.app',           icon: '📘' },
+        { name: 'Brave',           app: 'Brave Browser',   path: '/Applications/Brave Browser.app',            icon: '🦁' },
+        { name: 'Arc',             app: 'Arc',             path: '/Applications/Arc.app',                      icon: '🌈' },
+        { name: 'Opera',           app: 'Opera',           path: '/Applications/Opera.app',                    icon: '🔴' },
+        { name: 'Vivaldi',         app: 'Vivaldi',         path: '/Applications/Vivaldi.app',                  icon: '🎵' },
+      ]
+      candidates.forEach(b => { if (existsSync(b.path)) browsers.push(b) })
+    }
+    return browsers
+  })
+
+  ipcMain.handle('drive:connect', async (_, browserApp = null) => {
     const creds = getStoredCreds()
     if (!creds) throw new Error('No credentials saved — call drive:saveCredentials first')
-    return initiateAuth(creds.clientId, creds.clientSecret)
+    return initiateAuth(creds.clientId, creds.clientSecret, browserApp)
   })
   ipcMain.handle('drive:disconnect',      ()              => { driveDisconnect(); return { success: true } })
   ipcMain.handle('drive:backup',          async ()        => backupDatabase(dbPath))

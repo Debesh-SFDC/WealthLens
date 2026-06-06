@@ -4,6 +4,7 @@ const PAGE_TITLES = {
   investments: 'Investments',
   expenses:    'Expenses',
   salary:      'Salary Allocator',
+  networth:    'Wealth & Goals',
   settings:    'Settings',
 }
 
@@ -23,7 +24,7 @@ function getInitials(name) {
   return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
-export default function TopBar({ activePage, profileName, syncStatus }) {
+export default function TopBar({ activePage, profileName, syncStatus, onSignOut }) {
   const syncMeta = syncStatus ? SYNC_META[syncStatus.status] : null
 
   return (
@@ -85,6 +86,21 @@ export default function TopBar({ activePage, profileName, syncStatus }) {
             {getInitials(profileName)}
           </div>
         </div>
+
+        {/* Sign out button */}
+        {onSignOut && (
+          <button
+            onClick={onSignOut}
+            title="Sign out"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+              <polyline points="16 17 21 12 16 7"/>
+              <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+          </button>
+        )}
       </div>
     </header>
   )

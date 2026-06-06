@@ -1,3 +1,5 @@
+import AppLogoIcon from './AppLogoIcon'
+
 const navItems = [
   {
     id: 'dashboard',
@@ -8,17 +10,6 @@ const navItems = [
         <rect x="14" y="3" width="7" height="7" rx="1.5" />
         <rect x="3" y="14" width="7" height="7" rx="1.5" />
         <rect x="14" y="14" width="7" height="7" rx="1.5" />
-      </svg>
-    ),
-  },
-  {
-    id: 'goals',
-    label: 'Goals',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-        <circle cx="12" cy="12" r="9" />
-        <circle cx="12" cy="12" r="5" />
-        <circle cx="12" cy="12" r="1.5" fill="currentColor" />
       </svg>
     ),
   },
@@ -41,6 +32,16 @@ const navItems = [
         <line x1="1" y1="10" x2="23" y2="10" />
         <line x1="7" y1="15" x2="7.01" y2="15" strokeWidth={2.5} />
         <line x1="11" y1="15" x2="13" y2="15" />
+      </svg>
+    ),
+  },
+  {
+    id: 'networth',
+    label: 'Wealth & Goals',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <polyline points="2 20 7 12 11 16 16 8 22 4" />
+        <line x1="2" y1="20" x2="22" y2="20" />
       </svg>
     ),
   },
@@ -77,12 +78,7 @@ export default function Sidebar({ activePage, onNavigate }) {
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-6">
-        <div
-          className="flex items-center justify-center w-9 h-9 rounded-xl text-white font-bold text-sm"
-          style={{ backgroundColor: '#6C63FF' }}
-        >
-          WL
-        </div>
+        <AppLogoIcon size={36} />
         <span className="text-white font-bold text-lg tracking-tight">
           WealthLens
         </span>

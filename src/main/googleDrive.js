@@ -1,4 +1,5 @@
 import http from 'http'
+import { execFile } from 'child_process'
 import { createReadStream, createWriteStream, readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from 'fs'
 import { join } from 'path'
 import { shell, app, safeStorage } from 'electron'
@@ -78,7 +79,7 @@ function getAuthorizedClient() {
 }
 
 // ── OAuth2 initiation ─────────────────────────────────────────────────────
-export function initiateAuth(clientId, clientSecret) {
+export function initiateAuth(clientId, clientSecret, browserApp = null) {
   return new Promise((resolve, reject) => {
     const server = http.createServer()
     server.listen(0, '127.0.0.1', () => {
@@ -92,7 +93,14 @@ export function initiateAuth(clientId, clientSecret) {
         scope: SCOPES,
       })
 
-      shell.openExternal(authUrl)
+      // Open in the user-chosen browser (macOS: `open -a "AppName" url`), or system default
+      if (browserApp && process.platform === 'darwin') {
+        execFile('open', ['-a', browserApp, authUrl], (err) => {
+          if (err) shell.openExternal(authUrl) // fallback if app not found
+        })
+      } else {
+        shell.openExternal(authUrl)
+      }
 
       server.once('request', async (req, res) => {
         try {

@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
+import bcrypt from 'bcryptjs'
 
 let db
 
@@ -11,10 +12,16 @@ export function initDatabase() {
   db.pragma('foreign_keys = ON')
   createTables()
   migrateInvestments()
+  migrateInvestmentsV2()
+  migrateInvestmentsV3()
   seedDefaultCategories()
   migrateCategories()
   createSalaryPlanTables()
   seedSalaryPlan()
+  createUsersTable()
+  migrateExpensesAddUser()
+  seedUsers()
+  seedTrackerBudget()
   return db
 }
 
@@ -102,6 +109,75 @@ function migrateInvestments() {
   add('ticker_symbol',  'TEXT')
   add('exchange',       'TEXT DEFAULT "NSE"')
   add('purity',         'TEXT DEFAULT "24K"')
+}
+
+// Adds sip_frequency column and removes the restrictive type CHECK so 'insurance' is allowed
+function migrateInvestmentsV2() {
+  // Step 1: sip_frequency column — safe no-op if already exists
+  try { db.exec("ALTER TABLE investments ADD COLUMN sip_frequency TEXT DEFAULT 'monthly'") } catch {}
+
+  // Step 2: check whether the type column still has the old restrictive CHECK
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='investments'").get()
+  if (!row || !row.sql.includes("CHECK") || row.sql.includes("'insurance'")) return
+
+  // Step 3: recreate table without the CHECK constraint so any type string is valid
+  db.pragma('foreign_keys = OFF')
+  const doMigration = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE investments_v2 (
+        id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+        name               TEXT    NOT NULL,
+        type               TEXT    NOT NULL,
+        provider           TEXT,
+        bank_or_amc        TEXT,
+        account_number     TEXT,
+        invested_amount    REAL    DEFAULT 0,
+        current_value      REAL    DEFAULT 0,
+        monthly_sip_amount REAL    DEFAULT 0,
+        sip_frequency      TEXT    DEFAULT 'monthly',
+        start_date         TEXT,
+        maturity_date      TEXT,
+        goal_id            INTEGER REFERENCES goals(id) ON DELETE SET NULL,
+        last_updated_at    TEXT    DEFAULT (datetime('now')),
+        notes              TEXT,
+        units              REAL    DEFAULT 0,
+        purchase_price     REAL    DEFAULT 0,
+        scheme_code        TEXT,
+        interest_rate      REAL    DEFAULT 0,
+        ticker_symbol      TEXT,
+        exchange           TEXT    DEFAULT 'NSE',
+        purity             TEXT    DEFAULT '24K'
+      );
+    `)
+    db.exec(`
+      INSERT INTO investments_v2
+        (id, name, type, provider, bank_or_amc, account_number,
+         invested_amount, current_value, monthly_sip_amount, sip_frequency,
+         start_date, maturity_date, goal_id, last_updated_at, notes,
+         units, purchase_price, scheme_code, interest_rate,
+         ticker_symbol, exchange, purity)
+      SELECT
+        id, name, type, provider, bank_or_amc, account_number,
+        invested_amount, current_value, monthly_sip_amount,
+        COALESCE(sip_frequency, 'monthly'),
+        start_date, maturity_date, goal_id, last_updated_at, notes,
+        COALESCE(units, 0), COALESCE(purchase_price, 0), scheme_code,
+        COALESCE(interest_rate, 0), ticker_symbol,
+        COALESCE(exchange, 'NSE'), COALESCE(purity, '24K')
+      FROM investments;
+    `)
+    db.exec(`DROP TABLE investments;`)
+    db.exec(`ALTER TABLE investments_v2 RENAME TO investments;`)
+  })
+  doMigration()
+  db.pragma('foreign_keys = ON')
+}
+
+// Adds sip_last_applied_at so autoApplySIPs can track which periods have been credited
+function migrateInvestmentsV3() {
+  try { db.exec('ALTER TABLE investments ADD COLUMN sip_last_applied_at TEXT') } catch {}
+  // Initialise existing rows to NOW so we never retroactively credit historical SIPs
+  db.exec("UPDATE investments SET sip_last_applied_at = datetime('now') WHERE sip_last_applied_at IS NULL")
 }
 
 function seedDefaultCategories() {
@@ -208,6 +284,63 @@ function seedSalaryPlan() {
   items.forEach(([name, amount, category, bank_or_provider], i) => {
     ins.run(plan.lastInsertRowid, name, amount, category, bank_or_provider, i)
   })
+}
+
+// ── Users ──────────────────────────────────────────────────────────────────
+
+function createUsersTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      role TEXT CHECK(role IN ('admin','tracker')) NOT NULL,
+      pin_hash TEXT NOT NULL,
+      avatar_color TEXT DEFAULT '#6C63FF',
+      created_at TEXT DEFAULT (datetime('now')),
+      last_login_at TEXT
+    );
+  `)
+}
+
+function migrateExpensesAddUser() {
+  try { db.exec('ALTER TABLE expenses ADD COLUMN logged_by_user_id INTEGER REFERENCES users(id)') } catch {}
+}
+
+function seedUsers() {
+  const { count } = db.prepare('SELECT COUNT(*) as count FROM users').get()
+  if (count > 0) return
+
+  const insert = db.prepare(
+    'INSERT INTO users (name, role, pin_hash, avatar_color) VALUES (?, ?, ?, ?)'
+  )
+  insert.run('Debesh', 'admin', bcrypt.hashSync('1234', 10), '#6C63FF')
+  insert.run('Spouse', 'tracker', bcrypt.hashSync('0000', 10), '#EC4899')
+}
+
+function seedTrackerBudget() {
+  try { db.exec('ALTER TABLE profile ADD COLUMN tracker_monthly_budget REAL DEFAULT 0') } catch {}
+}
+
+// ── Exported DB functions ──────────────────────────────────────────────────
+
+export function getAllUsers(db) {
+  return db.prepare('SELECT id, name, role, avatar_color, last_login_at FROM users ORDER BY role DESC').all()
+}
+
+export function getUserById(db, id) {
+  return db.prepare('SELECT * FROM users WHERE id = ?').get(id)
+}
+
+export function updateUser(db, { id, name, avatar_color }) {
+  db.prepare('UPDATE users SET name = ?, avatar_color = ? WHERE id = ?').run(name, avatar_color, id)
+}
+
+export function updateUserPin(db, id, pinHash) {
+  db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(pinHash, id)
+}
+
+export function updateUserLastLogin(db, id) {
+  db.prepare("UPDATE users SET last_login_at = datetime('now') WHERE id = ?").run(id)
 }
 
 export function getDb() {

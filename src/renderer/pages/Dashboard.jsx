@@ -48,8 +48,7 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <input
-            autoFocus
-            type="number" min="0" step="0.01" placeholder="₹ Amount" required
+            autoFocus type="number" min="0" step="0.01" placeholder="₹ Amount" required
             value={form.amount} onChange={e => set('amount', e.target.value)}
             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
           />
@@ -101,15 +100,15 @@ function SalaryDonut({ plan }) {
     <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
       <h3 className="text-base font-semibold text-gray-800 mb-0.5">Salary Allocation</h3>
       <p className="text-xs text-gray-400 mb-1">{plan.label}</p>
-      <p className="text-xs text-gray-400 mb-4">
-        {fmt(salary)}/month · from {effectiveFrom}
-      </p>
+      <p className="text-xs text-gray-400 mb-4">{fmt(salary)}/month · from {effectiveFrom}</p>
 
       <div className="flex items-center gap-6">
         <div className="relative shrink-0 w-28 h-28">
           <div className="w-28 h-28 rounded-full" style={{ background: `conic-gradient(${gradient})` }} />
           <div className="absolute inset-4 bg-white rounded-full flex items-center justify-center">
-            <p className="text-[10px] font-bold text-gray-500 text-center leading-tight">{fmt(salary)}<br/>/ mo</p>
+            <p className="text-[10px] font-bold text-gray-500 text-center leading-tight">
+              {fmt(salary)}<br/>/ mo
+            </p>
           </div>
         </div>
         <div className="flex-1 space-y-2.5">
@@ -266,22 +265,22 @@ function StatCard({ label, value, icon, accent, bg, description, loading }) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
-export default function Dashboard() {
-  const [stats, setStats]           = useState({ netWorth: 0, totalInvested: 0, thisMonthSpend: 0, goalsActive: 0 })
-  const [activePlan, setActivePlan] = useState(null)
-  const [goals, setGoals]           = useState([])
+export default function Dashboard({ onLockApp }) {
+  const [stats, setStats]             = useState({ netWorth: 0, totalInvested: 0, thisMonthSpend: 0, goalsActive: 0 })
+  const [activePlan, setActivePlan]   = useState(null)
+  const [goals, setGoals]             = useState([])
   const [investments, setInvestments] = useState([])
   const [profileName, setProfileName] = useState('')
   const [monthlyStats, setMonthlyStats] = useState(null)
   const [needsBudget, setNeedsBudget] = useState(0)
-  const [categories, setCategories] = useState([])
-  const [loading, setLoading]       = useState(true)
+  const [categories, setCategories]   = useState([])
+  const [loading, setLoading]         = useState(true)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
 
   async function loadData() {
     setLoading(true)
     try {
-      const now = new Date()
+      const now   = new Date()
       const month = now.getMonth() + 1
       const year  = now.getFullYear()
 
@@ -328,9 +327,25 @@ export default function Dashboard() {
   return (
     <div className="p-8">
       {/* Greeting */}
-      <div className="mb-8">
-        <h2 className="text-2xl font-bold text-gray-900">{getGreeting(profileName)}</h2>
-        <p className="mt-1 text-sm text-gray-500">Here's a snapshot of your financial health.</p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">{getGreeting(profileName)}</h2>
+          <p className="mt-1 text-sm text-gray-500">Here's a snapshot of your financial health.</p>
+        </div>
+        {onLockApp && (
+          <button
+            onClick={onLockApp}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold border transition-all duration-150"
+            style={{ backgroundColor: '#f9fafb', color: '#6B7280', borderColor: '#E5E7EB' }}
+            onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; e.currentTarget.style.color = '#dc2626' }}
+            onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#f9fafb'; e.currentTarget.style.borderColor = '#E5E7EB'; e.currentTarget.style.color = '#6B7280' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            Lock App
+          </button>
+        )}
       </div>
 
       {/* Stat cards */}
@@ -363,13 +378,11 @@ export default function Dashboard() {
 
         {/* Right column */}
         <div className="flex flex-col gap-5">
-          {/* Expenses widget */}
           {loading
             ? <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm h-36 animate-pulse" />
             : <ExpensesWidget stats={monthlyStats} needsBudget={needsBudget} onAddExpense={() => setShowQuickAdd(true)} />
           }
 
-          {/* Salary donut or empty state */}
           {loading ? (
             <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm flex-1 animate-pulse" />
           ) : hasAllocations ? (

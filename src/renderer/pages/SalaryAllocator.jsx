@@ -13,6 +13,49 @@ const CATEGORY_DEFS = {
   investment: { label: 'Investment', color: '#10B981', bg: '#ecfdf5', icon: '📈' },
 }
 
+// ── Investment monthly helpers ────────────────────────────────────────────
+function getTotalCurrentMonthly(investments = []) {
+  return investments.reduce((sum, inv) => {
+    if (inv.type === 'mf_sip') {
+      const amt = Number(inv.monthly_sip_amount) || 0
+      return sum + (inv.sip_frequency === 'weekly' ? (amt * 52) / 12 : amt)
+    }
+    if (['epf', 'ppf', 'nps'].includes(inv.type)) return sum + (Number(inv.monthly_sip_amount) || 0)
+    if (inv.type === 'insurance') {
+      const monthly = Number(inv.monthly_sip_amount) || 0
+      const premYears = Number(inv.interest_rate) || 0
+      const start = inv.start_date ? new Date(inv.start_date).getTime() : null
+      if (!start || !monthly || !premYears) return sum
+      const yrs = (Date.now() - start) / (365.25 * 24 * 60 * 60 * 1000)
+      return sum + (yrs < premYears ? monthly : 0)
+    }
+    return sum
+  }, 0)
+}
+
+function getItemCurrentMonthly(planItemName, investments = []) {
+  if (!planItemName || !investments.length) return null
+  const q = planItemName.toLowerCase().trim()
+  let inv = investments.find(i => i.name?.toLowerCase().trim() === q)
+  if (!inv) inv = investments.find(i => i.name?.toLowerCase().includes(q))
+  if (!inv) inv = investments.find(i => q.includes(i.name?.toLowerCase()?.trim() || '___'))
+  if (!inv) return null
+  if (inv.type === 'mf_sip') {
+    const amt = Number(inv.monthly_sip_amount) || 0
+    return inv.sip_frequency === 'weekly' ? (amt * 52) / 12 : amt
+  }
+  if (['epf', 'ppf', 'nps'].includes(inv.type)) return Number(inv.monthly_sip_amount) || 0
+  if (inv.type === 'insurance') {
+    const monthly = Number(inv.monthly_sip_amount) || 0
+    const premYears = Number(inv.interest_rate) || 0
+    const start = inv.start_date ? new Date(inv.start_date).getTime() : null
+    if (!start || !monthly || !premYears) return null
+    const yrs = (Date.now() - start) / (365.25 * 24 * 60 * 60 * 1000)
+    return yrs < premYears ? monthly : 0
+  }
+  return null
+}
+
 // ── Icons ─────────────────────────────────────────────────────────────────
 const TrashIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -91,9 +134,10 @@ function PlanDonut({ plan }) {
 }
 
 // ── Running Balance Table ─────────────────────────────────────────────────
-function RunningBalanceTable({ plan }) {
+function RunningBalanceTable({ plan, investments = [] }) {
   const salary = plan.monthly_salary || 0
   const items = plan.items || []
+  const totalCurrentInvestment = getTotalCurrentMonthly(investments)
 
   let balance = salary
   const rows = []
@@ -105,11 +149,16 @@ function RunningBalanceTable({ plan }) {
     if (!catItems.length) continue
 
     const def = CATEGORY_DEFS[cat]
-    rows.push({ type: 'header', cat, def, total: catItems.reduce((s, i) => s + i.amount, 0) })
+    const targetTotal = catItems.reduce((s, i) => s + i.amount, 0)
+    const currentTotal = cat === 'investment' ? totalCurrentInvestment : targetTotal
+    rows.push({ type: 'header', cat, def, targetTotal, currentTotal })
 
     for (const item of catItems) {
       balance -= item.amount
-      rows.push({ type: 'item', item, balance, def })
+      const currentAmt = cat === 'investment'
+        ? getItemCurrentMonthly(item.name, investments)
+        : item.amount
+      rows.push({ type: 'item', item, balance, def, currentAmt, cat })
     }
   }
 
@@ -118,42 +167,83 @@ function RunningBalanceTable({ plan }) {
   return (
     <div>
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-        {/* Column header */}
+        {/* Column headers */}
         <div className="grid grid-cols-12 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-          <div className="col-span-5">Name</div>
-          <div className="col-span-3">Bank / Provider</div>
-          <div className="col-span-2 text-right">Amount</div>
+          <div className="col-span-3">Name</div>
+          <div className="col-span-2">Category</div>
+          <div className="col-span-1">Bank</div>
+          <div className="col-span-2 text-right">Target Amount</div>
+          <div className="col-span-2 text-right">Current Amount</div>
           <div className="col-span-2 text-right">Balance After</div>
         </div>
 
         {/* Salary row */}
         <div className="grid grid-cols-12 px-5 py-3 border-b border-gray-200 bg-gray-50/80">
-          <div className="col-span-5 text-sm font-bold text-gray-900">💰 Monthly Salary</div>
-          <div className="col-span-3" />
+          <div className="col-span-3 text-sm font-bold text-gray-900">💰 Monthly Salary</div>
+          <div className="col-span-2" />
+          <div className="col-span-1" />
+          <div className="col-span-2 text-right text-sm font-bold text-gray-900">{fmt(salary)}</div>
           <div className="col-span-2 text-right text-sm font-bold text-gray-900">{fmt(salary)}</div>
           <div className="col-span-2 text-right text-sm font-bold text-gray-900">{fmt(salary)}</div>
         </div>
 
         {rows.map((row, i) => {
           if (row.type === 'header') {
+            const isInv = row.cat === 'investment'
+            const diff = row.currentTotal - row.targetTotal
+            const headerCurrentColor = !isInv ? row.def.color
+              : diff > 0 ? '#10B981' : diff < 0 ? '#F59E0B' : row.def.color
             return (
               <div key={`h-${i}`} className="grid grid-cols-12 px-5 py-2.5 border-b border-gray-50"
                 style={{ backgroundColor: row.def.bg }}>
-                <div className="col-span-5 text-xs font-bold uppercase tracking-wide flex items-center gap-1.5" style={{ color: row.def.color }}>
+                <div className="col-span-3 text-xs font-bold uppercase tracking-wide flex items-center gap-1.5" style={{ color: row.def.color }}>
                   <span>{row.def.icon}</span> {row.def.label}
                 </div>
-                <div className="col-span-3" />
-                <div className="col-span-2 text-right text-xs font-bold" style={{ color: row.def.color }}>{fmt(row.total)}</div>
+                <div className="col-span-2" />
+                <div className="col-span-1" />
+                <div className="col-span-2 text-right text-xs font-bold" style={{ color: row.def.color }}>
+                  {fmt(row.targetTotal)}
+                </div>
+                <div className="col-span-2 text-right text-xs font-bold" style={{ color: headerCurrentColor }}>
+                  {fmt(row.currentTotal)}
+                  {isInv && investments.length > 0 && Math.abs(diff) > 0 && (
+                    <span className="ml-1 font-normal opacity-70">
+                      ({diff > 0 ? '+' : ''}{fmt(diff)})
+                    </span>
+                  )}
+                </div>
                 <div className="col-span-2" />
               </div>
             )
           }
+
+          // Item row
+          const isInv = row.cat === 'investment'
+          const itemCurrentColor = !isInv ? '#6b7280'
+            : row.currentAmt === null ? '#d1d5db'
+            : row.currentAmt > row.item.amount ? '#10B981'
+            : row.currentAmt < row.item.amount ? '#F59E0B'
+            : '#6b7280'
+
           return (
             <div key={`i-${i}`} className="grid grid-cols-12 px-5 py-3 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-              <div className="col-span-5 text-sm font-medium text-gray-800 pl-4">{row.item.name}</div>
-              <div className="col-span-3 text-sm text-gray-500">{row.item.bank_or_provider || '—'}</div>
+              <div className="col-span-3 text-sm font-medium text-gray-800 pl-4">{row.item.name}</div>
+              <div className="col-span-2">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold"
+                  style={{ backgroundColor: row.def.bg, color: row.def.color }}>
+                  {row.def.icon} {row.def.label}
+                </span>
+              </div>
+              <div className="col-span-1 text-xs text-gray-500 truncate">{row.item.bank_or_provider || '—'}</div>
               <div className="col-span-2 text-right text-sm text-gray-600">−{fmt(row.item.amount)}</div>
-              <div className="col-span-2 text-right text-sm font-semibold" style={{ color: row.balance >= 0 ? '#374151' : '#EF4444' }}>
+              <div className="col-span-2 text-right text-sm font-medium" style={{ color: itemCurrentColor }}>
+                {isInv
+                  ? (row.currentAmt !== null ? fmt(row.currentAmt) : '—')
+                  : fmt(row.item.amount)
+                }
+              </div>
+              <div className="col-span-2 text-right text-sm font-semibold"
+                style={{ color: row.balance >= 0 ? '#374151' : '#EF4444' }}>
                 {fmt(row.balance)}
               </div>
             </div>
@@ -745,7 +835,7 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare })
 }
 
 // ── Plan Detail View ──────────────────────────────────────────────────────
-function PlanDetailView({ plan, onEdit, onNewPlan, onHistory }) {
+function PlanDetailView({ plan, investments, onEdit, onNewPlan, onHistory }) {
   return (
     <div>
       {/* Header */}
@@ -785,7 +875,7 @@ function PlanDetailView({ plan, onEdit, onNewPlan, onHistory }) {
       {/* Running balance */}
       <div>
         <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Running Balance</p>
-        <RunningBalanceTable plan={plan} />
+        <RunningBalanceTable plan={plan} investments={investments} />
       </div>
     </div>
   )
@@ -796,6 +886,7 @@ export default function SalaryAllocator() {
   const [loading, setLoading]           = useState(true)
   const [activePlan, setActivePlan]     = useState(null)
   const [allPlans, setAllPlans]         = useState([])
+  const [investments, setInvestments]   = useState([])
   const [view, setView]                 = useState('detail') // 'detail' | 'history' | 'viewPlan' | 'compare'
   const [showNewWizard, setShowNewWizard] = useState(false)
   const [showEdit, setShowEdit]         = useState(false)
@@ -805,12 +896,14 @@ export default function SalaryAllocator() {
   async function loadData() {
     setLoading(true)
     try {
-      const [plan, plans] = await Promise.all([
+      const [plan, plans, inv] = await Promise.all([
         window.electronAPI.getActivePlan(),
         window.electronAPI.getAllPlans(),
+        window.electronAPI.getAllInvestments(),
       ])
       setActivePlan(plan || null)
       setAllPlans(plans || [])
+      setInvestments(inv || [])
     } catch (e) {
       console.error(e)
     } finally {
@@ -872,6 +965,7 @@ export default function SalaryAllocator() {
       {view === 'detail' && (
         <PlanDetailView
           plan={activePlan}
+          investments={investments}
           onEdit={() => setShowEdit(true)}
           onNewPlan={() => setShowNewWizard(true)}
           onHistory={() => setView('history')}
@@ -912,7 +1006,7 @@ export default function SalaryAllocator() {
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Overview</p>
             <PlanDonut plan={viewingPlan} />
           </div>
-          <RunningBalanceTable plan={viewingPlan} />
+          <RunningBalanceTable plan={viewingPlan} investments={investments} />
         </div>
       )}
 

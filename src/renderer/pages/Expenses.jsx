@@ -15,7 +15,7 @@ function getCatIcon(name, categories) {
 }
 
 // ── Expense add/edit modal ────────────────────────────────────────────────
-function ExpenseModal({ expense, categories, onSave, onClose }) {
+function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
   const today = new Date().toISOString().slice(0, 10)
   const [form, setForm] = useState(
     expense
@@ -29,7 +29,11 @@ function ExpenseModal({ expense, categories, onSave, onClose }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.amount || !form.category || !form.date) return
-    const data = { ...form, amount: parseFloat(form.amount) }
+    const data = {
+      ...form,
+      amount: parseFloat(form.amount),
+      logged_by_user_id: currentUser?.id ?? null,
+    }
     if (isEdit) await window.electronAPI.updateExpense(data)
     else await window.electronAPI.createExpense(data)
     onSave()
@@ -151,7 +155,7 @@ function CategoryDonut({ byCategory, categories, total }) {
 }
 
 // ── Main component ────────────────────────────────────────────────────────
-export default function Expenses({ onQuickAdd }) {
+export default function Expenses({ onSyncRefresh, currentUser }) {
   const now = new Date()
   const [month, setMonth]         = useState(now.getMonth() + 1)
   const [year, setYear]           = useState(now.getFullYear())
@@ -164,20 +168,29 @@ export default function Expenses({ onQuickAdd }) {
   const [editTarget, setEditTarget] = useState(null)
   const [search, setSearch]       = useState('')
   const [catFilter, setCatFilter] = useState('all')
+  const [userFilter, setUserFilter] = useState('all') // 'all' | userId string
+  const [allUsers, setAllUsers]   = useState([])
 
   async function loadData() {
     setLoading(true)
     try {
-      const [exps, cats, stats, allocs, profile] = await Promise.all([
-        window.electronAPI.getAllExpenses({ month, year }),
+      // Build expense filter: month/year for stats, but for list use YYYY-MM format
+      const ym = `${year}-${String(month).padStart(2, '0')}`
+      const expFilter = { month: ym }
+      if (userFilter !== 'all') expFilter.logged_by = Number(userFilter)
+
+      const [exps, cats, stats, allocs, profile, users] = await Promise.all([
+        window.electronAPI.getAllExpenses(expFilter),
         window.electronAPI.getExpenseCategories(),
         window.electronAPI.getExpenseMonthlyStats({ month, year }),
         window.electronAPI.getSalaryAllocations(),
         window.electronAPI.getProfile(),
+        window.electronAPI.getUsers(),
       ])
       setExpenses(exps || [])
       setCategories(cats || [])
       setMonthlyStats(stats || null)
+      setAllUsers(users || [])
 
       const needsRow = (allocs || []).find(r => r.bank === '__bucket__' && r.label === 'Needs')
       if (needsRow && profile?.monthly_salary) {
@@ -188,7 +201,7 @@ export default function Expenses({ onQuickAdd }) {
     }
   }
 
-  useEffect(() => { loadData() }, [month, year])
+  useEffect(() => { loadData() }, [month, year, userFilter])
 
   function prevMonth() {
     if (month === 1) { setMonth(12); setYear(y => y - 1) }
@@ -245,6 +258,9 @@ export default function Expenses({ onQuickAdd }) {
     return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
   }
 
+  const adminUser   = allUsers.find(u => u.role === 'admin')
+  const trackerUser = allUsers.find(u => u.role === 'tracker')
+
   return (
     <div className="p-8">
       {/* Header */}
@@ -280,6 +296,51 @@ export default function Expenses({ onQuickAdd }) {
           Add Expense
         </button>
       </div>
+
+      {/* User filter tabs */}
+      {allUsers.length > 1 && (
+        <div className="flex gap-2 mb-5">
+          <button
+            onClick={() => setUserFilter('all')}
+            className="px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
+            style={userFilter === 'all'
+              ? { backgroundColor: '#6C63FF', color: '#fff', borderColor: 'transparent' }
+              : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
+          >
+            All
+          </button>
+          {adminUser && (
+            <button
+              onClick={() => setUserFilter(userFilter === String(adminUser.id) ? 'all' : String(adminUser.id))}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
+              style={userFilter === String(adminUser.id)
+                ? { backgroundColor: adminUser.avatar_color || '#6C63FF', color: '#fff', borderColor: 'transparent' }
+                : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
+            >
+              <span className="w-4 h-4 rounded-full inline-flex items-center justify-center text-white text-[9px] font-bold"
+                style={{ backgroundColor: adminUser.avatar_color || '#6C63FF' }}>
+                {adminUser.name.charAt(0).toUpperCase()}
+              </span>
+              {adminUser.name}
+            </button>
+          )}
+          {trackerUser && (
+            <button
+              onClick={() => setUserFilter(userFilter === String(trackerUser.id) ? 'all' : String(trackerUser.id))}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
+              style={userFilter === String(trackerUser.id)
+                ? { backgroundColor: trackerUser.avatar_color || '#EC4899', color: '#fff', borderColor: 'transparent' }
+                : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
+            >
+              <span className="w-4 h-4 rounded-full inline-flex items-center justify-center text-white text-[9px] font-bold"
+                style={{ backgroundColor: trackerUser.avatar_color || '#EC4899' }}>
+                {trackerUser.name.charAt(0).toUpperCase()}
+              </span>
+              {trackerUser.name}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Budget warning */}
       {budgetWarning && (
@@ -400,7 +461,12 @@ export default function Expenses({ onQuickAdd }) {
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-800 truncate">{exp.note || exp.category}</p>
-                          {exp.note && <p className="text-xs text-gray-400">{exp.category}</p>}
+                          <div className="flex items-center gap-1.5">
+                            {exp.note && <p className="text-xs text-gray-400">{exp.category}</p>}
+                            {exp.logged_by_name && (
+                              <span className="text-xs text-gray-300 font-medium">· {exp.logged_by_name}</span>
+                            )}
+                          </div>
                         </div>
                         <p className="text-sm font-bold text-gray-900 shrink-0">{fmt(exp.amount)}</p>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -435,6 +501,7 @@ export default function Expenses({ onQuickAdd }) {
         <ExpenseModal
           expense={editTarget}
           categories={categories}
+          currentUser={currentUser}
           onSave={handleSaved}
           onClose={() => { setShowModal(false); setEditTarget(null) }}
         />

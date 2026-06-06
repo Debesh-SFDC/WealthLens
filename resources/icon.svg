@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="100%" stop-color="#6C63FF"/>
+    </linearGradient>
+    <linearGradient id="area" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="rgba(255,255,255,0.22)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <clipPath id="clip">
+      <circle cx="490" cy="490" r="210"/>
+    </clipPath>
+  </defs>
+
+  <!-- Rounded rectangle background with purple gradient -->
+  <rect width="1024" height="1024" rx="200" fill="url(#bg)"/>
+
+  <!-- Rising chart area fill (clipped inside lens) -->
+  <g clip-path="url(#clip)">
+    <path
+      d="M 290 565 L 380 490 L 455 515 L 530 430 L 610 360 L 670 330 L 700 700 L 280 700 Z"
+      fill="url(#area)"
+    />
+    <!-- Upward trend line -->
+    <polyline
+      points="290,565 380,490 455,515 530,430 610,360 670,330"
+      fill="none"
+      stroke="white"
+      stroke-width="26"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+    <!-- Data point dots -->
+    <circle cx="380" cy="490" r="13" fill="white"/>
+    <circle cx="455" cy="515" r="13" fill="white"/>
+    <circle cx="530" cy="430" r="13" fill="white"/>
+    <circle cx="610" cy="360" r="13" fill="white"/>
+  </g>
+
+  <!-- Magnifying glass ring -->
+  <circle cx="490" cy="490" r="210" fill="none" stroke="white" stroke-width="46"/>
+
+  <!-- Handle at 45° from lens edge -->
+  <line x1="638" y1="638" x2="760" y2="760" stroke="white" stroke-width="46" stroke-linecap="round"/>
+</svg>

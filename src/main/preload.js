@@ -1,6 +1,26 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // App lock / auth (legacy — kept for backward compat)
+  hasAppPassword:     ()              => ipcRenderer.invoke('auth:hasPassword'),
+  isAppUnlocked:      ()              => ipcRenderer.invoke('auth:isUnlocked'),
+  verifyAppPassword:  (password)      => ipcRenderer.invoke('auth:verify', password),
+  setAppPassword:     (password)      => ipcRenderer.invoke('auth:setPassword', password),
+  changeAppPassword:  (data)          => ipcRenderer.invoke('auth:changePassword', data),
+  lockApp:            ()              => ipcRenderer.invoke('auth:lock'),
+  getAuthLockoutStatus: ()            => ipcRenderer.invoke('auth:getLockoutStatus'),
+
+  // Users & session
+  getUsers:           ()              => ipcRenderer.invoke('users:getAll'),
+  verifyUserPin:      (data)          => ipcRenderer.invoke('users:verifyPin', data),
+  updateUserProfile:  (data)          => ipcRenderer.invoke('users:updateProfile', data),
+  updateUserPin:      (data)          => ipcRenderer.invoke('users:updatePin', data),
+  getCurrentSession:  ()              => ipcRenderer.invoke('users:getCurrentSession'),
+  signOut:            ()              => ipcRenderer.invoke('users:signOut'),
+  refreshActivity:    ()              => ipcRenderer.invoke('users:refreshActivity'),
+  getTrackerBudget:   ()              => ipcRenderer.invoke('users:getTrackerBudget'),
+  setTrackerBudget:   (amount)        => ipcRenderer.invoke('users:setTrackerBudget', amount),
+
   // Profile
   getProfile: () => ipcRenderer.invoke('profile:get'),
   saveProfile: (data) => ipcRenderer.invoke('profile:save', data),
@@ -52,7 +72,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDriveDbLastModified: () => ipcRenderer.invoke('drive:getDbLastModified'),
   hasDriveCreds: () => ipcRenderer.invoke('drive:hasCreds'),
   saveDriveCredentials: (clientId, clientSecret) => ipcRenderer.invoke('drive:saveCredentials', clientId, clientSecret),
-  connectDrive: () => ipcRenderer.invoke('drive:connect'),
+  getInstalledBrowsers: () => ipcRenderer.invoke('drive:getInstalledBrowsers'),
+  connectDrive: (browserApp) => ipcRenderer.invoke('drive:connect', browserApp),
   disconnectDrive: () => ipcRenderer.invoke('drive:disconnect'),
   driveBackupNow: () => ipcRenderer.invoke('drive:backup'),
   listDriveBackups: () => ipcRenderer.invoke('drive:listBackups'),
