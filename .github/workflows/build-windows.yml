@@ -1,0 +1,34 @@
+name: Build Windows Installer
+
+on:
+  workflow_dispatch:  # Run manually from GitHub Actions tab
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild native modules for Electron
+        run: npx electron-rebuild -w better-sqlite3
+
+      - name: Build Windows installer
+        run: npm run build:win
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: WealthLens-Windows
+          path: dist/*.exe
+          retention-days: 30
