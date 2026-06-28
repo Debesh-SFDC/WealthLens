@@ -123,13 +123,30 @@ function computeAge(dob) {
   return a
 }
 
+// Zerodha Kite, Groww, Upstox etc. are stock trading platforms — investments
+// entered with these as provider should be treated as equity even if type was
+// accidentally set to insurance or mf_sip.
+const STOCK_BROKERS = ['zerodha', 'kite', 'upstox', 'groww', 'angel', '5paisa', 'dhan', 'iifl', 'mstock', 'paytm money']
+
+function isStockBroker(inv) {
+  const p = ((inv.provider || '') + ' ' + (inv.bank_or_amc || '')).toLowerCase()
+  return STOCK_BROKERS.some(b => p.includes(b))
+}
+
 function isEquityType(inv) {
   if (inv.type === 'stocks') return true
-  if (['epf', 'ppf', 'fd', 'insurance', 'gold', 'nps'].includes(inv.type)) return false
+  // Hard-safe: EPF/PPF/FD/NPS are never equity regardless of platform
+  if (['epf', 'ppf', 'fd', 'nps'].includes(inv.type)) return false
+  // Gold: conservative (safe) by default
+  if (inv.type === 'gold') return false
+  // Insurance: Kite/Zerodha don't offer insurance products — if provider is a
+  // stock broker, the user likely entered their stock portfolio with the wrong type
+  if (inv.type === 'insurance') return isStockBroker(inv)
+  // mf_sip / mf_lumpsum: check fund name for debt-style keywords
   const n = (inv.name || '').toLowerCase()
   if (n.includes('debt') || n.includes('liquid') || n.includes('overnight') ||
       n.includes('gilt') || n.includes('bond') || n.includes('arbitrage')) return false
-  return true // mf_sip / mf_lumpsum default → equity
+  return true // equity MF / default
 }
 
 const BLANK_FORM = {
@@ -1011,7 +1028,13 @@ function FundCategoriesView({ investments }) {
   const [moHov, setMoHov] = useState(null)
 
   const buckets = RISK_BUCKETS.map(b => {
-    const items = investments.filter(inv => b.types.includes(inv.type))
+    const items = investments.filter(inv => {
+      if (inv.type === 'insurance' && isStockBroker(inv)) {
+        // Stock broker provider + insurance type = misclassified stocks → Market Linked
+        return b.key === 'market'
+      }
+      return b.types.includes(inv.type)
+    })
     const netWorth = items.reduce((s, inv) => s + effectiveCurrentValue(inv), 0)
     const monthly = items.reduce((s, inv) => s + getMonthlyContrib(inv), 0)
     return { ...b, items, netWorth, monthly }
@@ -1648,14 +1671,20 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh }) {
                       {taggedFunds.map(fund => {
                         const goal = (goals || []).find(g => g.id === fund.goal_id)
                         const meta = TYPE_META[fund.type] || { label: fund.type, color: '#6b7280', bg: '#f9fafb' }
+                        const wrongType = fund.type !== 'stocks' && isStockBroker(fund)
                         return (
-                          <div key={fund.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                          <div key={fund.id} className={`flex items-center gap-3 p-3 rounded-xl ${wrongType ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50'}`}>
                             <span className="text-base shrink-0">{fund.tag}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="text-xs font-semibold text-gray-800 truncate">{fund.name}</span>
                                 <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold shrink-0"
                                   style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
+                                {wrongType && (
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-md font-semibold shrink-0">
+                                    ⚠ Change type to Stocks
+                                  </span>
+                                )}
                                 {goal && (
                                   <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-md font-semibold shrink-0">
                                     🎯 {goal.emoji} {goal.title}
@@ -2036,6 +2065,9 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                     </button>
                   ))}
                 </div>
+                <p className="text-[10px] text-gray-400 mt-1.5">
+                  Investing via Zerodha Kite, Groww, Upstox, Angel One → choose <span className="font-semibold text-red-500">Stocks</span>
+                </p>
               </div>
 
               {/* Name */}
