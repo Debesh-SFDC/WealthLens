@@ -1253,11 +1253,12 @@ function FundCategoriesView({ investments }) {
 }
 
 // ── Allocation Health Check ───────────────────────────────────────────────
-function AllocationHealthCheck({ investments, profile, goals, onRefresh }) {
+function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSIP }) {
   const [open, setOpen]                 = useState(false)
   const [activeTab, setActiveTab]       = useState('allocation')
   const [doneActions, setDoneActions]   = useState(new Set())
   const [expanded, setExpanded]         = useState({ increase: true, reduce: true, add: true })
+  const [timeframe, setTimeframe]       = useState(12) // months: 6, 12, 24, 36
 
   const age          = computeAge(profile?.date_of_birth)
   const retirementAge = Number(profile?.retirement_age) || 60
@@ -1409,11 +1410,44 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh }) {
   if (!hasEmergency)            addActions.push('Build Emergency Fund — 6 months of expenses in a liquid fund before investing further')
   if (!hasIntl)                 addActions.push('Consider International exposure — 5–10% in US/Global index fund for geographic diversification (optional)')
 
+  // ── Target Path calculations ───────────────────────────────────────────
+  // Scenario A: shift allocation — move ₹X from safe bucket → equity bucket,
+  // total portfolio value stays the same (redirect future safe SIP to equity)
+  const gapA = totalValue > 0 && equityGap < 0
+    ? Math.max(0, (idealEquityPct / 100) * totalValue - equityValue)
+    : 0
+  const projSafeAfterA    = Math.max(0, safeValue - gapA)
+  const monthlyRedirectA  = timeframe > 0 ? gapA / timeframe : 0
+
+  // Scenario B: new money only — safe stays locked at current value
+  // Solve X/(X + safeValue) = idealEquityPct/100  →  X = idealEquityPct*safe / (100-idealEquityPct)
+  const denomB          = 100 - idealEquityPct
+  const neededEquityB   = denomB > 0 && safeValue > 0
+    ? (idealEquityPct * safeValue) / denomB
+    : equityValue
+  const gapB            = Math.max(0, neededEquityB - equityValue)
+  const monthlyExtraB   = timeframe > 0 ? gapB / timeframe : 0
+
+  const alreadyAtTarget = equityGap >= 0
+
+  // "Where to invest" hint — prefer existing equity MF SIPs
+  const equityMFsByValue = investments
+    .filter(i => ['mf_sip','mf_lumpsum'].includes(i.type) && isEquityType(i))
+    .sort((a, b) => effectiveCurrentValue(b) - effectiveCurrentValue(a))
+  const whereSuggestion = equityMFsByValue.length >= 2
+    ? `Increase SIP in "${equityMFsByValue[0].name}" and/or "${equityMFsByValue[1].name}" — or split between them for averaging`
+    : equityMFsByValue.length === 1
+    ? `Increase monthly SIP in "${equityMFsByValue[0].name}", or open a second equity fund for diversification`
+    : !hasIntl
+    ? 'Start a Nifty 50 Index Fund or Flexi Cap Fund as a new SIP to build equity exposure'
+    : 'Consider a Mid Cap or International Index fund to diversify equity'
+
   const TABS = [
     { id: 'allocation',  label: 'Allocation',  icon: '📊' },
     { id: 'coverage',    label: 'Coverage',    icon: '🗂️' },
     { id: 'suggestions', label: 'Suggestions', icon: '💡' },
     { id: 'rebalancing', label: 'Rebalancing', icon: '🔁' },
+    { id: 'target',      label: 'Target',      icon: '💰' },
   ]
 
   const doneCount = [
@@ -1841,6 +1875,168 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh }) {
                 <p className="text-[10px] text-gray-400 leading-relaxed pt-2 border-t border-gray-100">
                   <span className="font-semibold">Rebalancing Disclaimer:</span> All suggestions are to redirect <em>future contributions only</em> — no sell recommendations are made. Mark items as done to track your progress. This is not personalised financial advice. Consult a SEBI-registered advisor.
                 </p>
+              </div>
+            )}
+
+            {/* ── Tab: Target Path ── */}
+            {activeTab === 'target' && (
+              <div className="space-y-4">
+
+                {/* Already at target */}
+                {alreadyAtTarget ? (
+                  <div className="px-4 py-4 bg-green-50 border border-green-100 rounded-xl text-sm text-green-800 leading-relaxed space-y-2">
+                    <p className="font-bold">✓ Already at or above your target equity ratio</p>
+                    <p>You're at <strong>{actualEquityPct.toFixed(0)}%</strong> equity vs ideal <strong>{idealEquityPct}%</strong> — no additional equity investment needed to rebalance.</p>
+                    <p className="text-xs text-green-700">New money can go to safe instruments (PPF/FD) to build the safe side, or stay in equity if you have high risk tolerance.</p>
+                  </div>
+                ) : totalValue === 0 ? (
+                  <p className="text-xs text-gray-400 text-center py-6">Add investments first to use the calculator.</p>
+                ) : (
+                  <>
+                    {/* Shared timeframe selector */}
+                    <div className="flex items-center gap-3">
+                      <p className="text-xs font-semibold text-gray-500 shrink-0">Spread over:</p>
+                      <div className="flex gap-1.5">
+                        {[6, 12, 24, 36].map(m => (
+                          <button key={m} onClick={() => setTimeframe(m)}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
+                              timeframe === m
+                                ? 'bg-[#6C63FF] text-white border-[#6C63FF]'
+                                : 'bg-white text-gray-500 border-gray-200 hover:border-[#6C63FF]/40'
+                            }`}>
+                            {m}mo
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* ── Scenario A: Redirect Safe → Equity ── */}
+                    <div className="rounded-2xl border border-amber-200 overflow-hidden">
+                      <div className="px-4 py-3 bg-amber-50 border-b border-amber-100 flex items-start gap-2">
+                        <span className="text-base shrink-0">↔</span>
+                        <div>
+                          <p className="text-xs font-bold text-amber-800 uppercase tracking-wide">Scenario A — Redirect Safe → Equity</p>
+                          <p className="text-[11px] text-amber-700 mt-0.5">Keep total portfolio flat — redirect future safe SIP contributions to equity SIP instead</p>
+                        </div>
+                      </div>
+                      <div className="px-4 py-4 bg-amber-50/30 space-y-3">
+                        {/* Calculation rows */}
+                        <div className="bg-white rounded-xl divide-y divide-gray-50 text-xs">
+                          {[
+                            { label: 'Current equity',    val: `${fmtCompact(equityValue)} (${actualEquityPct.toFixed(0)}%)`, color: '#6C63FF' },
+                            { label: 'Current safe',      val: `${fmtCompact(safeValue)} (${actualSafePct.toFixed(0)}%)`,    color: '#10B981' },
+                            { label: 'Shift to equity',   val: fmtCompact(gapA),                                              color: '#F59E0B', bold: true },
+                          ].map(r => (
+                            <div key={r.label} className="flex items-center justify-between px-3 py-2">
+                              <span className="text-gray-500">{r.label}</span>
+                              <span className={`font-semibold ${r.bold ? 'text-sm' : ''}`} style={{ color: r.color }}>{r.val}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Monthly redirect highlight */}
+                        <div className="bg-amber-100 rounded-xl px-4 py-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-[10px] text-amber-700 uppercase tracking-wide font-semibold">Monthly Redirect</p>
+                            <p className="text-2xl font-bold text-amber-800">{fmtCompact(monthlyRedirectA)}<span className="text-sm font-normal">/mo</span></p>
+                          </div>
+                          <p className="text-[10px] text-amber-700 text-right max-w-[130px] leading-relaxed">Stop adding to safe SIP, add this amount to equity SIP instead</p>
+                        </div>
+
+                        {/* After rebalancing projection */}
+                        <div className="bg-white rounded-xl p-3">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">After {timeframe}mo of Redirecting</p>
+                          <div className="h-2 rounded-full overflow-hidden flex mb-1.5">
+                            <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#6C63FF' }} />
+                            <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] font-semibold">
+                            <span style={{ color: '#6C63FF' }}>Equity {idealEquityPct}% · {fmtCompact(equityValue + gapA)}</span>
+                            <span style={{ color: '#10B981' }}>Safe {idealSafePct}% · {fmtCompact(projSafeAfterA)}</span>
+                          </div>
+                        </div>
+
+                        <p className="text-[10px] text-amber-600 leading-relaxed">⚠ PPF and EPF cannot be liquidated before maturity — this means pausing <em>future contributions</em> to those and routing the same amount into equity SIPs instead.</p>
+                      </div>
+                    </div>
+
+                    {/* ── Scenario B: New Money Only ── */}
+                    <div className="rounded-2xl border border-[#6C63FF]/20 overflow-hidden">
+                      <div className="px-4 py-3 bg-[#ede9ff] border-b border-[#6C63FF]/20 flex items-start gap-2">
+                        <span className="text-base shrink-0">+</span>
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#4c48b0' }}>Scenario B — New Money Only</p>
+                          <p className="text-[11px] mt-0.5" style={{ color: '#6C63FF' }}>Safe holdings ({fmtCompact(safeValue)}) stay completely untouched — only add fresh equity capital</p>
+                        </div>
+                      </div>
+                      <div className="px-4 py-4 bg-[#f5f4ff]/60 space-y-3">
+                        {/* Calculation rows */}
+                        <div className="bg-white rounded-xl divide-y divide-gray-50 text-xs">
+                          {[
+                            { label: 'Current equity',         val: `${fmtCompact(equityValue)} (${actualEquityPct.toFixed(0)}%)`, color: '#6C63FF' },
+                            { label: 'Safe stays fixed at',    val: fmtCompact(safeValue),                                         color: '#10B981' },
+                            { label: `Target equity (${idealEquityPct}%)`, val: fmtCompact(neededEquityB),                        color: '#6C63FF' },
+                            { label: 'New equity to add',      val: fmtCompact(gapB),                                              color: '#4c48b0', bold: true },
+                          ].map(r => (
+                            <div key={r.label} className="flex items-center justify-between px-3 py-2">
+                              <span className="text-gray-500">{r.label}</span>
+                              <span className={`font-semibold ${r.bold ? 'text-sm' : ''}`} style={{ color: r.color }}>{r.val}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Monthly extra highlight */}
+                        <div className="rounded-xl px-4 py-3 flex items-center justify-between" style={{ backgroundColor: '#6C63FF' }}>
+                          <div>
+                            <p className="text-[10px] text-white/70 uppercase tracking-wide font-semibold">Monthly Extra Needed</p>
+                            <p className="text-2xl font-bold text-white">{fmtCompact(monthlyExtraB)}<span className="text-sm font-normal">/mo</span></p>
+                          </div>
+                          <p className="text-[10px] text-white/80 text-right max-w-[120px] leading-relaxed">extra into equity for {timeframe} months, safe untouched</p>
+                        </div>
+
+                        {/* After adding new equity */}
+                        <div className="bg-white rounded-xl p-3">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">After Adding {fmtCompact(gapB)} New Equity</p>
+                          <div className="h-2 rounded-full overflow-hidden flex mb-1.5">
+                            <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#6C63FF' }} />
+                            <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] font-semibold">
+                            <span style={{ color: '#6C63FF' }}>Equity {idealEquityPct}% · {fmtCompact(equityValue + gapB)}</span>
+                            <span style={{ color: '#10B981' }}>Safe {idealSafePct}% · {fmtCompact(safeValue)}</span>
+                          </div>
+                        </div>
+
+                        {/* Where to invest */}
+                        <div className="bg-white rounded-xl px-4 py-3">
+                          <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">💡 Where to Invest This</p>
+                          <p className="text-xs text-gray-700 leading-relaxed">{whereSuggestion}</p>
+                        </div>
+
+                        {/* CTA — pre-fills the Add Investment form */}
+                        {onAddSIP && (
+                          <button
+                            onClick={() => onAddSIP(monthlyExtraB)}
+                            className="w-full py-3 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all"
+                            style={{ backgroundColor: '#6C63FF' }}>
+                            <span className="text-base font-bold leading-none">+</span>
+                            Add {fmtCompact(monthlyExtraB)}/mo as New SIP
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Snapshot note */}
+                    <div className="flex items-start gap-2 px-3 py-3 bg-gray-50 rounded-xl">
+                      <span className="text-base shrink-0">📸</span>
+                      <p className="text-[11px] text-gray-500 leading-relaxed">
+                        <span className="font-semibold">Snapshot calculation.</span> Since PPF/EPF/FD keep earning interest and your existing SIPs keep adding, the gap changes over time. Recalculate every 3–6 months to stay accurate.
+                        <button onClick={() => onRefresh?.()} className="ml-1.5 text-[#6C63FF] font-semibold hover:underline">🔄 Recalculate now</button>
+                      </p>
+                    </div>
+                  </>
+                )}
+
               </div>
             )}
 
@@ -2625,7 +2821,16 @@ export default function Investments() {
       </div>
 
       {/* Allocation Health Check */}
-      <AllocationHealthCheck investments={investments} profile={profile} goals={goals} onRefresh={load} />
+      <AllocationHealthCheck
+        investments={investments}
+        profile={profile}
+        goals={goals}
+        onRefresh={load}
+        onAddSIP={(amount) => {
+          setEditInv({ type: 'mf_sip', monthly_sip_amount: String(Math.round(amount)), sip_frequency: 'monthly' })
+          setShowForm(true)
+        }}
+      />
 
       {/* Summary bar */}
       {investments.length > 0 && <SummaryBar investments={investments} />}
