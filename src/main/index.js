@@ -911,4 +911,23 @@ function setupIpcHandlers() {
 
     return { expensesImported, weightImported }
   })
+
+  // Rebalancing actions
+  ipcMain.handle('rebalancing:getAll', () => {
+    return db.prepare('SELECT * FROM rebalancing_actions ORDER BY created_at DESC').all()
+  })
+
+  ipcMain.handle('rebalancing:upsert', (_, suggestionText, status) => {
+    const existing = db.prepare('SELECT id FROM rebalancing_actions WHERE suggestion_text = ?').get(suggestionText)
+    if (existing) {
+      db.prepare(
+        `UPDATE rebalancing_actions SET status = ?, completed_at = CASE WHEN ? = 'done' THEN datetime('now') ELSE NULL END WHERE id = ?`
+      ).run(status, status, existing.id)
+      return { id: existing.id }
+    }
+    const result = db.prepare(
+      `INSERT INTO rebalancing_actions (suggestion_text, status, completed_at) VALUES (?, ?, CASE WHEN ? = 'done' THEN datetime('now') ELSE NULL END)`
+    ).run(suggestionText, status, status)
+    return { id: result.lastInsertRowid }
+  })
 }

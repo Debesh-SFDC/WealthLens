@@ -73,6 +73,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDriveSyncStatus: () => ipcRenderer.invoke('drive:getSyncStatus'),
   getDriveDbLastModified: () => ipcRenderer.invoke('drive:getDbLastModified'),
   hasDriveCreds: () => ipcRenderer.invoke('drive:hasCreds'),
+  getDriveCredentials: () => ipcRenderer.invoke('drive:getCreds'),
   saveDriveCredentials: (clientId, clientSecret) => ipcRenderer.invoke('drive:saveCredentials', clientId, clientSecret),
   getInstalledBrowsers: () => ipcRenderer.invoke('drive:getInstalledBrowsers'),
   connectDrive: (browserApp) => ipcRenderer.invoke('drive:connect', browserApp),
@@ -84,4 +85,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
   driveRestore: (fileId) => ipcRenderer.invoke('drive:restore', fileId),
   getDriveAutoBackup: () => ipcRenderer.invoke('drive:getAutoBackup'),
   setDriveAutoBackup: (val) => ipcRenderer.invoke('drive:setAutoBackup', val),
+
+  // Weight tracking
+  logWeight:              (data)   => ipcRenderer.invoke('weight:log', data),
+  getWeightLogs:          (filter) => ipcRenderer.invoke('weight:getAll', filter),
+  deleteWeightLog:        (id)     => ipcRenderer.invoke('weight:delete', id),
+  saveWeightProfile:      (data)   => ipcRenderer.invoke('weight:saveProfile', data),
+  getWeightProfile:       (userId) => ipcRenderer.invoke('weight:getProfile', userId),
+  getAllWeightLogsAdmin:   ()       => ipcRenderer.invoke('weight:getAllForAdmin'),
+  getUsersWithWeightProfile: ()    => ipcRenderer.invoke('weight:getUsersWithProfile'),
+  importPhoneData: (filePath, userId) => ipcRenderer.invoke('phone:import', filePath, userId),
+
+  // Rebalancing actions
+  rebalancingGetAll: () => ipcRenderer.invoke('rebalancing:getAll'),
+  rebalancingUpsert: (text, status) => ipcRenderer.invoke('rebalancing:upsert', text, status),
 })

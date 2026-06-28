@@ -1230,11 +1230,33 @@ function FundCategoriesView({ investments }) {
 }
 
 // ── Allocation Health Check ───────────────────────────────────────────────
-function AllocationHealthCheck({ investments, profile, onRefresh }) {
-  const [open, setOpen] = useState(false)
+function AllocationHealthCheck({ investments, profile, goals, onRefresh }) {
+  const [open, setOpen]                 = useState(false)
+  const [activeTab, setActiveTab]       = useState('allocation')
+  const [doneActions, setDoneActions]   = useState(new Set())
+  const [expanded, setExpanded]         = useState({ increase: true, reduce: true, add: true })
 
-  const age = computeAge(profile?.date_of_birth)
+  const age          = computeAge(profile?.date_of_birth)
   const retirementAge = Number(profile?.retirement_age) || 60
+
+  // Load done rebalancing actions whenever card opens
+  useEffect(() => {
+    if (!open) return
+    window.electronAPI.rebalancingGetAll?.().then(rows => {
+      setDoneActions(new Set((rows || []).filter(r => r.status === 'done').map(r => r.suggestion_text)))
+    }).catch(() => {})
+  }, [open])
+
+  const toggleDone = async (text) => {
+    const isDone    = doneActions.has(text)
+    const newStatus = isDone ? 'pending' : 'done'
+    window.electronAPI.rebalancingUpsert?.(text, newStatus).catch(() => {})
+    setDoneActions(prev => {
+      const next = new Set(prev)
+      isDone ? next.delete(text) : next.add(text)
+      return next
+    })
+  }
 
   if (!age) {
     return (
@@ -1251,102 +1273,135 @@ function AllocationHealthCheck({ investments, profile, onRefresh }) {
     )
   }
 
+  // ── Core calculations ──────────────────────────────────────────────────
   const idealEquityPct = Math.max(20, Math.min(90, 110 - age))
-  const idealSafePct = 100 - idealEquityPct
+  const idealSafePct   = 100 - idealEquityPct
 
-  const equityInvs = investments.filter(isEquityType)
-  const safeInvs   = investments.filter(i => !isEquityType(i))
+  const equityInvs  = investments.filter(isEquityType)
+  const safeInvs    = investments.filter(i => !isEquityType(i))
   const equityValue = equityInvs.reduce((s, i) => s + effectiveCurrentValue(i), 0)
   const safeValue   = safeInvs.reduce((s, i) => s + effectiveCurrentValue(i), 0)
   const totalValue  = equityValue + safeValue
 
   const actualEquityPct = totalValue > 0 ? (equityValue / totalValue) * 100 : 0
   const actualSafePct   = 100 - actualEquityPct
-  const equityGap       = actualEquityPct - idealEquityPct // + = over equity
+  const equityGap       = actualEquityPct - idealEquityPct
   const absGap          = Math.abs(equityGap)
 
+  const statusColor = absGap <= 5 ? '#10B981' : absGap <= 15 ? '#F59E0B' : '#EF4444'
+  const statusText  = absGap <= 5 ? '✓ On Track'
+    : equityGap > 0 ? `▲ ${absGap.toFixed(0)}% over equity` : `▼ ${absGap.toFixed(0)}% under equity`
+
   // ── Category coverage ──────────────────────────────────────────────────
-  const hasEquityMF    = investments.some(i => ['mf_sip', 'mf_lumpsum'].includes(i.type) && isEquityType(i))
-  const hasDebtMF      = investments.some(i => ['mf_sip', 'mf_lumpsum'].includes(i.type) && !isEquityType(i))
-  const hasStocks      = investments.some(i => i.type === 'stocks')
-  const hasPPF         = investments.some(i => i.type === 'ppf')
-  const hasEPF         = investments.some(i => i.type === 'epf')
-  const hasNPS         = investments.some(i => i.type === 'nps')
-  const hasFD          = investments.some(i => i.type === 'fd')
-  const hasGold        = investments.some(i => i.type === 'gold')
-  const hasInsurance   = investments.some(i => i.type === 'insurance')
-  const hasEmergency   = investments.some(i => {
+  const hasEquityMF  = investments.some(i => ['mf_sip','mf_lumpsum'].includes(i.type) && isEquityType(i))
+  const hasDebtMF    = investments.some(i => ['mf_sip','mf_lumpsum'].includes(i.type) && !isEquityType(i))
+  const hasStocks    = investments.some(i => i.type === 'stocks')
+  const hasPPF       = investments.some(i => i.type === 'ppf')
+  const hasEPF       = investments.some(i => i.type === 'epf')
+  const hasNPS       = investments.some(i => i.type === 'nps')
+  const hasFD        = investments.some(i => i.type === 'fd')
+  const hasGold      = investments.some(i => i.type === 'gold')
+  const hasInsurance = investments.some(i => i.type === 'insurance')
+  const hasEmergency = investments.some(i => {
     const n = (i.name || '').toLowerCase()
     return n.includes('emergency') || n.includes('liquid')
   })
-  const hasIntl        = investments.some(i => {
+  const hasIntl = investments.some(i => {
     const n = (i.name || '').toLowerCase()
     return n.includes('international') || n.includes('global') || n.includes('nasdaq') ||
            n.includes('s&p') || n.includes('us ') || n.includes('u.s')
   })
 
-  // ── Suggestions (max 4) ────────────────────────────────────────────────
-  const suggestions = []
-  const equityGapValue = Math.abs((idealEquityPct / 100) * totalValue - equityValue)
+  // ── Suggestions ────────────────────────────────────────────────────────
+  const suggestions        = []
+  const equityGapValue     = Math.abs((idealEquityPct / 100) * totalValue - equityValue)
 
   if (totalValue > 0 && equityGap < -10) {
     const estMonthly = Math.round((equityGapValue / 60) / 500) * 500
     suggestions.push({ type: 'action', text: `Under-invested in growth by ${absGap.toFixed(0)}% (gap ≈ ${fmt(equityGapValue)}). Consider increasing equity SIP${estMonthly > 0 ? ` by ~${fmt(estMonthly)}/mo` : ''} to close the gap over 5 years.` })
   } else if (totalValue > 0 && equityGap > 10) {
-    suggestions.push({ type: 'caution', text: `Equity is ${equityGap.toFixed(0)}% above ideal for age ${age}. Consider adding ~${fmt(equityGapValue)} to PPF, Debt MF, or FD to rebalance toward safety as you near retirement.` })
+    suggestions.push({ type: 'caution', text: `Equity is ${equityGap.toFixed(0)}% above ideal for age ${age}. Consider adding ~${fmt(equityGapValue)} to PPF, Debt MF, or FD to rebalance toward safety.` })
   }
-
-  if (!hasGold) {
-    suggestions.push({ type: 'tip', text: 'No Gold allocation — consider Sovereign Gold Bonds or Gold ETF for a 5–8% portfolio hedge against inflation.' })
-  }
-  if (!hasDebtMF && !hasFD && suggestions.length < 4) {
-    suggestions.push({ type: 'tip', text: 'No Debt MF or FD exposure — adding even 10–15% in debt instruments lowers overall portfolio volatility.' })
-  }
-  if (!hasEmergency && suggestions.length < 4) {
-    suggestions.push({ type: 'warn', text: 'No Emergency Fund detected — keep 6 months of expenses in a liquid fund or savings account before investing further.' })
-  }
+  if (!hasGold) suggestions.push({ type: 'tip', text: 'No Gold allocation — consider Sovereign Gold Bonds or Gold ETF for a 5–8% portfolio hedge against inflation.' })
+  if (!hasDebtMF && !hasFD && suggestions.length < 4) suggestions.push({ type: 'tip', text: 'No Debt MF or FD exposure — adding even 10–15% in debt lowers overall portfolio volatility.' })
+  if (!hasEmergency && suggestions.length < 4) suggestions.push({ type: 'warn', text: 'No Emergency Fund detected — keep 6 months of expenses in a liquid fund before investing further.' })
   if (hasStocks && suggestions.length < 4) {
     const stocksValue = investments.filter(i => i.type === 'stocks').reduce((s, i) => s + effectiveCurrentValue(i), 0)
     const stocksPct   = equityValue > 0 ? (stocksValue / equityValue) * 100 : 0
-    if (stocksPct > 25) {
-      suggestions.push({ type: 'caution', text: `Direct stock exposure is ${stocksPct.toFixed(0)}% of equity bucket — typical recommendation is under 20% unless you actively manage individual stocks.` })
-    }
+    if (stocksPct > 25) suggestions.push({ type: 'caution', text: `Direct stock exposure is ${stocksPct.toFixed(0)}% of equity bucket — typical recommendation is under 20% unless you actively manage individual stocks.` })
   }
-  if (!hasNPS && suggestions.length < 4) {
-    suggestions.push({ type: 'tip', text: 'NPS not in portfolio — offers an extra ₹50,000 tax deduction under 80CCD(1B) with decent long-term returns.' })
-  }
+  if (!hasNPS && suggestions.length < 4) suggestions.push({ type: 'tip', text: 'NPS not in portfolio — offers an extra ₹50,000 tax deduction under 80CCD(1B) with good long-term returns.' })
 
-  // ── Glide path chart ────────────────────────────────────────────────────
+  // ── Glide path chart data ──────────────────────────────────────────────
   const chartStartAge = Math.max(18, age - 3)
   const chartEndAge   = retirementAge + 10
   const CW = 500, CH = 110
   const PL = 36, PR = 12, PT = 10, PB = 24
   const IW = CW - PL - PR, IH = CH - PT - PB
   const Y_MIN = 10, Y_MAX = 100
-
-  const xP = (a) => PL + ((a - chartStartAge) / Math.max(1, chartEndAge - chartStartAge)) * IW
+  const xP = (a)   => PL + ((a - chartStartAge) / Math.max(1, chartEndAge - chartStartAge)) * IW
   const yP = (pct) => PT + ((Y_MAX - pct) / (Y_MAX - Y_MIN)) * IH
-
-  const ages = []
+  const ages      = []
   for (let a = chartStartAge; a <= chartEndAge; a++) ages.push(a)
-
-  const idealLine  = ages.map(a => `${xP(a).toFixed(1)},${yP(Math.max(20, Math.min(90, 110 - a))).toFixed(1)}`).join(' ')
-  const areaFill   = [
-    `${PL},${PT + IH}`,
-    ...ages.map(a => `${xP(a).toFixed(1)},${yP(Math.max(20, Math.min(90, 110 - a))).toFixed(1)}`),
-    `${xP(chartEndAge).toFixed(1)},${PT + IH}`,
-  ].join(' ')
-
+  const idealLine = ages.map(a => `${xP(a).toFixed(1)},${yP(Math.max(20, Math.min(90, 110 - a))).toFixed(1)}`).join(' ')
+  const areaFill  = [`${PL},${PT + IH}`, ...ages.map(a => `${xP(a).toFixed(1)},${yP(Math.max(20, Math.min(90, 110 - a))).toFixed(1)}`), `${xP(chartEndAge).toFixed(1)},${PT + IH}`].join(' ')
   const labelStep = Math.max(1, Math.ceil((chartEndAge - chartStartAge) / 7))
   const labelAges = ages.filter(a => a === age || a === retirementAge || (a - chartStartAge) % labelStep === 0)
 
-  const statusColor = absGap <= 5 ? '#10B981' : absGap <= 15 ? '#F59E0B' : '#EF4444'
-  const statusText  = absGap <= 5 ? '✓ On Track'
-    : equityGap > 0 ? `▲ ${absGap.toFixed(0)}% over equity` : `▼ ${absGap.toFixed(0)}% under equity`
+  // ── Rebalancing data ───────────────────────────────────────────────────
+  const taggedFunds = investments.map(inv => {
+    const val        = effectiveCurrentValue(inv)
+    const isEq       = isEquityType(inv)
+    const bucketTotal = isEq ? equityValue : safeValue
+    const pct        = bucketTotal > 0 ? (val / bucketTotal) * 100 : 0
+    const tag        = pct > 25 ? '🟡' : '🟢'
+    return { ...inv, val, pct, tag, isEq }
+  }).sort((a, b) => b.val - a.val)
+
+  const MF_STYLES = ['large cap', 'mid cap', 'small cap', 'flexi cap', 'multi cap', 'elss', 'balanced advantage', 'index fund', 'sectoral']
+  const mfFunds   = investments.filter(i => ['mf_sip','mf_lumpsum'].includes(i.type))
+  const overlaps  = MF_STYLES.map(style => {
+    const matching = mfFunds.filter(i => (i.name || '').toLowerCase().includes(style))
+    return matching.length >= 2 ? { style, funds: matching } : null
+  }).filter(Boolean)
+
+  // Action lists
+  const increaseActions = []
+  const reduceActions   = []
+  const addActions      = []
+
+  if (totalValue > 0 && equityGap < -10) {
+    const estMonthly = Math.round((equityGapValue / 60) / 500) * 500
+    increaseActions.push(`Increase equity SIP${estMonthly > 0 ? ` by ~${fmt(estMonthly)}/mo` : ''} to close the ${absGap.toFixed(0)}% under-equity gap — redirect to a diversified equity MF`)
+  }
+  taggedFunds.filter(f => f.tag === '🟡').forEach(f => {
+    reduceActions.push(`Redirect future SIP away from "${f.name}" (${f.pct.toFixed(0)}% of ${f.isEq ? 'equity' : 'safe'} bucket — keep each fund under 25% of its bucket)`)
+  })
+  if (totalValue > 0 && equityGap > 10) {
+    reduceActions.push(`Overall equity is ${equityGap.toFixed(0)}% above ideal — redirect ${equityGap.toFixed(0)}% of future contributions to PPF, Debt MF, or FD`)
+  }
+  if (!hasGold)                 addActions.push('Add Gold allocation — Sovereign Gold Bond or Gold ETF (target 5–8% of portfolio for inflation hedge)')
+  if (!hasDebtMF && !hasFD)     addActions.push('Add Debt MF or FD — even 10–15% in debt reduces volatility without sacrificing much return')
+  if (!hasNPS)                  addActions.push('Add NPS — extra ₹50,000 tax deduction under 80CCD(1B) with good long-term returns')
+  if (!hasEmergency)            addActions.push('Build Emergency Fund — 6 months of expenses in a liquid fund before investing further')
+  if (!hasIntl)                 addActions.push('Consider International exposure — 5–10% in US/Global index fund for geographic diversification (optional)')
+
+  const TABS = [
+    { id: 'allocation',  label: 'Allocation',  icon: '📊' },
+    { id: 'coverage',    label: 'Coverage',    icon: '🗂️' },
+    { id: 'suggestions', label: 'Suggestions', icon: '💡' },
+    { id: 'rebalancing', label: 'Rebalancing', icon: '🔁' },
+  ]
+
+  const doneCount = [
+    ...increaseActions, ...reduceActions, ...addActions,
+    ...suggestions.map(s => s.text),
+  ].filter(t => doneActions.has(t)).length
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
-      {/* ── Collapsed header ── */}
+
+      {/* ── Header ── */}
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/50 transition-colors text-left"
@@ -1365,6 +1420,11 @@ function AllocationHealthCheck({ investments, profile, onRefresh }) {
               {statusText}
             </span>
           )}
+          {doneCount > 0 && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-green-50 text-green-600">
+              {doneCount} done
+            </span>
+          )}
           <button
             onClick={e => { e.stopPropagation(); onRefresh?.() }}
             title="Refresh"
@@ -1381,177 +1441,382 @@ function AllocationHealthCheck({ investments, profile, onRefresh }) {
         </div>
       </button>
 
-      {/* ── Expanded body ── */}
+      {/* ── Body ── */}
       {open && (
-        <div className="border-t border-gray-100 px-5 pb-6 pt-5 space-y-5">
+        <>
+          {/* Tab bar */}
+          <div className="flex border-t border-gray-100">
+            {TABS.map(tab => (
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                className={`flex-1 py-2.5 text-[11px] font-semibold transition-all border-b-2 ${
+                  activeTab === tab.id
+                    ? 'border-[#6C63FF] text-[#6C63FF] bg-[#f5f4ff]'
+                    : 'border-transparent text-gray-400 hover:bg-gray-50 hover:text-gray-600'
+                }`}>
+                <span className="mr-1">{tab.icon}</span>{tab.label}
+              </button>
+            ))}
+          </div>
 
-          {/* 1. Current vs Ideal Allocation */}
-          <div>
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">1 · Current vs Ideal Allocation</p>
-            <div className="grid grid-cols-2 gap-3 mb-3">
-              <div className="bg-gray-50 rounded-xl p-3">
-                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Your Portfolio</p>
-                {totalValue > 0 ? (
-                  <>
+          <div className="px-5 pb-6 pt-4 space-y-4">
+
+            {/* ── Tab: Allocation ── */}
+            {activeTab === 'allocation' && (
+              <>
+                {/* Current vs Ideal bars */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-xl p-3">
+                    <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Your Portfolio</p>
+                    {totalValue > 0 ? (
+                      <>
+                        <div className="h-2.5 rounded-full overflow-hidden flex mb-2">
+                          <div style={{ width: `${actualEquityPct}%`, backgroundColor: '#6C63FF' }} />
+                          <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                        </div>
+                        <div className="flex items-center justify-between text-xs font-semibold">
+                          <span style={{ color: '#6C63FF' }}>Equity {actualEquityPct.toFixed(0)}%</span>
+                          <span style={{ color: '#10B981' }}>Safe {actualSafePct.toFixed(0)}%</span>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-1">{fmtCompact(equityValue)} · {fmtCompact(safeValue)}</p>
+                      </>
+                    ) : <p className="text-xs text-gray-400">No investments yet</p>}
+                  </div>
+                  <div className="rounded-xl p-3" style={{ backgroundColor: '#f0efff' }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: '#6C63FF' }}>Ideal for Age {age}</p>
                     <div className="h-2.5 rounded-full overflow-hidden flex mb-2">
-                      <div style={{ width: `${actualEquityPct}%`, backgroundColor: '#6C63FF' }} />
+                      <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#6C63FF' }} />
                       <div style={{ flex: 1, backgroundColor: '#10B981' }} />
                     </div>
                     <div className="flex items-center justify-between text-xs font-semibold">
-                      <span style={{ color: '#6C63FF' }}>Equity {actualEquityPct.toFixed(0)}%</span>
-                      <span style={{ color: '#10B981' }}>Safe {actualSafePct.toFixed(0)}%</span>
+                      <span style={{ color: '#6C63FF' }}>Equity {idealEquityPct}%</span>
+                      <span style={{ color: '#10B981' }}>Safe {idealSafePct}%</span>
                     </div>
-                    <p className="text-[10px] text-gray-400 mt-1">{fmtCompact(equityValue)} / {fmtCompact(safeValue)}</p>
-                  </>
-                ) : (
-                  <p className="text-xs text-gray-400">No investments yet</p>
+                    <p className="text-[10px] text-gray-400 mt-1">110 − age rule</p>
+                  </div>
+                </div>
+
+                {/* Status banner */}
+                {totalValue > 0 && (
+                  <div className={`px-4 py-3 rounded-xl text-xs leading-relaxed ${
+                    absGap <= 5 ? 'bg-green-50 text-green-800' :
+                    equityGap > 0 ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'
+                  }`}>
+                    {absGap <= 5
+                      ? `✓ You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe — well-aligned with the ideal ${idealEquityPct}% / ${idealSafePct}% for your age.`
+                      : equityGap > 0
+                      ? `You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe. Ideal for age ${age} is ${idealEquityPct}% / ${idealSafePct}%. Consider shifting ${equityGap.toFixed(0)}% toward safer instruments.`
+                      : `You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe. Ideal for age ${age} is ${idealEquityPct}% / ${idealSafePct}%. Under-invested in growth by ${absGap.toFixed(0)}%.`
+                    }
+                  </div>
                 )}
-              </div>
-              <div className="rounded-xl p-3" style={{ backgroundColor: '#f0efff' }}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: '#6C63FF' }}>Ideal for Age {age}</p>
-                <div className="h-2.5 rounded-full overflow-hidden flex mb-2">
-                  <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#6C63FF' }} />
-                  <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+
+                {/* Glide path chart */}
+                <div>
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2">Equity Glide Path</p>
+                  <div className="bg-gray-50 rounded-xl p-3 overflow-hidden">
+                    <svg viewBox={`0 0 ${CW} ${CH}`} width="100%" height={CH} style={{ display: 'block', overflow: 'visible' }}>
+                      {[20, 40, 60, 80].map(pct => (
+                        <line key={pct} x1={PL} y1={yP(pct)} x2={PL + IW} y2={yP(pct)}
+                          stroke="#E5E7EB" strokeWidth={0.5} strokeDasharray="3,3" />
+                      ))}
+                      <polygon points={areaFill} fill="#6C63FF" opacity={0.07} />
+                      <polyline points={idealLine} fill="none" stroke="#6C63FF" strokeWidth={2} strokeLinejoin="round" />
+                      {retirementAge >= chartStartAge && retirementAge <= chartEndAge && (
+                        <line x1={xP(retirementAge)} y1={PT} x2={xP(retirementAge)} y2={PT + IH}
+                          stroke="#EF4444" strokeWidth={1} strokeDasharray="4,2" opacity={0.7} />
+                      )}
+                      {totalValue > 0 && (
+                        <circle cx={xP(age)} cy={yP(actualEquityPct)} r={5} fill="#F59E0B" stroke="white" strokeWidth={1.5} />
+                      )}
+                      <circle cx={xP(age)} cy={yP(Math.max(20, Math.min(90, 110 - age)))} r={4} fill="#6C63FF" stroke="white" strokeWidth={1.5} />
+                      {[20, 40, 60, 80].map(pct => (
+                        <text key={pct} x={PL - 4} y={yP(pct) + 3} textAnchor="end"
+                          style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit' }}>{pct}%</text>
+                      ))}
+                      {labelAges.map(a => (
+                        <text key={a} x={xP(a)} y={CH - 2} textAnchor="middle"
+                          style={{ fontSize: '9px', fontFamily: 'inherit',
+                            fontWeight: (a === age || a === retirementAge) ? 'bold' : 'normal',
+                            fill: a === retirementAge ? '#EF4444' : a === age ? '#6C63FF' : '#9ca3af' }}>
+                          {a}
+                        </text>
+                      ))}
+                      <circle cx={PL + 6} cy={PT + 5} r={3} fill="#6C63FF" />
+                      <text x={PL + 12} y={PT + 8} style={{ fontSize: '9px', fill: '#6C63FF', fontFamily: 'inherit' }}>Ideal equity %</text>
+                      {totalValue > 0 && (
+                        <>
+                          <circle cx={PL + 90} cy={PT + 5} r={3} fill="#F59E0B" />
+                          <text x={PL + 96} y={PT + 8} style={{ fontSize: '9px', fill: '#F59E0B', fontFamily: 'inherit' }}>Your actual</text>
+                        </>
+                      )}
+                      <line x1={PL + (totalValue > 0 ? 165 : 90)} y1={PT + 5} x2={PL + (totalValue > 0 ? 175 : 100)} y2={PT + 5}
+                        stroke="#EF4444" strokeWidth={1} strokeDasharray="3,1.5" />
+                      <text x={PL + (totalValue > 0 ? 178 : 103)} y={PT + 8}
+                        style={{ fontSize: '9px', fill: '#EF4444', fontFamily: 'inherit' }}>Retire ({retirementAge})</text>
+                    </svg>
+                    <p className="text-[10px] text-gray-400 mt-1">X = age · Y = ideal equity % · equity decreases as you near retirement</p>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between text-xs font-semibold">
-                  <span style={{ color: '#6C63FF' }}>Equity {idealEquityPct}%</span>
-                  <span style={{ color: '#10B981' }}>Safe {idealSafePct}%</span>
+
+                <p className="text-[10px] text-gray-400 leading-relaxed pt-1 border-t border-gray-100">
+                  <span className="font-semibold">Disclaimer:</span> General guidelines based on the 110-minus-age rule — not personalised financial advice. Consult a SEBI-registered advisor for personalised planning.
+                </p>
+              </>
+            )}
+
+            {/* ── Tab: Coverage ── */}
+            {activeTab === 'coverage' && (
+              <>
+                <p className="text-xs text-gray-500 mb-3">Categories you have covered vs. missing in your portfolio.</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { has: hasEquityMF,  label: 'Equity MF',      icon: '📈' },
+                    { has: hasDebtMF,    label: 'Debt MF',        icon: '📋' },
+                    { has: hasStocks,    label: 'Stocks',         icon: '📊' },
+                    { has: hasEPF,       label: 'EPF',            icon: '💼' },
+                    { has: hasPPF,       label: 'PPF',            icon: '🏛️' },
+                    { has: hasNPS,       label: 'NPS',            icon: '🏦' },
+                    { has: hasFD,        label: 'Fixed Deposit',  icon: '🏧' },
+                    { has: hasGold,      label: 'Gold',           icon: '🥇' },
+                    { has: hasInsurance, label: 'Insurance',      icon: '🛡️' },
+                    { has: hasEmergency, label: 'Emergency Fund', icon: '🚨' },
+                    { has: hasIntl,      label: 'International',  icon: '🌍', optional: true },
+                  ].map(({ has, label, icon, optional }) => (
+                    <div key={label}
+                      className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border ${
+                        has
+                          ? 'bg-green-50 text-green-700 border-green-200'
+                          : optional
+                          ? 'bg-gray-50 text-gray-400 border-gray-100'
+                          : 'bg-red-50 text-red-600 border-red-100'
+                      }`}>
+                      <span>{has ? '✓' : optional ? '○' : '⚠'}</span>
+                      <span>{icon} {label}{optional ? ' (opt)' : ''}</span>
+                    </div>
+                  ))}
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1">110 − age rule</p>
-              </div>
-            </div>
-            {totalValue > 0 && (
-              <div className={`px-4 py-3 rounded-xl text-xs leading-relaxed ${
-                absGap <= 5 ? 'bg-green-50 text-green-800' :
-                equityGap > 0 ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'
-              }`}>
-                {absGap <= 5
-                  ? `✓ You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe — well-aligned with the ideal ${idealEquityPct}% / ${idealSafePct}% for your age.`
-                  : equityGap > 0
-                  ? `You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe. For age ${age}, ideal is ${idealEquityPct}% / ${idealSafePct}%. Consider shifting ${equityGap.toFixed(0)}% toward safer instruments as you approach retirement.`
-                  : `You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe. For age ${age}, ideal is ${idealEquityPct}% / ${idealSafePct}%. You're under-invested in growth by ${absGap.toFixed(0)}%.`
-                }
+                <div className="flex items-center gap-3 mt-2 flex-wrap text-[11px] text-gray-400">
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400 inline-block" /> Covered</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400 inline-block" /> Missing</span>
+                  <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-gray-300 inline-block" /> Optional</span>
+                </div>
+              </>
+            )}
+
+            {/* ── Tab: Suggestions ── */}
+            {activeTab === 'suggestions' && (
+              <>
+                {suggestions.length === 0 ? (
+                  <div className="text-center py-6 text-sm text-gray-400">
+                    <p className="text-2xl mb-2">🎉</p>
+                    <p>No critical suggestions — your portfolio looks well-balanced!</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {suggestions.map((s, i) => (
+                      <div key={i} className={`flex items-start gap-2.5 px-4 py-3 rounded-xl text-xs leading-relaxed ${
+                        s.type === 'action'  ? 'bg-[#f0efff] text-[#4c48b0]' :
+                        s.type === 'caution' ? 'bg-amber-50 text-amber-800' :
+                        s.type === 'warn'    ? 'bg-red-50 text-red-700'     :
+                                              'bg-blue-50 text-blue-800'
+                      }`}>
+                        <span className="shrink-0 mt-0.5">
+                          {s.type === 'action' ? '💡' : s.type === 'caution' ? '⚠️' : s.type === 'warn' ? '🚨' : 'ℹ️'}
+                        </span>
+                        <span className="flex-1">{s.text}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-[10px] text-gray-400 leading-relaxed pt-1 border-t border-gray-100">
+                  <span className="font-semibold">Disclaimer:</span> General guidelines — not personalised financial advice. Consult a SEBI-registered advisor.
+                </p>
+              </>
+            )}
+
+            {/* ── Tab: Rebalancing ── */}
+            {activeTab === 'rebalancing' && (
+              <div className="space-y-5">
+
+                {/* Fund Health Status */}
+                <div>
+                  <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">Fund Health Status</p>
+                  {investments.length === 0 ? (
+                    <p className="text-xs text-gray-400">No investments to analyse.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {taggedFunds.map(fund => {
+                        const goal = (goals || []).find(g => g.id === fund.goal_id)
+                        const meta = TYPE_META[fund.type] || { label: fund.type, color: '#6b7280', bg: '#f9fafb' }
+                        return (
+                          <div key={fund.id} className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
+                            <span className="text-base shrink-0">{fund.tag}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-semibold text-gray-800 truncate">{fund.name}</span>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md font-semibold shrink-0"
+                                  style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
+                                {goal && (
+                                  <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-md font-semibold shrink-0">
+                                    🎯 {goal.emoji} {goal.title}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                  <div className="h-full rounded-full transition-all"
+                                    style={{
+                                      width: `${Math.min(100, fund.pct)}%`,
+                                      backgroundColor: fund.pct > 25 ? '#F59E0B' : '#10B981'
+                                    }} />
+                                </div>
+                                <span className="text-[10px] text-gray-400 shrink-0">
+                                  {fund.pct.toFixed(0)}% of {fund.isEq ? 'equity' : 'safe'} bucket
+                                </span>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-xs font-bold text-gray-800">{fmtCompact(fund.val)}</p>
+                              {fund.tag === '🟡' && <p className="text-[10px] text-amber-600 font-semibold">Overweight</p>}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Overlap / Redundancy */}
+                {overlaps.length > 0 && (
+                  <div>
+                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">⚠ Overlap / Redundancy Detected</p>
+                    <div className="space-y-2">
+                      {overlaps.map((ov, i) => (
+                        <div key={i} className="px-4 py-3 bg-amber-50 border border-amber-100 rounded-xl text-xs text-amber-800">
+                          <p className="font-semibold capitalize">{ov.style} — {ov.funds.length} overlapping funds</p>
+                          <p className="mt-1 text-amber-700">{ov.funds.map(f => f.name).join(' · ')}</p>
+                          <p className="mt-1.5 text-amber-600">Consider consolidating to one fund of this style to avoid tracking the same index/sector twice.</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action: Increase */}
+                {increaseActions.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setExpanded(e => ({ ...e, increase: !e.increase }))}
+                      className="w-full flex items-center justify-between mb-2 text-left"
+                    >
+                      <p className="text-[11px] font-bold text-green-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-green-100 flex items-center justify-center text-[10px]">↑</span>
+                        Increase / Invest More In
+                        <span className="px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full text-[10px] font-bold">{increaseActions.length}</span>
+                      </p>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                        className={`w-3.5 h-3.5 text-gray-400 transition-transform ${expanded.increase ? 'rotate-180' : ''}`}>
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </button>
+                    {expanded.increase && (
+                      <div className="space-y-2">
+                        {increaseActions.map((text, i) => (
+                          <label key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${
+                            doneActions.has(text) ? 'bg-green-50 border border-green-100' : 'bg-gray-50 border border-transparent hover:bg-green-50/40'
+                          }`}>
+                            <input type="checkbox" checked={doneActions.has(text)} onChange={() => toggleDone(text)}
+                              className="mt-0.5 w-3.5 h-3.5 accent-green-500 shrink-0 cursor-pointer" />
+                            <span className={`text-xs leading-relaxed flex-1 ${doneActions.has(text) ? 'line-through text-gray-400' : 'text-gray-700'}`}>{text}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Action: Reduce */}
+                {reduceActions.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setExpanded(e => ({ ...e, reduce: !e.reduce }))}
+                      className="w-full flex items-center justify-between mb-2 text-left"
+                    >
+                      <p className="text-[11px] font-bold text-amber-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-amber-100 flex items-center justify-center text-[10px]">↔</span>
+                        Reduce / Redirect Future Contributions
+                        <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">{reduceActions.length}</span>
+                      </p>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                        className={`w-3.5 h-3.5 text-gray-400 transition-transform ${expanded.reduce ? 'rotate-180' : ''}`}>
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </button>
+                    {expanded.reduce && (
+                      <div className="space-y-2">
+                        {reduceActions.map((text, i) => (
+                          <label key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${
+                            doneActions.has(text) ? 'bg-green-50 border border-green-100' : 'bg-amber-50/60 border border-transparent hover:bg-amber-50'
+                          }`}>
+                            <input type="checkbox" checked={doneActions.has(text)} onChange={() => toggleDone(text)}
+                              className="mt-0.5 w-3.5 h-3.5 accent-amber-500 shrink-0 cursor-pointer" />
+                            <span className={`text-xs leading-relaxed flex-1 ${doneActions.has(text) ? 'line-through text-gray-400' : 'text-amber-900'}`}>{text}</span>
+                          </label>
+                        ))}
+                        <p className="text-[10px] text-amber-600 px-1">No sell recommendations — only redirect future monthly SIP/contributions. Do not liquidate existing holdings.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Action: Add New */}
+                {addActions.length > 0 && (
+                  <div>
+                    <button
+                      onClick={() => setExpanded(e => ({ ...e, add: !e.add }))}
+                      className="w-full flex items-center justify-between mb-2 text-left"
+                    >
+                      <p className="text-[11px] font-bold text-blue-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <span className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center text-[10px]">+</span>
+                        Consider Adding New
+                        <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-bold">{addActions.length}</span>
+                      </p>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                        className={`w-3.5 h-3.5 text-gray-400 transition-transform ${expanded.add ? 'rotate-180' : ''}`}>
+                        <polyline points="6 9 12 15 18 9"/>
+                      </svg>
+                    </button>
+                    {expanded.add && (
+                      <div className="space-y-2">
+                        {addActions.map((text, i) => (
+                          <label key={i} className={`flex items-start gap-3 px-4 py-3 rounded-xl cursor-pointer transition-colors ${
+                            doneActions.has(text) ? 'bg-green-50 border border-green-100' : 'bg-blue-50/60 border border-transparent hover:bg-blue-50'
+                          }`}>
+                            <input type="checkbox" checked={doneActions.has(text)} onChange={() => toggleDone(text)}
+                              className="mt-0.5 w-3.5 h-3.5 accent-blue-500 shrink-0 cursor-pointer" />
+                            <span className={`text-xs leading-relaxed flex-1 ${doneActions.has(text) ? 'line-through text-gray-400' : 'text-blue-900'}`}>{text}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {increaseActions.length === 0 && reduceActions.length === 0 && addActions.length === 0 && (
+                  <div className="text-center py-4 text-sm text-gray-400">
+                    <p className="text-2xl mb-2">🎉</p>
+                    <p>Portfolio looks well-balanced — no rebalancing needed right now!</p>
+                  </div>
+                )}
+
+                <p className="text-[10px] text-gray-400 leading-relaxed pt-2 border-t border-gray-100">
+                  <span className="font-semibold">Rebalancing Disclaimer:</span> All suggestions are to redirect <em>future contributions only</em> — no sell recommendations are made. Mark items as done to track your progress. This is not personalised financial advice. Consult a SEBI-registered advisor.
+                </p>
               </div>
             )}
+
           </div>
-
-          {/* Glide path chart */}
-          <div>
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2">Equity Glide Path</p>
-            <div className="bg-gray-50 rounded-xl p-3 overflow-hidden">
-              <svg viewBox={`0 0 ${CW} ${CH}`} width="100%" height={CH} style={{ display: 'block', overflow: 'visible' }}>
-                {/* Grid lines */}
-                {[20, 40, 60, 80].map(pct => (
-                  <line key={pct} x1={PL} y1={yP(pct)} x2={PL + IW} y2={yP(pct)}
-                    stroke="#E5E7EB" strokeWidth={0.5} strokeDasharray="3,3" />
-                ))}
-                {/* Area fill */}
-                <polygon points={areaFill} fill="#6C63FF" opacity={0.07} />
-                {/* Ideal line */}
-                <polyline points={idealLine} fill="none" stroke="#6C63FF" strokeWidth={2} strokeLinejoin="round" />
-                {/* Retirement marker */}
-                {retirementAge >= chartStartAge && retirementAge <= chartEndAge && (
-                  <line x1={xP(retirementAge)} y1={PT} x2={xP(retirementAge)} y2={PT + IH}
-                    stroke="#EF4444" strokeWidth={1} strokeDasharray="4,2" opacity={0.7} />
-                )}
-                {/* Actual equity dot */}
-                {totalValue > 0 && (
-                  <circle cx={xP(age)} cy={yP(actualEquityPct)} r={5}
-                    fill="#F59E0B" stroke="white" strokeWidth={1.5} />
-                )}
-                {/* Ideal dot at current age */}
-                <circle cx={xP(age)} cy={yP(Math.max(20, Math.min(90, 110 - age)))} r={4}
-                  fill="#6C63FF" stroke="white" strokeWidth={1.5} />
-                {/* Y labels */}
-                {[20, 40, 60, 80].map(pct => (
-                  <text key={pct} x={PL - 4} y={yP(pct) + 3} textAnchor="end"
-                    style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit' }}>{pct}%</text>
-                ))}
-                {/* X labels */}
-                {labelAges.map(a => (
-                  <text key={a} x={xP(a)} y={CH - 2} textAnchor="middle"
-                    style={{ fontSize: '9px', fontFamily: 'inherit', fontWeight: (a === age || a === retirementAge) ? 'bold' : 'normal',
-                      fill: a === retirementAge ? '#EF4444' : a === age ? '#6C63FF' : '#9ca3af' }}>
-                    {a}
-                  </text>
-                ))}
-                {/* Legend */}
-                <circle cx={PL + 6} cy={PT + 5} r={3} fill="#6C63FF" />
-                <text x={PL + 12} y={PT + 8} style={{ fontSize: '9px', fill: '#6C63FF', fontFamily: 'inherit' }}>Ideal equity %</text>
-                {totalValue > 0 && (
-                  <>
-                    <circle cx={PL + 90} cy={PT + 5} r={3} fill="#F59E0B" />
-                    <text x={PL + 96} y={PT + 8} style={{ fontSize: '9px', fill: '#F59E0B', fontFamily: 'inherit' }}>Your actual</text>
-                  </>
-                )}
-                <line x1={PL + (totalValue > 0 ? 165 : 90)} y1={PT + 5} x2={PL + (totalValue > 0 ? 175 : 100)} y2={PT + 5}
-                  stroke="#EF4444" strokeWidth={1} strokeDasharray="3,1.5" />
-                <text x={PL + (totalValue > 0 ? 178 : 103)} y={PT + 8}
-                  style={{ fontSize: '9px', fill: '#EF4444', fontFamily: 'inherit' }}>Retire ({retirementAge})</text>
-              </svg>
-              <p className="text-[10px] text-gray-400 mt-1">X = age · Y = ideal equity allocation · equity % decreases as you near retirement</p>
-            </div>
-          </div>
-
-          {/* 2. Category Coverage */}
-          <div>
-            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">2 · Category Coverage</p>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { has: hasEquityMF,  label: 'Equity MF',      icon: '📈' },
-                { has: hasDebtMF,    label: 'Debt MF',        icon: '📋' },
-                { has: hasStocks,    label: 'Stocks',         icon: '📊' },
-                { has: hasEPF,       label: 'EPF',            icon: '💼' },
-                { has: hasPPF,       label: 'PPF',            icon: '🏛️' },
-                { has: hasNPS,       label: 'NPS',            icon: '🏦' },
-                { has: hasFD,        label: 'Fixed Deposit',  icon: '🏧' },
-                { has: hasGold,      label: 'Gold',           icon: '🥇' },
-                { has: hasInsurance, label: 'Insurance',      icon: '🛡️' },
-                { has: hasEmergency, label: 'Emergency Fund', icon: '🚨' },
-                { has: hasIntl,      label: 'International',  icon: '🌍', optional: true },
-              ].map(({ has, label, icon, optional }) => (
-                <div key={label}
-                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border ${
-                    has
-                      ? 'bg-green-50 text-green-700 border-green-200'
-                      : optional
-                      ? 'bg-gray-50 text-gray-400 border-gray-100'
-                      : 'bg-red-50 text-red-600 border-red-100'
-                  }`}>
-                  <span>{has ? '✓' : optional ? '○' : '⚠'}</span>
-                  <span>{icon} {label}{optional ? ' (opt)' : ''}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* 3. Suggestions */}
-          {suggestions.length > 0 && (
-            <div>
-              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">3 · Actionable Suggestions</p>
-              <div className="space-y-2">
-                {suggestions.map((s, i) => (
-                  <div key={i} className={`flex items-start gap-2.5 px-4 py-3 rounded-xl text-xs leading-relaxed ${
-                    s.type === 'action'  ? 'bg-[#f0efff] text-[#4c48b0]'  :
-                    s.type === 'caution' ? 'bg-amber-50 text-amber-800' :
-                    s.type === 'warn'    ? 'bg-red-50 text-red-700'     :
-                                          'bg-blue-50 text-blue-800'
-                  }`}>
-                    <span className="shrink-0 mt-0.5">
-                      {s.type === 'action' ? '💡' : s.type === 'caution' ? '⚠️' : s.type === 'warn' ? '🚨' : 'ℹ️'}
-                    </span>
-                    <span>{s.text}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Disclaimer */}
-          <p className="text-[10px] text-gray-400 leading-relaxed pt-2 border-t border-gray-100">
-            <span className="font-semibold">Disclaimer:</span> These are general guidelines based on the 110-minus-age asset allocation rule — not personalised financial advice. Your actual risk tolerance, existing safety nets (EPF/PPF/NPS), and life goals should override generic suggestions. Consult a SEBI-registered financial advisor for personalised planning.
-          </p>
-        </div>
+        </>
       )}
     </div>
   )
@@ -2328,7 +2593,7 @@ export default function Investments() {
       </div>
 
       {/* Allocation Health Check */}
-      <AllocationHealthCheck investments={investments} profile={profile} onRefresh={load} />
+      <AllocationHealthCheck investments={investments} profile={profile} goals={goals} onRefresh={load} />
 
       {/* Summary bar */}
       {investments.length > 0 && <SummaryBar investments={investments} />}

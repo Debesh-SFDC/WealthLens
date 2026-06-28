@@ -27,6 +27,7 @@ export function initDatabase() {
   seedTrackerBudget()
   migrateProfileV2()
   migrateWeightTracking()
+  migrateRebalancingActions()
   return db
 }
 
@@ -349,6 +350,18 @@ function migrateProfileV2() {
   try { db.exec('ALTER TABLE profile ADD COLUMN date_of_birth TEXT') } catch {}
   try { db.exec('ALTER TABLE profile ADD COLUMN retirement_age INTEGER DEFAULT 60') } catch {}
   db.exec("UPDATE profile SET retirement_age = 60 WHERE retirement_age IS NULL")
+}
+
+function migrateRebalancingActions() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS rebalancing_actions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      suggestion_text TEXT NOT NULL UNIQUE,
+      status TEXT DEFAULT 'pending' CHECK(status IN ('pending','done')),
+      created_at TEXT DEFAULT (datetime('now')),
+      completed_at TEXT
+    );
+  `)
 }
 
 function migrateWeightTracking() {
