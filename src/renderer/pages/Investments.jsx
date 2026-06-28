@@ -1442,6 +1442,21 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
     ? 'Start a Nifty 50 Index Fund or Flexi Cap Fund as a new SIP to build equity exposure'
     : 'Consider a Mid Cap or International Index fund to diversify equity'
 
+  // ── 5-Year Portfolio Projection ──────────────────────────────────────────
+  // Future value: FV = PV*(1+r)^n + PMT*((1+r)^n - 1)/r
+  const fv5 = (pv, r, pmt, n) => pv * Math.pow(1 + r, n) + (pmt * (Math.pow(1 + r, n) - 1)) / r
+  const R_EQ   = 0.12 / 12  // 1%/mo → 12% p.a. for equity
+  const R_SAFE = 0.07 / 12  // ~0.583%/mo → 7% p.a. for safe instruments
+  const N5     = 60          // 5 years = 60 months
+  const existingEquitySIP = equityInvs.reduce((s, i) => s + (Number(i.monthly_sip_amount) || 0), 0)
+  const existingSafeSIP   = safeInvs.reduce((s, i) => s + (Number(i.monthly_sip_amount) || 0), 0)
+  // Scenario B plan: add monthlyExtraB to existing equity SIP
+  const equityFV5  = fv5(equityValue, R_EQ,   existingEquitySIP + monthlyExtraB, N5)
+  const safeFV5    = fv5(safeValue,   R_SAFE, existingSafeSIP,                   N5)
+  const totalFV5   = equityFV5 + safeFV5
+  const growthPct5 = totalValue > 0 ? ((totalFV5 - totalValue) / totalValue) * 100 : 0
+  const equityPct5 = totalFV5 > 0 ? (equityFV5 / totalFV5) * 100 : 0
+
   const TABS = [
     { id: 'allocation',  label: 'Allocation',  icon: '📊' },
     { id: 'coverage',    label: 'Coverage',    icon: '🗂️' },
@@ -1896,15 +1911,15 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                     {/* Shared timeframe selector */}
                     <div className="flex items-center gap-3">
                       <p className="text-xs font-semibold text-gray-500 shrink-0">Spread over:</p>
-                      <div className="flex gap-1.5">
-                        {[6, 12, 24, 36].map(m => (
+                      <div className="flex gap-1.5 flex-wrap">
+                        {[6, 12, 24, 36, 60].map(m => (
                           <button key={m} onClick={() => setTimeframe(m)}
                             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
                               timeframe === m
                                 ? 'bg-[#6C63FF] text-white border-[#6C63FF]'
                                 : 'bg-white text-gray-500 border-gray-200 hover:border-[#6C63FF]/40'
                             }`}>
-                            {m}mo
+                            {m === 60 ? '5yr' : `${m}mo`}
                           </button>
                         ))}
                       </div>
@@ -2025,6 +2040,57 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                         )}
                       </div>
                     </div>
+
+                    {/* ── 5-Year Projection ── */}
+                    {totalValue > 0 && (
+                      <div className="rounded-2xl border border-emerald-200 overflow-hidden">
+                        <div className="px-4 py-3 bg-emerald-50 border-b border-emerald-100 flex items-center gap-2">
+                          <span className="text-base">📈</span>
+                          <div>
+                            <p className="text-xs font-bold text-emerald-800 uppercase tracking-wide">5-Year Portfolio Outlook</p>
+                            <p className="text-[11px] text-emerald-700 mt-0.5">If you follow Scenario B and your SIPs continue for 5 years</p>
+                          </div>
+                        </div>
+                        <div className="px-4 py-4 bg-emerald-50/30 space-y-3">
+                          {/* Projection rows */}
+                          <div className="bg-white rounded-xl divide-y divide-gray-50 text-xs">
+                            {[
+                              { label: 'Equity in 5 yrs (12% p.a.)', val: fmtCompact(equityFV5),  color: '#6C63FF' },
+                              { label: 'Safe in 5 yrs (7% p.a.)',    val: fmtCompact(safeFV5),    color: '#10B981' },
+                            ].map(r => (
+                              <div key={r.label} className="flex items-center justify-between px-3 py-2.5">
+                                <span className="text-gray-500">{r.label}</span>
+                                <span className="font-semibold" style={{ color: r.color }}>{r.val}</span>
+                              </div>
+                            ))}
+                            <div className="flex items-center justify-between px-3 py-3 bg-emerald-50/60">
+                              <span className="font-bold text-gray-700">Total portfolio in 5 yrs</span>
+                              <div className="text-right">
+                                <p className="text-lg font-bold text-emerald-700">{fmtCompact(totalFV5)}</p>
+                                <p className="text-[10px] text-emerald-600">+{growthPct5.toFixed(0)}% from today's {fmtCompact(totalValue)}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Allocation at 5 years */}
+                          <div className="bg-white rounded-xl p-3">
+                            <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Projected Allocation in 5 Years</p>
+                            <div className="h-2 rounded-full overflow-hidden flex mb-1.5">
+                              <div style={{ width: `${equityPct5}%`, backgroundColor: '#6C63FF' }} />
+                              <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] font-semibold">
+                              <span style={{ color: '#6C63FF' }}>Equity {equityPct5.toFixed(0)}%</span>
+                              <span style={{ color: '#10B981' }}>Safe {(100 - equityPct5).toFixed(0)}%</span>
+                            </div>
+                          </div>
+
+                          <p className="text-[10px] text-gray-400 leading-relaxed">
+                            Assumptions: 12% p.a. for equity/MFs, 7% p.a. for EPF/PPF/FD/insurance. Includes your existing SIPs + the new monthly SIP from Scenario B. Actual returns will vary. Not a guarantee.
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Snapshot note */}
                     <div className="flex items-start gap-2 px-3 py-3 bg-gray-50 rounded-xl">
