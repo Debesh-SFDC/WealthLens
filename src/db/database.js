@@ -25,6 +25,8 @@ export function initDatabase() {
   seedUsers()
   migrateUserPinsToSixDigit()
   seedTrackerBudget()
+  migrateProfileV2()
+  migrateWeightTracking()
   return db
 }
 
@@ -341,6 +343,29 @@ function migrateUserPinsToSixDigit() {
 
 function seedTrackerBudget() {
   try { db.exec('ALTER TABLE profile ADD COLUMN tracker_monthly_budget REAL DEFAULT 0') } catch {}
+}
+
+function migrateProfileV2() {
+  try { db.exec('ALTER TABLE profile ADD COLUMN date_of_birth TEXT') } catch {}
+  try { db.exec('ALTER TABLE profile ADD COLUMN retirement_age INTEGER DEFAULT 60') } catch {}
+  db.exec("UPDATE profile SET retirement_age = 60 WHERE retirement_age IS NULL")
+}
+
+function migrateWeightTracking() {
+  try { db.exec('ALTER TABLE users ADD COLUMN height_cm REAL DEFAULT 0') } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN date_of_birth TEXT') } catch {}
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS weight_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      weight_kg REAL NOT NULL,
+      date TEXT NOT NULL,
+      note TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, date)
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_weight_logs_user_date ON weight_logs(user_id, date)') } catch {}
 }
 
 // ── Exported DB functions ──────────────────────────────────────────────────

@@ -113,6 +113,25 @@ const FILTER_TABS = [
   { key: 'others', label: 'Others' },
 ]
 
+// ── Allocation health helpers ─────────────────────────────────────────────
+function computeAge(dob) {
+  if (!dob) return null
+  const d = new Date(dob)
+  const t = new Date()
+  let a = t.getFullYear() - d.getFullYear()
+  if (t.getMonth() < d.getMonth() || (t.getMonth() === d.getMonth() && t.getDate() < d.getDate())) a--
+  return a
+}
+
+function isEquityType(inv) {
+  if (inv.type === 'stocks') return true
+  if (['epf', 'ppf', 'fd', 'insurance', 'gold', 'nps'].includes(inv.type)) return false
+  const n = (inv.name || '').toLowerCase()
+  if (n.includes('debt') || n.includes('liquid') || n.includes('overnight') ||
+      n.includes('gilt') || n.includes('bond') || n.includes('arbitrage')) return false
+  return true // mf_sip / mf_lumpsum default → equity
+}
+
 const BLANK_FORM = {
   name: '', type: 'mf_sip',
   provider: '', bank_or_amc: '', account_number: '',
@@ -124,11 +143,6 @@ const BLANK_FORM = {
   interest_rate: '', ticker_symbol: '', exchange: 'NSE', purity: '24K',
 }
 
-// Returns the per-month equivalent for any SIP amount+frequency combo
-function sipMonthlyEquiv(amount, frequency) {
-  if (!amount) return 0
-  return frequency === 'weekly' ? (amount * 52) / 12 : amount
-}
 
 // ── Icons ─────────────────────────────────────────────────────────────────
 const RefreshIcon = ({ spinning }) => (
@@ -212,7 +226,7 @@ function AllocationChart({ investments }) {
   const hoveredArc = hovered != null ? arcs.find(a => a.key === hovered) : null
 
   return (
-    <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm mb-4">
+    <div>
       <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Allocation by Type</p>
       <div className="flex items-center gap-5">
 
@@ -664,6 +678,885 @@ function InvestmentCard({ inv, onEdit, onDelete, onRefresh, refreshing, onClick 
   )
 }
 
+// ── Monthly SIP Summary ───────────────────────────────────────────────────
+const SIP_ROWS = [
+  {
+    key: 'mf_sip', label: 'Mutual Fund SIP', color: '#6C63FF', bg: '#f0efff',
+    returnType: 'market',
+    range: '11–22% p.a.',
+    risk: 'Moderate–High Risk',
+    riskColor: '#EF4444',
+  },
+  {
+    key: 'epf', label: 'EPF', color: '#10B981', bg: '#ecfdf5',
+    returnType: 'fixed',
+    range: '~8.25% p.a.',
+    risk: 'No Risk',
+    riskColor: '#10B981',
+  },
+  {
+    key: 'ppf', label: 'PPF', color: '#059669', bg: '#d1fae5',
+    returnType: 'fixed',
+    range: '~7.1% p.a.',
+    risk: 'No Risk',
+    riskColor: '#059669',
+  },
+  {
+    key: 'nps', label: 'NPS', color: '#F59E0B', bg: '#fffbeb',
+    returnType: 'market',
+    range: '9–12% p.a.',
+    risk: 'Low Risk',
+    riskColor: '#10B981',
+  },
+]
+
+function MonthlySIPSummary({ investments }) {
+  const [hovered, setHovered] = useState(null)
+
+  const grouped = SIP_ROWS.map(row => {
+    const items = investments.filter(i => i.type === row.key && Number(i.monthly_sip_amount) > 0)
+    const amount = items.reduce((s, i) => s + (Number(i.monthly_sip_amount) || 0), 0)
+    return { ...row, amount, count: items.length }
+  }).filter(r => r.amount > 0)
+
+  const total = grouped.reduce((s, r) => s + r.amount, 0)
+  if (total === 0) return null
+
+  let angle = 0
+  const arcs = grouped.map(r => {
+    const sweep = (r.amount / total) * 360
+    const start = angle
+    angle += sweep
+    return { ...r, start, end: angle, pct: (r.amount / total) * 100 }
+  })
+
+  const cx = 80, cy = 80, outerR = 68, innerR = 46
+  const hovArc = hovered ? arcs.find(a => a.key === hovered) : null
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Monthly SIP & Contributions</p>
+
+      <div className="flex items-start gap-5">
+        {/* Donut */}
+        <div className="shrink-0">
+          <svg width="160" height="160" viewBox="0 0 160 160">
+            {arcs.map(arc => (
+              <path
+                key={arc.key}
+                d={donutPath(cx, cy, outerR, innerR, arc.start, arc.end)}
+                fill={arc.color}
+                style={{
+                  opacity: hovered === null || hovered === arc.key ? 1 : 0.25,
+                  transform: hovered === arc.key ? 'scale(1.06)' : 'scale(1)',
+                  transformOrigin: `${cx}px ${cy}px`,
+                  transition: 'all 0.15s ease',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={() => setHovered(arc.key)}
+                onMouseLeave={() => setHovered(null)}
+              />
+            ))}
+            <text x={cx} y={cy - 9} textAnchor="middle"
+              style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+              {hovArc ? hovArc.label : 'Total/mo'}
+            </text>
+            <text x={cx} y={cy + 9} textAnchor="middle"
+              style={{ fontSize: '14px', fontWeight: 700, fill: hovArc ? hovArc.color : '#111827', fontFamily: 'inherit' }}>
+              {hovArc ? fmtCompact(hovArc.amount) : fmtCompact(total)}
+            </text>
+            {hovArc && (
+              <text x={cx} y={cy + 22} textAnchor="middle"
+                style={{ fontSize: '9px', fill: '#6b7280', fontFamily: 'inherit' }}>
+                {hovArc.pct.toFixed(1)}%
+              </text>
+            )}
+          </svg>
+        </div>
+
+        {/* Legend */}
+        <div className="flex-1 min-w-0 space-y-3">
+          {arcs.map(arc => (
+            <div key={arc.key}
+              className="cursor-default"
+              style={{ opacity: hovered === null || hovered === arc.key ? 1 : 0.3, transition: 'opacity 0.15s' }}
+              onMouseEnter={() => setHovered(arc.key)}
+              onMouseLeave={() => setHovered(null)}>
+              <div className="flex items-start gap-2">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0 mt-0.5" style={{ backgroundColor: arc.color }} />
+                <div className="flex-1 min-w-0">
+                  {/* Row 1: label + count + amount */}
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span className="text-xs font-semibold text-gray-800">{arc.label}</span>
+                      {arc.count > 0 && (
+                        <span className="px-1 py-px rounded-full text-[9px] font-semibold"
+                          style={{ backgroundColor: arc.bg, color: arc.color }}>
+                          {arc.count}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-bold text-gray-900 shrink-0">{fmt(arc.amount)}</span>
+                  </div>
+                  {/* Row 2: tags */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Fixed / Market linked tag */}
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                      style={arc.returnType === 'fixed'
+                        ? { backgroundColor: '#ecfdf5', color: '#059669' }
+                        : { backgroundColor: '#eff6ff', color: '#3B82F6' }}>
+                      {arc.returnType === 'fixed' ? '🔒 Fixed Return' : '📈 Market Linked'}
+                    </span>
+                    {/* Return range */}
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#6C63FF]/10 text-[#6C63FF]">
+                      {arc.range}
+                    </span>
+                    {/* Risk tag */}
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                      style={{ backgroundColor: arc.riskColor + '15', color: arc.riskColor }}>
+                      {arc.risk}
+                    </span>
+                  </div>
+                  {/* Mini bar */}
+                  <div className="h-1 rounded-full bg-gray-100 overflow-hidden mt-1.5">
+                    <div className="h-full rounded-full transition-all duration-300"
+                      style={{ width: `${arc.pct}%`, backgroundColor: arc.color, opacity: 0.7 }} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── MF SIP Donut Chart ────────────────────────────────────────────────────
+const MF_SIP_COLORS = ['#6C63FF','#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316','#84CC16','#EC4899','#059669','#0EA5E9']
+
+function expectedRange(name) {
+  const n = (name || '').toLowerCase()
+  if (n.includes('small cap'))                                                        return { range: '14–22%', label: 'Small Cap' }
+  if (n.includes('mid cap') || n.includes('midcap'))                                 return { range: '13–18%', label: 'Mid Cap' }
+  if (n.includes('large & mid') || n.includes('large and mid'))                      return { range: '12–17%', label: 'Large & Mid Cap' }
+  if (n.includes('flexi cap') || n.includes('flexicap') || n.includes('multi cap'))  return { range: '12–16%', label: 'Flexi/Multi Cap' }
+  if (n.includes('elss') || n.includes('tax saver') || n.includes('tax saving'))     return { range: '12–16%', label: 'ELSS' }
+  if (n.includes('balanced advantage') || n.includes('conservative hybrid') || n.includes('aggressive hybrid')) return { range: '9–13%', label: 'Hybrid' }
+  if (n.includes('gold'))                                                             return { range: '8–12%', label: 'Gold' }
+  if (n.includes('u.s') || n.includes('us ') || n.includes('international') || n.includes('overseas') || n.includes('global') || n.includes('fund of fund') || n.includes('fof')) return { range: '8–15%', label: 'International' }
+  if (n.includes('nifty 50') || n.includes('sensex') || n.includes('bse 500') || n.includes('nifty 100')) return { range: '11–14%', label: 'Large Cap Index' }
+  if (n.includes('nifty next 50') || n.includes('nifty midcap') || n.includes('midcap 150') || n.includes('midcap 100')) return { range: '13–18%', label: 'Mid Cap Index' }
+  if (n.includes('index') || n.includes('nifty'))                                    return { range: '11–15%', label: 'Index' }
+  if (n.includes('large cap') || n.includes('bluechip') || n.includes('blue chip'))  return { range: '11–14%', label: 'Large Cap' }
+  if (n.includes('debt') || n.includes('liquid') || n.includes('overnight') || n.includes('gilt')) return { range: '6–8%', label: 'Debt' }
+  return { range: '11–16%', label: 'Equity' }
+}
+
+function MFSIPChart({ investments }) {
+  const [hovered, setHovered] = useState(null)
+
+  const sips = investments
+    .filter(i => i.type === 'mf_sip' && Number(i.monthly_sip_amount) > 0)
+    .map((i, idx) => ({
+      name:    i.name || '—',
+      monthly: Number(i.monthly_sip_amount) || 0,
+      color:   MF_SIP_COLORS[idx % MF_SIP_COLORS.length],
+    }))
+    .sort((a, b) => b.monthly - a.monthly)
+
+  if (sips.length === 0) return null
+
+  const total = sips.reduce((s, i) => s + i.monthly, 0)
+
+  let angle = 0
+  const arcs = sips.map(sip => {
+    const sweep = (sip.monthly / total) * 360
+    const start = angle
+    angle += sweep
+    return { ...sip, start, end: angle, pct: (sip.monthly / total) * 100 }
+  })
+
+  const cx = 80, cy = 80, outerR = 68, innerR = 46
+  const hovArc = hovered != null ? arcs.find(a => a.name === hovered) : null
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">MF SIP — Monthly Breakdown</p>
+        <span className="text-xs text-gray-400">{sips.length} fund{sips.length !== 1 ? 's' : ''}</span>
+      </div>
+
+      <div className="flex items-start gap-4">
+        {/* Donut */}
+        <div className="shrink-0">
+          <svg width="160" height="160" viewBox="0 0 160 160">
+            {arcs.map(arc => (
+              <path
+                key={arc.name}
+                d={donutPath(cx, cy, outerR, innerR, arc.start, arc.end)}
+                fill={arc.color}
+                style={{
+                  opacity: hovered === null || hovered === arc.name ? 1 : 0.25,
+                  transform: hovered === arc.name ? 'scale(1.06)' : 'scale(1)',
+                  transformOrigin: `${cx}px ${cy}px`,
+                  transition: 'all 0.15s ease',
+                  cursor: 'pointer',
+                }}
+                onMouseEnter={() => setHovered(arc.name)}
+                onMouseLeave={() => setHovered(null)}
+              />
+            ))}
+            <text x={cx} y={cy - 10} textAnchor="middle"
+              style={{ fontSize: '8px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+              {hovArc ? 'monthly' : 'Total/mo'}
+            </text>
+            <text x={cx} y={cy + 7} textAnchor="middle"
+              style={{ fontSize: hovArc ? '13px' : '14px', fontWeight: 700, fill: hovArc ? hovArc.color : '#111827', fontFamily: 'inherit' }}>
+              {hovArc ? fmt(hovArc.monthly) : fmt(total)}
+            </text>
+            {hovArc && (
+              <text x={cx} y={cy + 20} textAnchor="middle"
+                style={{ fontSize: '9px', fill: '#6b7280', fontFamily: 'inherit' }}>
+                {hovArc.pct.toFixed(1)}%
+              </text>
+            )}
+          </svg>
+        </div>
+
+        {/* Legend */}
+        <div className="flex-1 min-w-0 space-y-3 max-h-52 overflow-y-auto pr-1">
+          {arcs.map(arc => {
+            const exp = expectedRange(arc.name)
+            return (
+              <div key={arc.name}
+                className="cursor-default"
+                style={{ opacity: hovered === null || hovered === arc.name ? 1 : 0.3, transition: 'opacity 0.15s' }}
+                onMouseEnter={() => setHovered(arc.name)}
+                onMouseLeave={() => setHovered(null)}>
+                <div className="flex items-start gap-2">
+                  <div className="w-2 h-2 rounded-full shrink-0 mt-1" style={{ backgroundColor: arc.color }} />
+                  <div className="flex-1 min-w-0">
+                    {/* Name + SIP */}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-gray-800 truncate">{arc.name}</span>
+                      <span className="text-xs font-bold text-gray-900 shrink-0">{fmt(arc.monthly)}</span>
+                    </div>
+                    {/* Expected range */}
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[10px] text-gray-400">Expected:</span>
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#6C63FF]/10 text-[#6C63FF]">
+                        {exp.range} p.a.
+                      </span>
+                      <span className="text-[10px] text-gray-500">({exp.label})</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Fund Categories / Risk Buckets ────────────────────────────────────────
+const RISK_BUCKETS = [
+  {
+    key: 'market',
+    label: 'Market Linked',
+    sublabel: 'Equity / High Risk',
+    color: '#6C63FF',
+    bg: '#f0efff',
+    types: ['mf_sip', 'mf_lumpsum', 'stocks', 'gold'],
+    returnRange: '12–22% p.a.',
+  },
+  {
+    key: 'safe',
+    label: 'Safe & Fixed',
+    sublabel: 'No Risk',
+    color: '#10B981',
+    bg: '#ecfdf5',
+    types: ['epf', 'ppf', 'fd', 'insurance'],
+    returnRange: '6–8.25% p.a.',
+  },
+  {
+    key: 'balanced',
+    label: 'Balanced Return',
+    sublabel: 'Low–Moderate Risk',
+    color: '#F59E0B',
+    bg: '#fffbeb',
+    types: ['nps'],
+    returnRange: '9–12% p.a.',
+  },
+]
+
+function getMonthlyContrib(inv) {
+  if (inv.type === 'mf_sip') return Number(inv.monthly_sip_amount) || 0
+  if (['epf', 'ppf', 'nps'].includes(inv.type)) return Number(inv.monthly_sip_amount) || 0
+  if (inv.type === 'insurance') {
+    const monthly = Number(inv.monthly_sip_amount) || 0
+    const premYears = Number(inv.interest_rate) || 0
+    const start = inv.start_date ? new Date(inv.start_date).getTime() : null
+    if (!start || !monthly || !premYears) return 0
+    const yrs = (Date.now() - start) / (365.25 * 24 * 60 * 60 * 1000)
+    return yrs < premYears ? monthly : 0
+  }
+  return 0
+}
+
+function FundCategoriesView({ investments }) {
+  const [nwHov, setNwHov] = useState(null)
+  const [moHov, setMoHov] = useState(null)
+
+  const buckets = RISK_BUCKETS.map(b => {
+    const items = investments.filter(inv => b.types.includes(inv.type))
+    const netWorth = items.reduce((s, inv) => s + effectiveCurrentValue(inv), 0)
+    const monthly = items.reduce((s, inv) => s + getMonthlyContrib(inv), 0)
+    return { ...b, items, netWorth, monthly }
+  })
+
+  const totalNW = buckets.reduce((s, b) => s + b.netWorth, 0)
+  const totalMonthly = buckets.reduce((s, b) => s + b.monthly, 0)
+
+  const cx = 80, cy = 80, outerR = 68, innerR = 44
+
+  let ang = 0
+  const nwArcs = buckets.filter(b => b.netWorth > 0).map(b => {
+    const sweep = totalNW > 0 ? (b.netWorth / totalNW) * 360 : 0
+    const s = ang; ang += sweep
+    return { ...b, start: s, end: ang, pct: totalNW > 0 ? (b.netWorth / totalNW) * 100 : 0 }
+  })
+
+  ang = 0
+  const moArcs = buckets.filter(b => b.monthly > 0).map(b => {
+    const sweep = totalMonthly > 0 ? (b.monthly / totalMonthly) * 360 : 0
+    const s = ang; ang += sweep
+    return { ...b, start: s, end: ang, pct: totalMonthly > 0 ? (b.monthly / totalMonthly) * 100 : 0 }
+  })
+
+  const nwHovArc = nwHov ? nwArcs.find(a => a.key === nwHov) : null
+  const moHovArc = moHov ? moArcs.find(a => a.key === moHov) : null
+
+  return (
+    <div>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">Portfolio by Risk Category</p>
+
+      <div className="grid grid-cols-2 gap-6 mb-4">
+        {/* Net Worth Split */}
+        <div>
+          <p className="text-[11px] font-semibold text-gray-500 mb-2">Current Net Worth</p>
+          <div className="flex items-center gap-3">
+            <div className="shrink-0">
+              <svg width="160" height="160" viewBox="0 0 160 160">
+                {nwArcs.map(arc => (
+                  <path key={arc.key}
+                    d={donutPath(cx, cy, outerR, innerR, arc.start, arc.end)}
+                    fill={arc.color}
+                    style={{
+                      opacity: nwHov === null || nwHov === arc.key ? 1 : 0.25,
+                      transform: nwHov === arc.key ? 'scale(1.06)' : 'scale(1)',
+                      transformOrigin: `${cx}px ${cy}px`,
+                      transition: 'all 0.15s ease',
+                      cursor: 'pointer',
+                    }}
+                    onMouseEnter={() => setNwHov(arc.key)}
+                    onMouseLeave={() => setNwHov(null)}
+                  />
+                ))}
+                <text x={cx} y={cy - 9} textAnchor="middle"
+                  style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+                  {nwHovArc ? nwHovArc.label : 'Net Worth'}
+                </text>
+                <text x={cx} y={cy + 9} textAnchor="middle"
+                  style={{ fontSize: '14px', fontWeight: 700, fill: nwHovArc ? nwHovArc.color : '#111827', fontFamily: 'inherit' }}>
+                  {nwHovArc ? fmtCompact(nwHovArc.netWorth) : fmtCompact(totalNW)}
+                </text>
+                {nwHovArc && (
+                  <text x={cx} y={cy + 22} textAnchor="middle"
+                    style={{ fontSize: '9px', fill: '#6b7280', fontFamily: 'inherit' }}>
+                    {nwHovArc.pct.toFixed(1)}%
+                  </text>
+                )}
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0 space-y-2">
+              {buckets.map(b => (
+                <div key={b.key} className="cursor-default"
+                  style={{ opacity: nwHov === null || nwHov === b.key ? 1 : 0.3, transition: 'opacity 0.15s' }}
+                  onMouseEnter={() => setNwHov(b.key)}
+                  onMouseLeave={() => setNwHov(null)}>
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                      <span className="text-xs font-medium text-gray-700 truncate">{b.label}</span>
+                    </div>
+                    <span className="text-xs font-bold text-gray-900 shrink-0">{fmt(b.netWorth)}</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-gray-100 overflow-hidden ml-3.5">
+                    <div className="h-full rounded-full"
+                      style={{ width: `${totalNW > 0 ? (b.netWorth / totalNW) * 100 : 0}%`, backgroundColor: b.color, opacity: 0.75, transition: 'width 0.3s ease' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Monthly Split */}
+        <div>
+          <p className="text-[11px] font-semibold text-gray-500 mb-2">Monthly Investment</p>
+          <div className="flex items-center gap-3">
+            <div className="shrink-0">
+              <svg width="160" height="160" viewBox="0 0 160 160">
+                {moArcs.map(arc => (
+                  <path key={arc.key}
+                    d={donutPath(cx, cy, outerR, innerR, arc.start, arc.end)}
+                    fill={arc.color}
+                    style={{
+                      opacity: moHov === null || moHov === arc.key ? 1 : 0.25,
+                      transform: moHov === arc.key ? 'scale(1.06)' : 'scale(1)',
+                      transformOrigin: `${cx}px ${cy}px`,
+                      transition: 'all 0.15s ease',
+                      cursor: 'pointer',
+                    }}
+                    onMouseEnter={() => setMoHov(arc.key)}
+                    onMouseLeave={() => setMoHov(null)}
+                  />
+                ))}
+                <text x={cx} y={cy - 9} textAnchor="middle"
+                  style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+                  {moHovArc ? moHovArc.label : 'Monthly'}
+                </text>
+                <text x={cx} y={cy + 9} textAnchor="middle"
+                  style={{ fontSize: '14px', fontWeight: 700, fill: moHovArc ? moHovArc.color : '#111827', fontFamily: 'inherit' }}>
+                  {moHovArc ? fmtCompact(moHovArc.monthly) : fmtCompact(totalMonthly)}
+                </text>
+                {moHovArc && (
+                  <text x={cx} y={cy + 22} textAnchor="middle"
+                    style={{ fontSize: '9px', fill: '#6b7280', fontFamily: 'inherit' }}>
+                    {moHovArc.pct.toFixed(1)}%
+                  </text>
+                )}
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0 space-y-2">
+              {buckets.map(b => (
+                <div key={b.key} className="cursor-default"
+                  style={{ opacity: moHov === null || moHov === b.key ? 1 : 0.3, transition: 'opacity 0.15s' }}
+                  onMouseEnter={() => setMoHov(b.key)}
+                  onMouseLeave={() => setMoHov(null)}>
+                  <div className="flex items-center justify-between gap-1 mb-0.5">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                      <span className="text-xs font-medium text-gray-700 truncate">{b.label}</span>
+                    </div>
+                    <span className="text-xs font-bold text-gray-900 shrink-0">{fmt(b.monthly)}/mo</span>
+                  </div>
+                  <div className="h-1 rounded-full bg-gray-100 overflow-hidden ml-3.5">
+                    <div className="h-full rounded-full"
+                      style={{ width: `${totalMonthly > 0 ? (b.monthly / totalMonthly) * 100 : 0}%`, backgroundColor: b.color, opacity: 0.75, transition: 'width 0.3s ease' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bucket detail rows */}
+      <div className="space-y-2">
+        {buckets.map(b => (
+          <div key={b.key} className="rounded-xl overflow-hidden"
+            style={{ border: `1px solid ${b.color}40` }}>
+            {/* Bucket header */}
+            <div className="flex items-center justify-between px-3 py-2.5" style={{ backgroundColor: b.bg }}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: b.color }} />
+                <span className="text-xs font-bold" style={{ color: b.color }}>{b.label}</span>
+                <span className="text-[10px] text-gray-500">{b.sublabel}</span>
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                  style={{ backgroundColor: b.color + '20', color: b.color }}>{b.returnRange}</span>
+              </div>
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="text-right">
+                  <p className="text-[10px] text-gray-400 leading-none">Net Worth</p>
+                  <p className="text-xs font-bold text-gray-900">{fmt(b.netWorth)}</p>
+                </div>
+                {b.monthly > 0 && (
+                  <div className="text-right">
+                    <p className="text-[10px] text-gray-400 leading-none">Monthly</p>
+                    <p className="text-xs font-bold" style={{ color: b.color }}>{fmt(b.monthly)}/mo</p>
+                  </div>
+                )}
+              </div>
+            </div>
+            {/* Items */}
+            {b.items.length > 0 && (
+              <div className="bg-white divide-y divide-gray-50">
+                {b.items.map(inv => {
+                  const meta = TYPE_META[inv.type] || {}
+                  const monthly = getMonthlyContrib(inv)
+                  return (
+                    <div key={inv.id} className="flex items-center justify-between px-4 py-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="shrink-0 px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+                          style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
+                        <span className="text-xs font-medium text-gray-700 truncate">{inv.name}</span>
+                      </div>
+                      <div className="flex items-center gap-4 shrink-0 ml-2">
+                        <div className="text-right">
+                          <p className="text-xs font-semibold text-gray-800">{fmt(effectiveCurrentValue(inv))}</p>
+                          <p className="text-[10px] text-gray-400">value</p>
+                        </div>
+                        {monthly > 0 && (
+                          <div className="text-right">
+                            <p className="text-xs font-semibold" style={{ color: b.color }}>{fmt(monthly)}/mo</p>
+                            <p className="text-[10px] text-gray-400">monthly</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Allocation Health Check ───────────────────────────────────────────────
+function AllocationHealthCheck({ investments, profile, onRefresh }) {
+  const [open, setOpen] = useState(false)
+
+  const age = computeAge(profile?.date_of_birth)
+  const retirementAge = Number(profile?.retirement_age) || 60
+
+  if (!age) {
+    return (
+      <div className="bg-gradient-to-r from-[#f0efff] to-[#eff6ff] rounded-2xl border border-[#6C63FF]/20 p-4 mb-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: '#e8e6ff' }}>📊</div>
+          <div>
+            <p className="text-sm font-bold text-gray-900">Allocation Health Check</p>
+            <p className="text-xs text-gray-500 mt-0.5">Add your Date of Birth in Settings to get personalised allocation guidance</p>
+          </div>
+        </div>
+        <span className="text-[11px] font-semibold text-[#6C63FF] px-3 py-1.5 bg-white rounded-xl border border-[#6C63FF]/20 shrink-0">Settings → Profile</span>
+      </div>
+    )
+  }
+
+  const idealEquityPct = Math.max(20, Math.min(90, 110 - age))
+  const idealSafePct = 100 - idealEquityPct
+
+  const equityInvs = investments.filter(isEquityType)
+  const safeInvs   = investments.filter(i => !isEquityType(i))
+  const equityValue = equityInvs.reduce((s, i) => s + effectiveCurrentValue(i), 0)
+  const safeValue   = safeInvs.reduce((s, i) => s + effectiveCurrentValue(i), 0)
+  const totalValue  = equityValue + safeValue
+
+  const actualEquityPct = totalValue > 0 ? (equityValue / totalValue) * 100 : 0
+  const actualSafePct   = 100 - actualEquityPct
+  const equityGap       = actualEquityPct - idealEquityPct // + = over equity
+  const absGap          = Math.abs(equityGap)
+
+  // ── Category coverage ──────────────────────────────────────────────────
+  const hasEquityMF    = investments.some(i => ['mf_sip', 'mf_lumpsum'].includes(i.type) && isEquityType(i))
+  const hasDebtMF      = investments.some(i => ['mf_sip', 'mf_lumpsum'].includes(i.type) && !isEquityType(i))
+  const hasStocks      = investments.some(i => i.type === 'stocks')
+  const hasPPF         = investments.some(i => i.type === 'ppf')
+  const hasEPF         = investments.some(i => i.type === 'epf')
+  const hasNPS         = investments.some(i => i.type === 'nps')
+  const hasFD          = investments.some(i => i.type === 'fd')
+  const hasGold        = investments.some(i => i.type === 'gold')
+  const hasInsurance   = investments.some(i => i.type === 'insurance')
+  const hasEmergency   = investments.some(i => {
+    const n = (i.name || '').toLowerCase()
+    return n.includes('emergency') || n.includes('liquid')
+  })
+  const hasIntl        = investments.some(i => {
+    const n = (i.name || '').toLowerCase()
+    return n.includes('international') || n.includes('global') || n.includes('nasdaq') ||
+           n.includes('s&p') || n.includes('us ') || n.includes('u.s')
+  })
+
+  // ── Suggestions (max 4) ────────────────────────────────────────────────
+  const suggestions = []
+  const equityGapValue = Math.abs((idealEquityPct / 100) * totalValue - equityValue)
+
+  if (totalValue > 0 && equityGap < -10) {
+    const estMonthly = Math.round((equityGapValue / 60) / 500) * 500
+    suggestions.push({ type: 'action', text: `Under-invested in growth by ${absGap.toFixed(0)}% (gap ≈ ${fmt(equityGapValue)}). Consider increasing equity SIP${estMonthly > 0 ? ` by ~${fmt(estMonthly)}/mo` : ''} to close the gap over 5 years.` })
+  } else if (totalValue > 0 && equityGap > 10) {
+    suggestions.push({ type: 'caution', text: `Equity is ${equityGap.toFixed(0)}% above ideal for age ${age}. Consider adding ~${fmt(equityGapValue)} to PPF, Debt MF, or FD to rebalance toward safety as you near retirement.` })
+  }
+
+  if (!hasGold) {
+    suggestions.push({ type: 'tip', text: 'No Gold allocation — consider Sovereign Gold Bonds or Gold ETF for a 5–8% portfolio hedge against inflation.' })
+  }
+  if (!hasDebtMF && !hasFD && suggestions.length < 4) {
+    suggestions.push({ type: 'tip', text: 'No Debt MF or FD exposure — adding even 10–15% in debt instruments lowers overall portfolio volatility.' })
+  }
+  if (!hasEmergency && suggestions.length < 4) {
+    suggestions.push({ type: 'warn', text: 'No Emergency Fund detected — keep 6 months of expenses in a liquid fund or savings account before investing further.' })
+  }
+  if (hasStocks && suggestions.length < 4) {
+    const stocksValue = investments.filter(i => i.type === 'stocks').reduce((s, i) => s + effectiveCurrentValue(i), 0)
+    const stocksPct   = equityValue > 0 ? (stocksValue / equityValue) * 100 : 0
+    if (stocksPct > 25) {
+      suggestions.push({ type: 'caution', text: `Direct stock exposure is ${stocksPct.toFixed(0)}% of equity bucket — typical recommendation is under 20% unless you actively manage individual stocks.` })
+    }
+  }
+  if (!hasNPS && suggestions.length < 4) {
+    suggestions.push({ type: 'tip', text: 'NPS not in portfolio — offers an extra ₹50,000 tax deduction under 80CCD(1B) with decent long-term returns.' })
+  }
+
+  // ── Glide path chart ────────────────────────────────────────────────────
+  const chartStartAge = Math.max(18, age - 3)
+  const chartEndAge   = retirementAge + 10
+  const CW = 500, CH = 110
+  const PL = 36, PR = 12, PT = 10, PB = 24
+  const IW = CW - PL - PR, IH = CH - PT - PB
+  const Y_MIN = 10, Y_MAX = 100
+
+  const xP = (a) => PL + ((a - chartStartAge) / Math.max(1, chartEndAge - chartStartAge)) * IW
+  const yP = (pct) => PT + ((Y_MAX - pct) / (Y_MAX - Y_MIN)) * IH
+
+  const ages = []
+  for (let a = chartStartAge; a <= chartEndAge; a++) ages.push(a)
+
+  const idealLine  = ages.map(a => `${xP(a).toFixed(1)},${yP(Math.max(20, Math.min(90, 110 - a))).toFixed(1)}`).join(' ')
+  const areaFill   = [
+    `${PL},${PT + IH}`,
+    ...ages.map(a => `${xP(a).toFixed(1)},${yP(Math.max(20, Math.min(90, 110 - a))).toFixed(1)}`),
+    `${xP(chartEndAge).toFixed(1)},${PT + IH}`,
+  ].join(' ')
+
+  const labelStep = Math.max(1, Math.ceil((chartEndAge - chartStartAge) / 7))
+  const labelAges = ages.filter(a => a === age || a === retirementAge || (a - chartStartAge) % labelStep === 0)
+
+  const statusColor = absGap <= 5 ? '#10B981' : absGap <= 15 ? '#F59E0B' : '#EF4444'
+  const statusText  = absGap <= 5 ? '✓ On Track'
+    : equityGap > 0 ? `▲ ${absGap.toFixed(0)}% over equity` : `▼ ${absGap.toFixed(0)}% under equity`
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+      {/* ── Collapsed header ── */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/50 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: '#f0efff' }}>📊</div>
+          <div>
+            <p className="text-sm font-bold text-gray-900">Allocation Health Check</p>
+            <p className="text-xs text-gray-400 mt-0.5">Age {age} · Ideal {idealEquityPct}% equity / {idealSafePct}% safe</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          {totalValue > 0 && (
+            <span className="text-[10px] font-bold px-2 py-1 rounded-full"
+              style={{ backgroundColor: statusColor + '18', color: statusColor }}>
+              {statusText}
+            </span>
+          )}
+          <button
+            onClick={e => { e.stopPropagation(); onRefresh?.() }}
+            title="Refresh"
+            className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+              <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+              <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+            </svg>
+          </button>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+            className={`w-4 h-4 text-gray-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`}>
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </div>
+      </button>
+
+      {/* ── Expanded body ── */}
+      {open && (
+        <div className="border-t border-gray-100 px-5 pb-6 pt-5 space-y-5">
+
+          {/* 1. Current vs Ideal Allocation */}
+          <div>
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">1 · Current vs Ideal Allocation</p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div className="bg-gray-50 rounded-xl p-3">
+                <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Your Portfolio</p>
+                {totalValue > 0 ? (
+                  <>
+                    <div className="h-2.5 rounded-full overflow-hidden flex mb-2">
+                      <div style={{ width: `${actualEquityPct}%`, backgroundColor: '#6C63FF' }} />
+                      <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-semibold">
+                      <span style={{ color: '#6C63FF' }}>Equity {actualEquityPct.toFixed(0)}%</span>
+                      <span style={{ color: '#10B981' }}>Safe {actualSafePct.toFixed(0)}%</span>
+                    </div>
+                    <p className="text-[10px] text-gray-400 mt-1">{fmtCompact(equityValue)} / {fmtCompact(safeValue)}</p>
+                  </>
+                ) : (
+                  <p className="text-xs text-gray-400">No investments yet</p>
+                )}
+              </div>
+              <div className="rounded-xl p-3" style={{ backgroundColor: '#f0efff' }}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: '#6C63FF' }}>Ideal for Age {age}</p>
+                <div className="h-2.5 rounded-full overflow-hidden flex mb-2">
+                  <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#6C63FF' }} />
+                  <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                </div>
+                <div className="flex items-center justify-between text-xs font-semibold">
+                  <span style={{ color: '#6C63FF' }}>Equity {idealEquityPct}%</span>
+                  <span style={{ color: '#10B981' }}>Safe {idealSafePct}%</span>
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1">110 − age rule</p>
+              </div>
+            </div>
+            {totalValue > 0 && (
+              <div className={`px-4 py-3 rounded-xl text-xs leading-relaxed ${
+                absGap <= 5 ? 'bg-green-50 text-green-800' :
+                equityGap > 0 ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-800'
+              }`}>
+                {absGap <= 5
+                  ? `✓ You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe — well-aligned with the ideal ${idealEquityPct}% / ${idealSafePct}% for your age.`
+                  : equityGap > 0
+                  ? `You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe. For age ${age}, ideal is ${idealEquityPct}% / ${idealSafePct}%. Consider shifting ${equityGap.toFixed(0)}% toward safer instruments as you approach retirement.`
+                  : `You're at ${actualEquityPct.toFixed(0)}% equity / ${actualSafePct.toFixed(0)}% safe. For age ${age}, ideal is ${idealEquityPct}% / ${idealSafePct}%. You're under-invested in growth by ${absGap.toFixed(0)}%.`
+                }
+              </div>
+            )}
+          </div>
+
+          {/* Glide path chart */}
+          <div>
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-2">Equity Glide Path</p>
+            <div className="bg-gray-50 rounded-xl p-3 overflow-hidden">
+              <svg viewBox={`0 0 ${CW} ${CH}`} width="100%" height={CH} style={{ display: 'block', overflow: 'visible' }}>
+                {/* Grid lines */}
+                {[20, 40, 60, 80].map(pct => (
+                  <line key={pct} x1={PL} y1={yP(pct)} x2={PL + IW} y2={yP(pct)}
+                    stroke="#E5E7EB" strokeWidth={0.5} strokeDasharray="3,3" />
+                ))}
+                {/* Area fill */}
+                <polygon points={areaFill} fill="#6C63FF" opacity={0.07} />
+                {/* Ideal line */}
+                <polyline points={idealLine} fill="none" stroke="#6C63FF" strokeWidth={2} strokeLinejoin="round" />
+                {/* Retirement marker */}
+                {retirementAge >= chartStartAge && retirementAge <= chartEndAge && (
+                  <line x1={xP(retirementAge)} y1={PT} x2={xP(retirementAge)} y2={PT + IH}
+                    stroke="#EF4444" strokeWidth={1} strokeDasharray="4,2" opacity={0.7} />
+                )}
+                {/* Actual equity dot */}
+                {totalValue > 0 && (
+                  <circle cx={xP(age)} cy={yP(actualEquityPct)} r={5}
+                    fill="#F59E0B" stroke="white" strokeWidth={1.5} />
+                )}
+                {/* Ideal dot at current age */}
+                <circle cx={xP(age)} cy={yP(Math.max(20, Math.min(90, 110 - age)))} r={4}
+                  fill="#6C63FF" stroke="white" strokeWidth={1.5} />
+                {/* Y labels */}
+                {[20, 40, 60, 80].map(pct => (
+                  <text key={pct} x={PL - 4} y={yP(pct) + 3} textAnchor="end"
+                    style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit' }}>{pct}%</text>
+                ))}
+                {/* X labels */}
+                {labelAges.map(a => (
+                  <text key={a} x={xP(a)} y={CH - 2} textAnchor="middle"
+                    style={{ fontSize: '9px', fontFamily: 'inherit', fontWeight: (a === age || a === retirementAge) ? 'bold' : 'normal',
+                      fill: a === retirementAge ? '#EF4444' : a === age ? '#6C63FF' : '#9ca3af' }}>
+                    {a}
+                  </text>
+                ))}
+                {/* Legend */}
+                <circle cx={PL + 6} cy={PT + 5} r={3} fill="#6C63FF" />
+                <text x={PL + 12} y={PT + 8} style={{ fontSize: '9px', fill: '#6C63FF', fontFamily: 'inherit' }}>Ideal equity %</text>
+                {totalValue > 0 && (
+                  <>
+                    <circle cx={PL + 90} cy={PT + 5} r={3} fill="#F59E0B" />
+                    <text x={PL + 96} y={PT + 8} style={{ fontSize: '9px', fill: '#F59E0B', fontFamily: 'inherit' }}>Your actual</text>
+                  </>
+                )}
+                <line x1={PL + (totalValue > 0 ? 165 : 90)} y1={PT + 5} x2={PL + (totalValue > 0 ? 175 : 100)} y2={PT + 5}
+                  stroke="#EF4444" strokeWidth={1} strokeDasharray="3,1.5" />
+                <text x={PL + (totalValue > 0 ? 178 : 103)} y={PT + 8}
+                  style={{ fontSize: '9px', fill: '#EF4444', fontFamily: 'inherit' }}>Retire ({retirementAge})</text>
+              </svg>
+              <p className="text-[10px] text-gray-400 mt-1">X = age · Y = ideal equity allocation · equity % decreases as you near retirement</p>
+            </div>
+          </div>
+
+          {/* 2. Category Coverage */}
+          <div>
+            <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">2 · Category Coverage</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { has: hasEquityMF,  label: 'Equity MF',      icon: '📈' },
+                { has: hasDebtMF,    label: 'Debt MF',        icon: '📋' },
+                { has: hasStocks,    label: 'Stocks',         icon: '📊' },
+                { has: hasEPF,       label: 'EPF',            icon: '💼' },
+                { has: hasPPF,       label: 'PPF',            icon: '🏛️' },
+                { has: hasNPS,       label: 'NPS',            icon: '🏦' },
+                { has: hasFD,        label: 'Fixed Deposit',  icon: '🏧' },
+                { has: hasGold,      label: 'Gold',           icon: '🥇' },
+                { has: hasInsurance, label: 'Insurance',      icon: '🛡️' },
+                { has: hasEmergency, label: 'Emergency Fund', icon: '🚨' },
+                { has: hasIntl,      label: 'International',  icon: '🌍', optional: true },
+              ].map(({ has, label, icon, optional }) => (
+                <div key={label}
+                  className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-semibold border ${
+                    has
+                      ? 'bg-green-50 text-green-700 border-green-200'
+                      : optional
+                      ? 'bg-gray-50 text-gray-400 border-gray-100'
+                      : 'bg-red-50 text-red-600 border-red-100'
+                  }`}>
+                  <span>{has ? '✓' : optional ? '○' : '⚠'}</span>
+                  <span>{icon} {label}{optional ? ' (opt)' : ''}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. Suggestions */}
+          {suggestions.length > 0 && (
+            <div>
+              <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">3 · Actionable Suggestions</p>
+              <div className="space-y-2">
+                {suggestions.map((s, i) => (
+                  <div key={i} className={`flex items-start gap-2.5 px-4 py-3 rounded-xl text-xs leading-relaxed ${
+                    s.type === 'action'  ? 'bg-[#f0efff] text-[#4c48b0]'  :
+                    s.type === 'caution' ? 'bg-amber-50 text-amber-800' :
+                    s.type === 'warn'    ? 'bg-red-50 text-red-700'     :
+                                          'bg-blue-50 text-blue-800'
+                  }`}>
+                    <span className="shrink-0 mt-0.5">
+                      {s.type === 'action' ? '💡' : s.type === 'caution' ? '⚠️' : s.type === 'warn' ? '🚨' : 'ℹ️'}
+                    </span>
+                    <span>{s.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Disclaimer */}
+          <p className="text-[10px] text-gray-400 leading-relaxed pt-2 border-t border-gray-100">
+            <span className="font-semibold">Disclaimer:</span> These are general guidelines based on the 110-minus-age asset allocation rule — not personalised financial advice. Your actual risk tolerance, existing safety nets (EPF/PPF/NPS), and life goals should override generic suggestions. Consult a SEBI-registered financial advisor for personalised planning.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── MF Fund search (autocomplete) ─────────────────────────────────────────
 function MFSearchInput({ value, schemeCode, onSelect }) {
   const [query, setQuery] = useState(value || '')
@@ -951,11 +1844,6 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                           </button>
                         ))}
                       </div>
-                      {form.monthly_sip_amount > 0 && form.sip_frequency === 'weekly' && (
-                        <p className="text-xs text-gray-400 mt-1">
-                          ≈ {fmt(sipMonthlyEquiv(Number(form.monthly_sip_amount), 'weekly'))}/mo
-                        </p>
-                      )}
                     </div>
                   )}
                   {form.scheme_code && (
@@ -1288,16 +2176,9 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                 {(form.type === 'mf_sip' || ['epf', 'ppf', 'nps'].includes(form.type)) && form.monthly_sip_amount > 0 && (
                   <div className="bg-white rounded-xl p-3 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">
-                      {['epf', 'ppf', 'nps'].includes(form.type)
-                        ? 'Monthly Contribution'
-                        : form.sip_frequency === 'weekly' ? 'Weekly SIP' : 'Monthly SIP'}
+                      {['epf', 'ppf', 'nps'].includes(form.type) ? 'Monthly Contribution' : 'Monthly SIP'}
                     </p>
                     <p className="text-lg font-bold text-green-700">{fmt(Number(form.monthly_sip_amount))}</p>
-                    {form.type === 'mf_sip' && form.sip_frequency === 'weekly' && (
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        ≈ {fmt(sipMonthlyEquiv(Number(form.monthly_sip_amount), 'weekly'))}/mo
-                      </p>
-                    )}
                   </div>
                 )}
 
@@ -1330,6 +2211,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
 export default function Investments() {
   const [investments, setInvestments] = useState([])
   const [goals, setGoals] = useState([])
+  const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
@@ -1338,6 +2220,7 @@ export default function Investments() {
   const [quickInv, setQuickInv] = useState(null)
   const [refreshingId, setRefreshingId] = useState(null)
   const [toast, setToast] = useState(null)
+  const [chartTab, setChartTab] = useState('allocation')
 
   const showToast = (msg, type = 'ok') => {
     setToast({ msg, type })
@@ -1347,12 +2230,14 @@ export default function Investments() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [inv, g] = await Promise.all([
+      const [inv, g, prof] = await Promise.all([
         window.electronAPI.getAllInvestments(),
         window.electronAPI.getAllGoals(),
+        window.electronAPI.getProfile(),
       ])
       setInvestments(inv || [])
       setGoals(g || [])
+      setProfile(prof || null)
     } catch (e) {
       console.error(e)
     } finally {
@@ -1442,11 +2327,43 @@ export default function Investments() {
         </button>
       </div>
 
+      {/* Allocation Health Check */}
+      <AllocationHealthCheck investments={investments} profile={profile} onRefresh={load} />
+
       {/* Summary bar */}
       {investments.length > 0 && <SummaryBar investments={investments} />}
 
-      {/* Allocation chart */}
-      {investments.length > 0 && <AllocationChart investments={investments} />}
+      {/* Tabbed charts */}
+      {investments.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+          <div className="flex gap-0 border-b border-gray-100">
+            {[
+              { key: 'allocation', label: 'Allocation' },
+              { key: 'sip',        label: 'Monthly SIP' },
+              { key: 'mfsip',      label: 'MF SIP Funds' },
+              { key: 'categories', label: 'Fund Buckets' },
+            ].map(t => (
+              <button
+                key={t.key}
+                onClick={() => setChartTab(t.key)}
+                className="px-5 py-3 text-xs font-semibold transition-all border-b-2"
+                style={{
+                  borderBottomColor: chartTab === t.key ? '#6C63FF' : 'transparent',
+                  color: chartTab === t.key ? '#6C63FF' : '#9ca3af',
+                }}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="p-4">
+            {chartTab === 'allocation' && <AllocationChart investments={investments} />}
+            {chartTab === 'sip'        && <MonthlySIPSummary investments={investments} />}
+            {chartTab === 'mfsip'      && <MFSIPChart investments={investments} />}
+            {chartTab === 'categories' && <FundCategoriesView investments={investments} />}
+          </div>
+        </div>
+      )}
 
       {/* Filter tabs + search */}
       <div className="flex items-center gap-3 mb-4">

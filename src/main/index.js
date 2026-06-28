@@ -325,13 +325,13 @@ function setupIpcHandlers() {
     const existing = db.prepare('SELECT id FROM profile LIMIT 1').get()
     if (existing) {
       db.prepare(
-        `UPDATE profile SET name = ?, monthly_salary = ?, salary_updated_at = datetime('now') WHERE id = ?`
-      ).run(data.name, data.monthly_salary, existing.id)
+        `UPDATE profile SET name = ?, monthly_salary = ?, salary_updated_at = datetime('now'), date_of_birth = ?, retirement_age = ? WHERE id = ?`
+      ).run(data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60, existing.id)
       return { id: existing.id }
     }
     const result = db.prepare(
-      `INSERT INTO profile (name, monthly_salary, salary_updated_at) VALUES (?, ?, datetime('now'))`
-    ).run(data.name, data.monthly_salary)
+      `INSERT INTO profile (name, monthly_salary, salary_updated_at, date_of_birth, retirement_age) VALUES (?, ?, datetime('now'), ?, ?)`
+    ).run(data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60)
     return { id: result.lastInsertRowid }
   })
 
@@ -774,6 +774,7 @@ function setupIpcHandlers() {
   ipcMain.handle('drive:getSyncStatus',   ()              => getSyncStatus(dbPath))
   ipcMain.handle('drive:getDbLastModified', ()            => getDbLastModified(dbPath))
   ipcMain.handle('drive:hasCreds',        ()              => Boolean(getStoredCreds()))
+  ipcMain.handle('drive:getCreds',        ()              => getStoredCreds() || null)
   ipcMain.handle('drive:saveCredentials', (_, id, secret) => { saveCreds(id, secret); return { success: true } })
 
   ipcMain.handle('drive:getInstalledBrowsers', () => {
@@ -812,5 +813,102 @@ function setupIpcHandlers() {
   ipcMain.handle('drive:setAutoBackup',   (_, val)        => {
     saveAppSettings({ ...getAppSettings(), autoBackup: Boolean(val) })
     return { success: true }
+  })
+
+  // ── Weight Logs ────────────────────────────────────────────────────────────
+  ipcMain.handle('weight:log', (_, { userId, weightKg, date, note }) => {
+    db.prepare(`
+      INSERT INTO weight_logs (user_id, weight_kg, date, note)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(user_id, date) DO UPDATE SET
+        weight_kg = excluded.weight_kg,
+        note = excluded.note,
+        created_at = datetime('now')
+    `).run(userId, weightKg, date, note ?? null)
+    return { success: true }
+  })
+
+  ipcMain.handle('weight:getAll', (_, { userId, from, to } = {}) => {
+    let query = 'SELECT * FROM weight_logs WHERE user_id = ?'
+    const params = [userId]
+    if (from) { query += ' AND date >= ?'; params.push(from) }
+    if (to)   { query += ' AND date <= ?'; params.push(to)   }
+    query += ' ORDER BY date ASC'
+    return db.prepare(query).all(...params)
+  })
+
+  ipcMain.handle('weight:delete', (_, id) => {
+    db.prepare('DELETE FROM weight_logs WHERE id = ?').run(id)
+    return { success: true }
+  })
+
+  ipcMain.handle('weight:saveProfile', (_, { userId, heightCm, dateOfBirth }) => {
+    db.prepare('UPDATE users SET height_cm = ?, date_of_birth = ? WHERE id = ?').run(heightCm, dateOfBirth ?? null, userId)
+    return { success: true }
+  })
+
+  ipcMain.handle('weight:getProfile', (_, userId) => {
+    return db.prepare('SELECT height_cm, date_of_birth FROM users WHERE id = ?').get(userId)
+  })
+
+  ipcMain.handle('weight:getAllForAdmin', () => {
+    return db.prepare(`
+      SELECT wl.*, u.name AS user_name, u.role AS user_role, u.height_cm, u.date_of_birth
+      FROM weight_logs wl
+      JOIN users u ON wl.user_id = u.id
+      ORDER BY wl.date DESC, wl.created_at DESC
+    `).all()
+  })
+
+  ipcMain.handle('weight:getUsersWithProfile', () => {
+    return db.prepare(
+      'SELECT id, name, role, avatar_color, height_cm, date_of_birth FROM users ORDER BY role DESC'
+    ).all()
+  })
+
+  ipcMain.handle('phone:import', (_, filePath, userId) => {
+    const content = readFileSync(filePath, 'utf8')
+    const data = JSON.parse(content)
+
+    let targetUser
+    if (userId) {
+      targetUser = db.prepare('SELECT id FROM users WHERE id=?').get(userId)
+    }
+    if (!targetUser) {
+      targetUser = db.prepare("SELECT id FROM users WHERE role='tracker'").get()
+    }
+    if (!targetUser) throw new Error('No target user found')
+
+    let expensesImported = 0
+    let weightImported = 0
+
+    if (Array.isArray(data.expenses)) {
+      const insert = db.prepare(`
+        INSERT OR IGNORE INTO expenses (sync_id, amount, category, note, date, logged_by, created_at)
+        VALUES (@sync_id, @amount, @category, @note, @date, @logged_by, @created_at)
+      `)
+      for (const exp of data.expenses) {
+        if (!exp.sync_id) continue
+        const result = insert.run({
+          sync_id: exp.sync_id, amount: exp.amount, category: exp.category,
+          note: exp.note || null, date: exp.date, logged_by: targetUser.id,
+          created_at: exp.created_at || new Date().toISOString(),
+        })
+        if (result.changes) expensesImported++
+      }
+    }
+
+    if (Array.isArray(data.weight_logs)) {
+      const upsert = db.prepare(`
+        INSERT INTO weight_logs (user_id, weight_kg, date, note)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, date) DO UPDATE SET weight_kg=excluded.weight_kg, note=excluded.note
+      `)
+      for (const log of data.weight_logs) {
+        try { upsert.run(targetUser.id, log.weight_kg, log.date, log.note || null); weightImported++ } catch {}
+      }
+    }
+
+    return { expensesImported, weightImported }
   })
 }
