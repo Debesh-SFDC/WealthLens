@@ -2766,6 +2766,265 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
   )
 }
 
+// ── Mass Update Modal ─────────────────────────────────────────────────────
+function MassUpdateModal({ investments, onDone, onClose, showToast }) {
+  const [values, setValues]       = useState(() =>
+    Object.fromEntries(investments.map(inv => [inv.id, String(Number(inv.current_value) || 0)]))
+  )
+  const [fetching, setFetching]   = useState({}) // id → boolean
+  const [fetchingAll, setFetchingAll] = useState(false)
+  const [saving, setSaving]       = useState(false)
+
+  const setVal = (id, v) => setValues(p => ({ ...p, [id]: v }))
+
+  const fetchMF = async (inv) => {
+    if (!inv.scheme_code) return
+    setFetching(f => ({ ...f, [inv.id]: true }))
+    try {
+      const { nav } = await window.electronAPI.fetchMFNav(inv.scheme_code)
+      const cv = Number(inv.units) > 0 ? (Number(inv.units) * nav).toFixed(2) : nav.toFixed(2)
+      setVal(inv.id, cv)
+    } catch { showToast?.(`${inv.name}: fetch failed`, 'error') }
+    finally { setFetching(f => ({ ...f, [inv.id]: false })) }
+  }
+
+  const fetchGold = async (inv) => {
+    if (!Number(inv.units)) return
+    setFetching(f => ({ ...f, [inv.id]: true }))
+    try {
+      const { inrPerGram } = await window.electronAPI.fetchGoldPrice()
+      const pf = inv.purity === '22K' ? 22/24 : inv.purity === '18K' ? 18/24 : 1
+      setVal(inv.id, (Number(inv.units) * inrPerGram * pf).toFixed(2))
+    } catch { showToast?.('Gold price fetch failed', 'error') }
+    finally { setFetching(f => ({ ...f, [inv.id]: false })) }
+  }
+
+  const fetchAll = async () => {
+    setFetchingAll(true)
+    const mfList   = investments.filter(i => ['mf_sip','mf_lumpsum'].includes(i.type) && i.scheme_code)
+    const goldList = investments.filter(i => i.type === 'gold' && Number(i.units))
+    for (const inv of mfList)   await fetchMF(inv)
+    for (const inv of goldList) await fetchGold(inv)
+    setFetchingAll(false)
+    if (mfList.length + goldList.length > 0) showToast?.('Live prices fetched', 'ok')
+    else showToast?.('No auto-fetchable investments found', 'warn')
+  }
+
+  const handleSaveAll = async () => {
+    setSaving(true)
+    let changed = 0
+    try {
+      for (const inv of investments) {
+        if (inv.type === 'insurance') continue // auto-calculated — skip
+        const newVal = Number(values[inv.id]) || 0
+        const oldVal = Number(inv.current_value) || 0
+        if (Math.abs(newVal - oldVal) > 0.01) {
+          await window.electronAPI.updateInvestment({ ...inv, current_value: newVal })
+          changed++
+        }
+      }
+      showToast?.(`${changed} investment${changed !== 1 ? 's' : ''} updated`)
+      onDone()
+    } catch (e) {
+      showToast?.(`Save failed: ${e.message}`, 'error')
+    } finally { setSaving(false) }
+  }
+
+  // Derived totals
+  const totalOld = investments.reduce((s, inv) => s + effectiveCurrentValue(inv), 0)
+  const totalNew = investments.reduce((s, inv) => {
+    if (inv.type === 'insurance') return s + effectiveCurrentValue(inv)
+    return s + (Number(values[inv.id]) || 0)
+  }, 0)
+  const totalChange    = totalNew - totalOld
+  const totalChangePct = totalOld > 0 ? (totalChange / totalOld) * 100 : 0
+
+  // Type ordering for display
+  const TYPE_ORDER = ['mf_sip','mf_lumpsum','stocks','gold','epf','ppf','nps','fd','insurance']
+  const grouped = TYPE_ORDER
+    .map(type => ({ type, items: investments.filter(i => i.type === type) }))
+    .filter(g => g.items.length > 0)
+
+  const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[94vh] flex flex-col"
+           onClick={e => e.stopPropagation()}>
+
+        {/* ── Header ── */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Monthly Value Update</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{today} · Update current values for all investments in one go</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={fetchAll} disabled={fetchingAll}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-60 transition-colors">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                className={`w-3.5 h-3.5 ${fetchingAll ? 'animate-spin' : ''}`}>
+                <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+              </svg>
+              {fetchingAll ? 'Fetching…' : 'Fetch All Prices'}
+            </button>
+            <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+              <CloseIcon />
+            </button>
+          </div>
+        </div>
+
+        {/* ── Change summary bar ── */}
+        <div className="px-6 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3 text-xs text-gray-500">
+            <span>Previous: <strong className="text-gray-800">{fmt(totalOld)}</strong></span>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5 text-gray-400">
+              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+            </svg>
+            <span>New: <strong className="text-gray-900">{fmt(totalNew)}</strong></span>
+          </div>
+          {Math.abs(totalChange) > 1 && (
+            <span className={`text-sm font-bold ${totalChange >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+              {totalChange >= 0 ? '▲' : '▼'} {fmtCompact(Math.abs(totalChange))}
+              <span className="text-xs font-normal ml-1">({totalChange > 0 ? '+' : ''}{totalChangePct.toFixed(1)}%)</span>
+            </span>
+          )}
+        </div>
+
+        {/* ── Column headers ── */}
+        <div className="px-6 py-2 bg-gray-50 border-b border-gray-100 grid grid-cols-[1fr_120px_16px_140px_64px_72px] gap-3 shrink-0">
+          {['Investment', 'Previous', '', 'New Value (₹)', 'Change', ''].map((h, i) => (
+            <p key={i} className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">{h}</p>
+          ))}
+        </div>
+
+        {/* ── Investment list ── */}
+        <div className="flex-1 overflow-y-auto">
+          {grouped.map(({ type, items }) => {
+            const meta      = TYPE_META[type] || { label: type, color: '#6b7280', bg: '#f9fafb' }
+            const isAutoCalc = type === 'insurance'
+            const canAutoFetch = ['mf_sip','mf_lumpsum','gold'].includes(type)
+            return (
+              <div key={type}>
+                {/* Group header */}
+                <div className="px-6 py-2 bg-gray-50/80 border-y border-gray-100 flex items-center gap-2">
+                  <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg"
+                    style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
+                  <span className="text-[11px] text-gray-400">{items.length} holding{items.length !== 1 ? 's' : ''}</span>
+                  {isAutoCalc && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-gray-100 text-gray-500 rounded-full ml-auto">auto-calculated · no edit needed</span>
+                  )}
+                  {canAutoFetch && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded-full ml-auto">live price available</span>
+                  )}
+                </div>
+
+                {/* Rows */}
+                <div className="divide-y divide-gray-50">
+                  {items.map(inv => {
+                    const oldVal    = effectiveCurrentValue(inv)
+                    const newVal    = isAutoCalc ? oldVal : (Number(values[inv.id]) || 0)
+                    const change    = oldVal > 0 ? ((newVal - oldVal) / oldVal) * 100 : 0
+                    const isChanged = !isAutoCalc && Math.abs(newVal - (Number(inv.current_value) || 0)) > 0.01
+                    const canFetch  = (type === 'mf_sip' || type === 'mf_lumpsum') && inv.scheme_code
+                                      || type === 'gold' && Number(inv.units)
+
+                    return (
+                      <div key={inv.id}
+                        className={`px-6 py-3 grid grid-cols-[1fr_120px_16px_140px_64px_72px] gap-3 items-center transition-colors ${isChanged ? 'bg-[#f0efff]/40' : 'hover:bg-gray-50/60'}`}>
+
+                        {/* Name */}
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-800 truncate leading-snug">{inv.name}</p>
+                          {(inv.bank_or_amc || inv.provider) && (
+                            <p className="text-[11px] text-gray-400 truncate">{inv.bank_or_amc || inv.provider}</p>
+                          )}
+                        </div>
+
+                        {/* Previous value */}
+                        <div className="text-right">
+                          <p className="text-sm font-semibold text-gray-500">{fmtCompact(oldVal)}</p>
+                        </div>
+
+                        {/* Arrow */}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3 text-gray-300 shrink-0">
+                          <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+                        </svg>
+
+                        {/* New value input or auto-calc badge */}
+                        {isAutoCalc ? (
+                          <div className="px-3 py-2 bg-gray-50 rounded-xl text-right">
+                            <p className="text-sm font-semibold text-gray-400">{fmtCompact(oldVal)}</p>
+                            <p className="text-[10px] text-gray-400">computed</p>
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            className={`w-full px-3 py-2 rounded-xl border text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 transition-colors ${
+                              isChanged ? 'border-[#6C63FF]/40 bg-[#f5f4ff]' : 'border-gray-200 bg-white'
+                            }`}
+                            value={values[inv.id]}
+                            onChange={e => setVal(inv.id, e.target.value)}
+                          />
+                        )}
+
+                        {/* Change % */}
+                        <div className="text-right">
+                          {!isAutoCalc && Math.abs(change) > 0.05 ? (
+                            <span className={`text-xs font-bold ${change >= 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              {change > 0 ? '▲' : '▼'} {Math.abs(change).toFixed(1)}%
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
+                          )}
+                        </div>
+
+                        {/* Fetch button */}
+                        <div>
+                          {canFetch ? (
+                            <button
+                              onClick={() => type === 'gold' ? fetchGold(inv) : fetchMF(inv)}
+                              disabled={fetching[inv.id] || fetchingAll}
+                              className="w-full px-2 py-1.5 rounded-lg text-[10px] font-semibold bg-blue-50 text-blue-600 hover:bg-blue-100 disabled:opacity-50 transition-colors flex items-center justify-center gap-1">
+                              {fetching[inv.id]
+                                ? <span className="animate-pulse">…</span>
+                                : <><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                                    <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                                    <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                                  </svg> Live</>}
+                            </button>
+                          ) : <span />}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* ── Footer ── */}
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between shrink-0 bg-white">
+          <p className="text-xs text-gray-400">Only investments with changed values will be saved.</p>
+          <div className="flex gap-3">
+            <button onClick={onClose}
+              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-500 hover:bg-gray-100 transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSaveAll} disabled={saving}
+              className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 transition-opacity"
+              style={{ backgroundColor: '#6C63FF' }}>
+              {saving ? 'Saving…' : 'Save All Changes'}
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  )
+}
+
 // ── Main Investments page ─────────────────────────────────────────────────
 export default function Investments() {
   const [investments, setInvestments] = useState([])
@@ -2780,6 +3039,7 @@ export default function Investments() {
   const [refreshingId, setRefreshingId] = useState(null)
   const [toast, setToast] = useState(null)
   const [chartTab, setChartTab] = useState('allocation')
+  const [showMassUpdate, setShowMassUpdate] = useState(false)
 
   const showToast = (msg, type = 'ok') => {
     setToast({ msg, type })
@@ -2878,12 +3138,21 @@ export default function Investments() {
           <h2 className="text-2xl font-bold text-gray-900">Investments</h2>
           <p className="mt-1 text-sm text-gray-500">MF · Stocks · FD · Gold · EPF · PPF · NPS</p>
         </div>
-        <button onClick={() => { setEditInv(null); setShowForm(true) }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#6C63FF' }}>
-          <span className="text-base font-bold leading-none">+</span>
-          Add Investment
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setShowMassUpdate(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            Monthly Update
+          </button>
+          <button onClick={() => { setEditInv(null); setShowForm(true) }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: '#6C63FF' }}>
+            <span className="text-base font-bold leading-none">+</span>
+            Add Investment
+          </button>
+        </div>
       </div>
 
       {/* Allocation Health Check */}
@@ -3007,6 +3276,16 @@ export default function Investments() {
           inv={quickInv}
           onSave={handleQuickUpdate}
           onClose={() => setQuickInv(null)}
+        />
+      )}
+
+      {/* Mass Monthly Update modal */}
+      {showMassUpdate && (
+        <MassUpdateModal
+          investments={investments.filter(i => i.type !== 'insurance' || true)}
+          onDone={() => { setShowMassUpdate(false); load() }}
+          onClose={() => setShowMassUpdate(false)}
+          showToast={showToast}
         />
       )}
 
