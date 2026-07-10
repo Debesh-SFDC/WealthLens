@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">WealthLensTracker</string>
+    <string name="title_activity_main">WealthLensTracker</string>
+    <string name="package_name">com.wealthlens.tracker</string>
+    <string name="custom_url_scheme">com.wealthlens.tracker</string>
+</resources>

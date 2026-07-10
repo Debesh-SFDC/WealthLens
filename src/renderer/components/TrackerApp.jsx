@@ -4,6 +4,7 @@ import TrackerHome from '../pages/TrackerHome'
 import TrackerDashboard from '../pages/TrackerDashboard'
 import TrackerInsights from '../pages/TrackerInsights'
 import TrackerCategories from '../pages/TrackerCategories'
+import TrackerWeight from '../pages/TrackerWeight'
 
 function HomeIcon() {
   return (
@@ -45,6 +46,17 @@ function CategoriesIcon() {
   )
 }
 
+function WeightIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <path d="M6 2h12l2 6H4L6 2z" />
+      <rect x="3" y="8" width="18" height="13" rx="2" />
+      <line x1="12" y1="12" x2="12" y2="17" />
+      <line x1="9.5" y1="14.5" x2="14.5" y2="14.5" />
+    </svg>
+  )
+}
+
 function SignOutIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -60,6 +72,7 @@ const navItems = [
   { id: 'dashboard',  label: 'Dashboard',  Icon: DashboardIcon },
   { id: 'insights',   label: 'Insights',   Icon: InsightsIcon },
   { id: 'categories', label: 'Categories', Icon: CategoriesIcon },
+  { id: 'weight',     label: 'Weight',     Icon: WeightIcon },
 ]
 
 function NavButton({ item, isActive, onClick }) {
@@ -173,6 +186,7 @@ export default function TrackerApp({ user, onSignOut }) {
         {page === 'dashboard'  && <TrackerDashboard  user={user} />}
         {page === 'insights'   && <TrackerInsights   user={user} />}
         {page === 'categories' && <TrackerCategories user={user} />}
+        {page === 'weight'     && <TrackerWeight     user={user} />}
       </main>
     </div>
   )

@@ -4,7 +4,7 @@ const PAGE_TITLES = {
   investments: 'Investments',
   expenses:    'Expenses',
   salary:      'Salary Allocator',
-  networth:    'Wealth & Goals',
+  networth:    'Net Worth',
   settings:    'Settings',
 }
 

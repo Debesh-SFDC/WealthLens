@@ -31,11 +31,13 @@ export default function Onboarding({ onComplete }) {
     if (save && goalTitle.trim() && goalAmount) {
       await window.electronAPI.createGoal({
         title: goalTitle.trim(),
-        type: 'need',
+        type: 'life_goal',
+        category: 'need',
         target_amount: parseFloat(goalAmount),
-        target_year: Number(goalYear),
+        target_date: `${goalYear}-12-31`,
         emoji: goalEmoji,
         color: '#6C63FF',
+        inflation_adjust: true,
         inflation_rate: 6,
       })
     }

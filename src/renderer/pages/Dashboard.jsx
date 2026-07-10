@@ -68,6 +68,64 @@ function getGreeting(name) {
   return name ? `Good ${time}, ${name.split(' ')[0]} 👋` : `Good ${time} 👋`
 }
 
+// ── Quick-log weight inline ───────────────────────────────────────────────
+function QuickWeightCard({ userId, onSaved }) {
+  const today = new Date().toISOString().slice(0, 10)
+  const [input, setInput]         = useState('')
+  const [saving, setSaving]       = useState(false)
+  const [saved, setSaved]         = useState(false)
+  const [todayWeight, setTodayWeight] = useState(null)
+
+  useEffect(() => {
+    if (!userId) return
+    window.electronAPI.getWeightLogs({ userId, from: today, to: today })
+      .then(logs => { if (logs?.length) setTodayWeight(logs[0].weight_kg) })
+      .catch(() => {})
+  }, [userId])
+
+  async function save() {
+    const kg = parseFloat(input)
+    if (!userId || isNaN(kg) || kg <= 0) return
+    setSaving(true)
+    try {
+      await window.electronAPI.logWeight({ userId, weightKg: kg, date: today })
+      setTodayWeight(kg)
+      setInput('')
+      setSaved(true)
+      setTimeout(() => setSaved(false), 2000)
+      onSaved?.()
+    } catch {}
+    setSaving(false)
+  }
+
+  return (
+    <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex-1">
+      <div className="flex items-center gap-2 mb-3">
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg" style={{ backgroundColor: '#ecfdf5' }}>⚖️</div>
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Today's Weight</p>
+          <p className="text-xs text-gray-400">{todayWeight ? `Logged: ${todayWeight} kg` : 'Not logged yet'}</p>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <input
+          type="number" placeholder="e.g. 70.5 kg" step="0.1" min="20" max="300"
+          value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save() }}
+          className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm font-bold text-gray-900 focus:outline-none focus:border-[#10B981] focus:ring-2 focus:ring-[#10B981]/20"
+        />
+        <button
+          onClick={save} disabled={!input || saving}
+          className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+          style={{ backgroundColor: saved ? '#059669' : '#10B981' }}
+        >
+          {saving ? '…' : saved ? '✓' : 'Save'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ── Quick-add expense modal ───────────────────────────────────────────────
 function QuickAddExpense({ categories, onAdded, onClose }) {
   const today = new Date().toISOString().slice(0, 10)
@@ -179,42 +237,180 @@ function SalaryDonut({ plan }) {
 }
 
 // ── Goals mini list ───────────────────────────────────────────────────────
-function GoalsMini({ goals, investments }) {
-  const active = goals.filter(g => !g.is_achieved).slice(0, 3)
-  if (!active.length) {
+function parseGoalDate(d) {
+  if (!d) return null
+  const dt = new Date(d)
+  return isNaN(dt.getTime()) ? null : dt
+}
+
+function daysUntil(targetDate) {
+  const t = parseGoalDate(targetDate)
+  if (!t) return null
+  const now = new Date()
+  t.setHours(0, 0, 0, 0)
+  now.setHours(0, 0, 0, 0)
+  return Math.round((t - now) / (24 * 60 * 60 * 1000))
+}
+
+function miniCountdown(days) {
+  if (days === null) return 'No deadline'
+  if (days < 0) return `${Math.abs(days)}d overdue`
+  if (days === 0) return 'Due today'
+  if (days < 90) return `${days} days left`
+  const months = Math.round(days / 30.44)
+  if (months < 24) return `${months} months left`
+  return `${(days / 365.25).toFixed(1)} yr left`
+}
+
+function effectiveGoalTarget(g) {
+  if (g.type === 'life_goal' && g.inflation_adjust) {
+    const t = parseGoalDate(g.target_date)
+    const years = t ? Math.max(0, (t - new Date()) / (365.25 * 24 * 60 * 60 * 1000)) : 0
+    return (g.target_amount || 0) * Math.pow(1 + (g.inflation_rate || 6) / 100, years)
+  }
+  return g.target_amount || 0
+}
+
+function goalProgressPct(g) {
+  const target = effectiveGoalTarget(g)
+  if (target <= 0) return 0
+  return Math.min(100, Math.max(0, ((g.current_amount || 0) / target) * 100))
+}
+
+function MiniRing({ pct, color, size = 40, stroke = 4.5 }) {
+  const r = (size - stroke * 2) / 2
+  const circ = 2 * Math.PI * r
+  const offset = circ * (1 - Math.min(pct / 100, 1))
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f3f4f6" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+        strokeDasharray={`${circ} ${circ}`} strokeDashoffset={offset} strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function GoalsMini({ goals, onContribute }) {
+  const sorted = goals
+    .filter(g => !g.is_achieved)
+    .sort((a, b) => {
+      const da = daysUntil(a.target_date)
+      const db_ = daysUntil(b.target_date)
+      if (da === null && db_ === null) return 0
+      if (da === null) return 1
+      if (db_ === null) return -1
+      return da - db_
+    })
+    .slice(0, 3)
+
+  if (!sorted.length) {
     return (
       <div className="flex items-center justify-center h-28 rounded-xl bg-gray-50 border border-dashed border-gray-200">
         <p className="text-sm text-gray-400">No active goals</p>
       </div>
     )
   }
-  const curYear = new Date().getFullYear()
+
   return (
     <div className="space-y-3">
-      {active.map(g => {
-        const linked = investments.filter(i => i.goal_id === g.id)
-        const saved  = linked.reduce((s, i) => s + (i.current_value || 0), 0)
-        const years  = Math.max(0, (g.target_year || curYear) - curYear)
-        const target = (g.target_amount || 0) * Math.pow(1 + (g.inflation_rate || 6) / 100, years)
-        const pct    = target > 0 ? Math.min(100, (saved / target) * 100) : 0
+      {sorted.map(g => {
+        const pct = goalProgressPct(g)
+        const days = daysUntil(g.target_date)
         const accent = g.color || '#6C63FF'
         return (
           <div key={g.id} className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: accent + '18' }}>
-              {g.emoji || '🎯'}
+            <div className="relative shrink-0">
+              <MiniRing pct={pct} color={accent} />
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className="text-[9px] font-bold" style={{ color: accent }}>{Math.round(pct)}%</span>
+              </div>
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex justify-between mb-1">
-                <p className="text-sm font-medium text-gray-800 truncate">{g.title}</p>
-                <p className="text-xs font-semibold text-gray-500 shrink-0 ml-2">{pct.toFixed(0)}%</p>
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-sm font-medium text-gray-800 truncate">{g.emoji || '🎯'} {g.title}</p>
+                <span className={`text-xs font-medium shrink-0 ${days !== null && days < 0 ? 'text-red-500' : 'text-gray-400'}`}>{miniCountdown(days)}</span>
               </div>
-              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+              <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-1.5">
                 <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: accent }} />
               </div>
             </div>
+            <button
+              onClick={() => onContribute(g)}
+              title="Add contribution"
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-white text-sm font-bold shrink-0 hover:opacity-90 transition-opacity"
+              style={{ backgroundColor: accent }}
+            >
+              +
+            </button>
           </div>
         )
       })}
+    </div>
+  )
+}
+
+// ── Quick "Add Contribution" modal ───────────────────────────────────────
+function QuickContributionModal({ goal, onSave, onClose }) {
+  const isDebt = goal.type === 'debt_payoff'
+  const outstanding = Math.max(0, (goal.target_amount || 0) - (goal.current_amount || 0))
+  const [amount, setAmount] = useState('')
+  const [newOutstanding, setNewOutstanding] = useState(outstanding ? String(Math.round(outstanding)) : '')
+  const [saving, setSaving] = useState(false)
+  const accent = goal.color || '#6C63FF'
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      const today = new Date().toISOString().slice(0, 10)
+      if (isDebt) {
+        const updated = Number(newOutstanding) || 0
+        const delta = outstanding - updated
+        await onSave({ goal_id: goal.id, amount: delta, note: `Balance updated to ${fmt(updated)}`, contributed_at: today, contribution_type: 'manual' })
+      } else {
+        await onSave({ goal_id: goal.id, amount: Number(amount) || 0, note: null, contributed_at: today, contribution_type: 'manual' })
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const disabled = isDebt ? newOutstanding === '' : !amount || Number(amount) === 0
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="font-bold text-gray-900">{goal.emoji || '🎯'} {isDebt ? 'Update Outstanding Balance' : `Add to ${goal.title}`}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+        <div className="p-5">
+          {isDebt ? (
+            <>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">New Outstanding Balance (₹)</label>
+              <input type="number" autoFocus className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2"
+                value={newOutstanding} onChange={e => setNewOutstanding(e.target.value)} />
+              <p className="text-xs text-gray-400 mt-1">Currently {fmt(outstanding)} outstanding</p>
+            </>
+          ) : (
+            <>
+              <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Amount (₹)</label>
+              <input type="number" autoFocus className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2"
+                placeholder="e.g. 5000" value={amount} onChange={e => setAmount(e.target.value)} />
+            </>
+          )}
+        </div>
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+          <button onClick={handleSave} disabled={saving || disabled}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-opacity" style={{ backgroundColor: accent }}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -315,13 +511,14 @@ export default function Dashboard({ onLockApp }) {
   const [stats, setStats]             = useState({ netWorth: 0, totalInvested: 0, thisMonthSpend: 0, goalsActive: 0 })
   const [activePlan, setActivePlan]   = useState(null)
   const [goals, setGoals]             = useState([])
-  const [investments, setInvestments] = useState([])
   const [profileName, setProfileName] = useState('')
   const [monthlyStats, setMonthlyStats] = useState(null)
   const [needsBudget, setNeedsBudget] = useState(0)
   const [categories, setCategories]   = useState([])
   const [loading, setLoading]         = useState(true)
   const [showQuickAdd, setShowQuickAdd] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState(null)
+  const [contribGoal, setContribGoal] = useState(null)
 
   async function loadData() {
     setLoading(true)
@@ -330,23 +527,23 @@ export default function Dashboard({ onLockApp }) {
       const month = now.getMonth() + 1
       const year  = now.getFullYear()
 
-      const [s, plan, profile, g, inv, exStats, cats] = await Promise.all([
+      const [s, plan, profile, g, exStats, cats, session] = await Promise.all([
         window.electronAPI.getDashboardStats(),
         window.electronAPI.getActivePlan(),
         window.electronAPI.getProfile(),
         window.electronAPI.getAllGoals(),
-        window.electronAPI.getAllInvestments(),
         window.electronAPI.getExpenseMonthlyStats({ month, year }),
         window.electronAPI.getExpenseCategories(),
+        window.electronAPI.getCurrentSession(),
       ])
 
       setStats(s || {})
       setActivePlan(plan || null)
       setProfileName(profile?.name || '')
       setGoals(g || [])
-      setInvestments(inv || [])
       setMonthlyStats(exStats || null)
       setCategories(cats || [])
+      if (session?.id) setCurrentUserId(session.id)
 
       if (plan?.items) {
         const needsTotal = plan.items
@@ -365,6 +562,12 @@ export default function Dashboard({ onLockApp }) {
 
   function handleQuickAdded() {
     setShowQuickAdd(false)
+    loadData()
+  }
+
+  async function handleAddContribution(payload) {
+    await window.electronAPI.addGoalContribution(payload)
+    setContribGoal(null)
     loadData()
   }
 
@@ -413,6 +616,27 @@ export default function Dashboard({ onLockApp }) {
         ))}
       </div>
 
+      {/* Quick Log row */}
+      <div className="flex gap-5 mb-8">
+        <QuickWeightCard userId={currentUserId} onSaved={loadData} />
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm flex-1">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg" style={{ backgroundColor: '#f0efff' }}>💳</div>
+            <div>
+              <p className="text-sm font-semibold text-gray-800">Log Expense</p>
+              <p className="text-xs text-gray-400">Add to today's spending</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setShowQuickAdd(true)}
+            className="w-full py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity flex items-center justify-center gap-2"
+            style={{ backgroundColor: '#6C63FF' }}
+          >
+            <span className="text-base leading-none">+</span> Add Expense
+          </button>
+        </div>
+      </div>
+
       {/* Bottom grid */}
       <div className="grid grid-cols-3 gap-5">
         {/* Goals mini */}
@@ -421,7 +645,7 @@ export default function Dashboard({ onLockApp }) {
           <p className="text-xs text-gray-400 mb-5">Top 3 in-progress goals</p>
           {loading
             ? <div className="h-24 bg-gray-100 rounded-xl animate-pulse" />
-            : <GoalsMini goals={goals} investments={investments} />
+            : <GoalsMini goals={goals} onContribute={setContribGoal} />
           }
         </div>
 
@@ -451,6 +675,14 @@ export default function Dashboard({ onLockApp }) {
           categories={categories}
           onAdded={handleQuickAdded}
           onClose={() => setShowQuickAdd(false)}
+        />
+      )}
+
+      {contribGoal && (
+        <QuickContributionModal
+          goal={contribGoal}
+          onSave={handleAddContribution}
+          onClose={() => setContribGoal(null)}
         />
       )}
     </div>

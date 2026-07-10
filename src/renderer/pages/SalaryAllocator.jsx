@@ -17,8 +17,7 @@ const CATEGORY_DEFS = {
 function getTotalCurrentMonthly(investments = []) {
   return investments.reduce((sum, inv) => {
     if (inv.type === 'mf_sip') {
-      const amt = Number(inv.monthly_sip_amount) || 0
-      return sum + (inv.sip_frequency === 'weekly' ? (amt * 52) / 12 : amt)
+      return sum + (Number(inv.monthly_sip_amount) || 0)
     }
     if (['epf', 'ppf', 'nps'].includes(inv.type)) return sum + (Number(inv.monthly_sip_amount) || 0)
     if (inv.type === 'insurance') {
@@ -41,8 +40,7 @@ function getItemCurrentMonthly(planItemName, investments = []) {
   if (!inv) inv = investments.find(i => q.includes(i.name?.toLowerCase()?.trim() || '___'))
   if (!inv) return null
   if (inv.type === 'mf_sip') {
-    const amt = Number(inv.monthly_sip_amount) || 0
-    return inv.sip_frequency === 'weekly' ? (amt * 52) / 12 : amt
+    return Number(inv.monthly_sip_amount) || 0
   }
   if (['epf', 'ppf', 'nps'].includes(inv.type)) return Number(inv.monthly_sip_amount) || 0
   if (inv.type === 'insurance') {
@@ -834,8 +832,182 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare })
   )
 }
 
+// ── Bank Allocation Dashboard ─────────────────────────────────────────────
+const BANK_COLORS = ['#6C63FF','#10B981','#F59E0B','#3B82F6','#EF4444','#8B5CF6','#06B6D4','#F97316','#84CC16','#EC4899']
+
+function BankAllocationDashboard({ plan }) {
+  const salary = plan.monthly_salary || 0
+  const items = plan.items || []
+
+  const bankMap = new Map()
+  for (const item of items) {
+    const bank = item.bank_or_provider?.trim() || 'Unassigned'
+    if (!bankMap.has(bank)) bankMap.set(bank, [])
+    bankMap.get(bank).push(item)
+  }
+
+  const banks = [...bankMap.entries()]
+    .map(([name, bankItems]) => {
+      const total = bankItems.reduce((s, i) => s + (i.amount || 0), 0)
+      const byCategory = { needs: 0, wants: 0, investment: 0 }
+      for (const item of bankItems) {
+        if (byCategory[item.category] !== undefined) byCategory[item.category] += item.amount || 0
+      }
+      return { name, items: bankItems, total, byCategory }
+    })
+    .sort((a, b) => b.total - a.total)
+
+  const totalAllocated = banks.reduce((s, b) => s + b.total, 0)
+  const unallocated = salary - totalAllocated
+
+  // Stacked bar segments
+  const barSegs = banks.map((b, i) => ({
+    name: b.name,
+    total: b.total,
+    color: BANK_COLORS[i % BANK_COLORS.length],
+    pct: salary > 0 ? (b.total / salary) * 100 : 0,
+  }))
+
+  return (
+    <div>
+      {/* Summary cards */}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Monthly Salary</p>
+          <p className="text-xl font-bold text-gray-900">{fmt(salary)}</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Allocated</p>
+          <p className="text-xl font-bold text-gray-900">{fmt(totalAllocated)}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{salary > 0 ? ((totalAllocated / salary) * 100).toFixed(1) : 0}% of salary</p>
+        </div>
+        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Banks / Providers</p>
+          <p className="text-xl font-bold text-gray-900">{banks.length}</p>
+          <p className="text-xs text-gray-400 mt-0.5">{items.length} line item{items.length !== 1 ? 's' : ''}</p>
+        </div>
+      </div>
+
+      {/* Stacked salary bar */}
+      {salary > 0 && banks.length > 0 && (
+        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm mb-6">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Salary Allocation by Bank</p>
+          <div className="h-7 rounded-full overflow-hidden flex mb-4">
+            {barSegs.map((seg, i) => (
+              <div key={i} style={{ width: `${seg.pct}%`, backgroundColor: seg.color }} title={`${seg.name}: ${fmt(seg.total)}`} />
+            ))}
+            {unallocated > 0 && (
+              <div style={{ flex: 1, backgroundColor: '#E5E7EB' }} title={`Unallocated: ${fmt(unallocated)}`} />
+            )}
+          </div>
+          <div className="flex flex-wrap gap-x-5 gap-y-2">
+            {barSegs.map((seg, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: seg.color }} />
+                <span className="text-xs text-gray-600 font-medium">{seg.name}</span>
+                <span className="text-xs text-gray-400">{fmt(seg.total)}</span>
+              </div>
+            ))}
+            {unallocated > 0 && (
+              <div className="flex items-center gap-1.5">
+                <div className="w-2.5 h-2.5 rounded-full shrink-0 bg-gray-200" />
+                <span className="text-xs text-gray-500">Unallocated</span>
+                <span className="text-xs text-gray-400">{fmt(unallocated)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Per-bank cards */}
+      <div className="space-y-4">
+        {banks.map((bank, bi) => {
+          const color = BANK_COLORS[bi % BANK_COLORS.length]
+          const pct = salary > 0 ? (bank.total / salary) * 100 : 0
+          return (
+            <div key={bank.name} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              {/* Bank header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0"
+                    style={{ backgroundColor: color }}>
+                    {bank.name === 'Unassigned' ? '?' : bank.name.charAt(0).toUpperCase()}
+                  </div>
+                  <div>
+                    <p className="font-bold text-gray-900">{bank.name}</p>
+                    <p className="text-xs text-gray-400">{bank.items.length} item{bank.items.length !== 1 ? 's' : ''}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="text-xl font-bold text-gray-900">{fmt(bank.total)}</p>
+                  <p className="text-xs text-gray-400">{pct.toFixed(1)}% of salary</p>
+                </div>
+              </div>
+
+              {/* Progress bar */}
+              <div className="px-5 pt-3 pb-1">
+                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(pct, 100)}%`, backgroundColor: color }} />
+                </div>
+              </div>
+
+              {/* Category chips */}
+              <div className="flex gap-3 px-5 py-3">
+                {Object.entries(bank.byCategory).filter(([, v]) => v > 0).map(([cat, amt]) => (
+                  <div key={cat} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold"
+                    style={{ backgroundColor: CATEGORY_DEFS[cat].bg, color: CATEGORY_DEFS[cat].color }}>
+                    {CATEGORY_DEFS[cat].icon} {CATEGORY_DEFS[cat].label}: {fmt(amt)}
+                  </div>
+                ))}
+              </div>
+
+              {/* Items table */}
+              <div className="px-5 pb-4">
+                <div className="divide-y divide-gray-50">
+                  {bank.items
+                    .slice()
+                    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+                    .map((item, ii) => (
+                    <div key={ii} className="flex items-center justify-between py-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-sm font-medium text-gray-700 truncate">{item.name}</span>
+                        <span className="shrink-0 px-2 py-0.5 rounded-full text-xs font-semibold"
+                          style={{ backgroundColor: CATEGORY_DEFS[item.category]?.bg, color: CATEGORY_DEFS[item.category]?.color }}>
+                          {CATEGORY_DEFS[item.category]?.icon} {CATEGORY_DEFS[item.category]?.label}
+                        </span>
+                      </div>
+                      <span className="text-sm font-semibold text-gray-800 ml-4 shrink-0">{fmt(item.amount)}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* Bank total row */}
+                <div className="flex items-center justify-between pt-2.5 border-t border-gray-100 mt-1">
+                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Total to {bank.name}</span>
+                  <span className="text-sm font-bold" style={{ color }}>{fmt(bank.total)}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+
+      {unallocated > 0 && (
+        <div className="mt-4 flex items-center justify-between px-5 py-4 rounded-xl border bg-green-50 border-green-200">
+          <div>
+            <p className="text-sm font-semibold text-green-700">Remaining / Unallocated</p>
+            <p className="text-xs text-green-600 mt-0.5">Not assigned to any bank or provider</p>
+          </div>
+          <p className="text-2xl font-bold text-green-700">{fmt(unallocated)}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Plan Detail View ──────────────────────────────────────────────────────
 function PlanDetailView({ plan, investments, onEdit, onNewPlan, onHistory }) {
+  const [tab, setTab] = useState('overview') // 'overview' | 'bank'
+
   return (
     <div>
       {/* Header */}
@@ -866,17 +1038,44 @@ function PlanDetailView({ plan, investments, onEdit, onNewPlan, onHistory }) {
         </div>
       </div>
 
-      {/* Donut */}
-      <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-5">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Allocation Overview</p>
-        <PlanDonut plan={plan} />
+      {/* Tab switcher */}
+      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-6 w-fit">
+        {[
+          { key: 'overview', label: 'Overview' },
+          { key: 'bank', label: 'Bank Allocation' },
+        ].map(t => (
+          <button
+            key={t.key}
+            onClick={() => setTab(t.key)}
+            className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
+            style={tab === t.key
+              ? { backgroundColor: '#fff', color: '#6C63FF', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
+              : { color: '#6B7280' }}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Running balance */}
-      <div>
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Running Balance</p>
-        <RunningBalanceTable plan={plan} investments={investments} />
-      </div>
+      {tab === 'overview' && (
+        <>
+          {/* Donut */}
+          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Allocation Overview</p>
+            <PlanDonut plan={plan} />
+          </div>
+
+          {/* Running balance */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Running Balance</p>
+            <RunningBalanceTable plan={plan} investments={investments} />
+          </div>
+        </>
+      )}
+
+      {tab === 'bank' && (
+        <BankAllocationDashboard plan={plan} />
+      )}
     </div>
   )
 }

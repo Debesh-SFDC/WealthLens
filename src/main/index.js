@@ -342,32 +342,92 @@ function setupIpcHandlers() {
 
   ipcMain.handle('goals:create', (_, d) => {
     const result = db.prepare(`
-      INSERT INTO goals (title, type, target_amount, current_amount_today, inflation_rate,
-        target_year, target_age, emoji, color)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO goals (title, type, category, target_amount, current_amount, target_date,
+        bank_or_provider, linked_investment_id, emoji, color, inflation_adjust, inflation_rate,
+        monthly_emi, notes)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      d.title, d.type, d.target_amount, d.current_amount_today ?? 0,
-      d.inflation_rate ?? 6, d.target_year ?? null, d.target_age ?? null,
-      d.emoji ?? null, d.color ?? null
+      d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
+      d.target_date ?? null, d.bank_or_provider ?? null, d.linked_investment_id ?? null,
+      d.emoji ?? null, d.color ?? null, d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6,
+      d.monthly_emi ?? 0, d.notes ?? null
     )
     return { id: result.lastInsertRowid }
   })
 
   ipcMain.handle('goals:update', (_, d) => {
     db.prepare(`
-      UPDATE goals SET title = ?, type = ?, target_amount = ?, current_amount_today = ?,
-        inflation_rate = ?, target_year = ?, target_age = ?, emoji = ?, color = ?, is_achieved = ?
+      UPDATE goals SET title = ?, type = ?, category = ?, target_amount = ?, current_amount = ?,
+        target_date = ?, bank_or_provider = ?, linked_investment_id = ?, emoji = ?, color = ?,
+        inflation_adjust = ?, inflation_rate = ?, monthly_emi = ?, notes = ?,
+        is_achieved = ?, achieved_at = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(
-      d.title, d.type, d.target_amount, d.current_amount_today,
-      d.inflation_rate, d.target_year ?? null, d.target_age ?? null,
-      d.emoji ?? null, d.color ?? null, d.is_achieved ? 1 : 0, d.id
+      d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
+      d.target_date ?? null, d.bank_or_provider ?? null, d.linked_investment_id ?? null,
+      d.emoji ?? null, d.color ?? null, d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6,
+      d.monthly_emi ?? 0, d.notes ?? null,
+      d.is_achieved ? 1 : 0, d.is_achieved ? (d.achieved_at || new Date().toISOString()) : null,
+      d.id
     )
     return { success: true }
   })
 
   ipcMain.handle('goals:delete', (_, id) => {
     db.prepare('DELETE FROM goals WHERE id = ?').run(id)
+    return { success: true }
+  })
+
+  // Auto-pull: refresh a goal's current_amount from its linked investment's current_value,
+  // logging the delta as an 'auto_linked' contribution so the ledger stays consistent.
+  ipcMain.handle('goals:syncLinkedInvestment', (_, goalId) => {
+    const goal = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId)
+    if (!goal || !goal.linked_investment_id) return { synced: false }
+    const inv = db.prepare('SELECT id, name, current_value FROM investments WHERE id = ?').get(goal.linked_investment_id)
+    if (!inv) return { synced: false }
+
+    const delta = (inv.current_value || 0) - (goal.current_amount || 0)
+    if (Math.abs(delta) < 0.01) return { synced: false, investment: inv }
+
+    const tx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO goal_contributions (goal_id, amount, note, contributed_at, contribution_type)
+        VALUES (?, ?, ?, datetime('now'), 'auto_linked')
+      `).run(goalId, delta, `Auto-synced from ${inv.name}`)
+      db.prepare(`UPDATE goals SET current_amount = ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(inv.current_value, goalId)
+    })
+    tx()
+    return { synced: true, investment: inv, newAmount: inv.current_value }
+  })
+
+  // ── Goal Contributions ────────────────────────────────────────────────────
+  ipcMain.handle('goalContributions:getAll', (_, goalId) => {
+    return db.prepare(
+      'SELECT * FROM goal_contributions WHERE goal_id = ? ORDER BY contributed_at DESC, id DESC'
+    ).all(goalId)
+  })
+
+  ipcMain.handle('goalContributions:create', (_, d) => {
+    const tx = db.transaction(() => {
+      db.prepare(`
+        INSERT INTO goal_contributions (goal_id, amount, note, contributed_at, contribution_type)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(d.goal_id, d.amount, d.note ?? null, d.contributed_at || new Date().toISOString(), d.contribution_type || 'manual')
+      db.prepare(`UPDATE goals SET current_amount = current_amount + ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(d.amount, d.goal_id)
+    })
+    tx()
+    return { success: true }
+  })
+
+  ipcMain.handle('goalContributions:delete', (_, d) => {
+    const tx = db.transaction(() => {
+      db.prepare('DELETE FROM goal_contributions WHERE id = ?').run(d.id)
+      db.prepare(`UPDATE goals SET current_amount = current_amount - ?, updated_at = datetime('now') WHERE id = ?`)
+        .run(d.amount, d.goal_id)
+    })
+    tx()
     return { success: true }
   })
 

@@ -31,6 +31,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createGoal: (data) => ipcRenderer.invoke('goals:create', data),
   updateGoal: (data) => ipcRenderer.invoke('goals:update', data),
   deleteGoal: (id) => ipcRenderer.invoke('goals:delete', id),
+  syncGoalInvestment: (goalId) => ipcRenderer.invoke('goals:syncLinkedInvestment', goalId),
+  getGoalContributions: (goalId) => ipcRenderer.invoke('goalContributions:getAll', goalId),
+  addGoalContribution: (data) => ipcRenderer.invoke('goalContributions:create', data),
+  deleteGoalContribution: (data) => ipcRenderer.invoke('goalContributions:delete', data),
 
   // Investments
   getAllInvestments: (goalId) => ipcRenderer.invoke('investments:getAll', goalId),

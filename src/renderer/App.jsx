@@ -8,16 +8,20 @@ import Investments from './pages/Investments'
 import Expenses from './pages/Expenses'
 import SalaryAllocator from './pages/SalaryAllocator'
 import NetWorth from './pages/NetWorth'
+import Goals from './pages/Goals'
 import Settings from './pages/Settings'
 import TrackerApp from './components/TrackerApp'
+import AdminWeight from './pages/AdminWeight'
 
 const adminPages = {
   dashboard:   Dashboard,
   investments: Investments,
   expenses:    Expenses,
   networth:    NetWorth,
+  goals:       Goals,
   salary:      SalaryAllocator,
   settings:    Settings,
+  health:      AdminWeight,
 }
 
 export default function App() {

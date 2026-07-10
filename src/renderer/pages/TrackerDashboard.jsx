@@ -37,6 +37,99 @@ function daysInMonth(ym) {
   return new Date(+y, +m, 0).getDate()
 }
 
+function datesBetween(from, to) {
+  const dates = []
+  const cur = new Date(from + 'T00:00:00')
+  const end = new Date(to   + 'T00:00:00')
+  while (cur <= end) { dates.push(cur.toISOString().split('T')[0]); cur.setDate(cur.getDate() + 1) }
+  return dates
+}
+
+function LineChart({ logs, from, to, height = 160 }) {
+  const today = new Date().toISOString().split('T')[0]
+  const dates  = datesBetween(from, to)
+  const logMap = {}
+  for (const l of logs) logMap[l.date] = l.weight_kg
+  const pts    = dates.map(d => ({ date: d, w: logMap[d] ?? null, isToday: d === today }))
+  const filled = pts.filter(p => p.w !== null)
+
+  if (!filled.length) {
+    return (
+      <div className="flex flex-col items-center justify-center text-center" style={{ height }}>
+        <span className="text-3xl mb-2">⚖️</span>
+        <p className="text-sm text-gray-300">No weight logs for this period</p>
+      </div>
+    )
+  }
+
+  const svgW = 560, padL = 40, padR = 12, padT = 16, padB = 24
+  const svgH = height + padT + padB
+  const cW = svgW - padL - padR, cH = height
+  const n  = dates.length
+
+  const wvals = filled.map(p => p.w)
+  const minW  = Math.min(...wvals), maxW = Math.max(...wvals)
+  const rng   = maxW - minW
+  const yMin  = minW - (rng > 0 ? rng * 0.25 : 2)
+  const yMax  = maxW + (rng > 0 ? rng * 0.25 : 2)
+
+  const gx = i => padL + (n > 1 ? (i / (n - 1)) * cW : cW / 2)
+  const gy = w => padT + cH - ((w - yMin) / (yMax - yMin)) * cH
+
+  const segs = []
+  let seg = []
+  for (let i = 0; i < pts.length; i++) {
+    if (pts[i].w !== null) seg.push(`${gx(i).toFixed(1)},${gy(pts[i].w).toFixed(1)}`)
+    else if (seg.length) { segs.push(seg.join(' ')); seg = [] }
+  }
+  if (seg.length) segs.push(seg.join(' '))
+
+  const guides = [0.25, 0.5, 0.75, 1].map(r => yMin + (yMax - yMin) * r)
+  const step   = n <= 7 ? 1 : n <= 14 ? 2 : 5
+
+  return (
+    <svg viewBox={`0 0 ${svgW} ${svgH}`} preserveAspectRatio="xMidYMid meet" className="w-full" style={{ height: svgH }}>
+      {guides.map((gv, i) => {
+        const y = gy(gv)
+        return (
+          <g key={i}>
+            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#F3F4F6" strokeWidth={1} />
+            <text x={padL - 4} y={y + 3.5} fill="#D1D5DB" fontSize={8} textAnchor="end">{gv.toFixed(1)}</text>
+          </g>
+        )
+      })}
+      {segs.map((s, si) => (
+        <polyline key={si} points={s} fill="none" stroke="#10B981" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+      ))}
+      {pts.map((p, i) => {
+        if (p.w === null) return null
+        const x = gx(i), y = gy(p.w)
+        return (
+          <g key={i}>
+            <circle cx={x} cy={y} r={p.isToday ? 6 : 4} fill={p.isToday ? '#F59E0B' : '#10B981'} />
+            <circle cx={x} cy={y} r={p.isToday ? 9 : 7} fill="none" stroke={p.isToday ? '#F59E0B' : '#10B981'} strokeWidth={1} opacity={0.25} />
+            <title>{`${p.date}: ${p.w} kg`}</title>
+          </g>
+        )
+      })}
+      {pts.map((p, i) => {
+        if (n > 7 && i % step !== 0 && i !== n - 1) return null
+        const d     = new Date(p.date + 'T12:00:00')
+        const label = n <= 7
+          ? d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 3)
+          : String(d.getDate())
+        return (
+          <text key={i} x={gx(i)} y={svgH - 4} textAnchor="middle"
+            fill={p.isToday ? '#F59E0B' : '#9CA3AF'} fontSize={9}
+            fontWeight={p.isToday ? '700' : '400'}>
+            {label}
+          </text>
+        )
+      })}
+    </svg>
+  )
+}
+
 function BarChart({ data, height = 160, barColor = '#6C63FF', labelFontSize = 9 }) {
   const svgW = 560, padL = 4, padR = 4, padT = 16, padB = 24
   const svgH = height + padB + padT
@@ -139,32 +232,39 @@ export default function TrackerDashboard({ user }) {
   const todayStr   = now.toISOString().split('T')[0]
   const cymStr     = currentYM()
 
-  const [monthOffset, setMonthOffset] = useState(0)
-  const [dayTab, setDayTab]           = useState('week') // 'week' | 'month'
-  const [allData, setAllData]         = useState({})     // { 'YYYY-MM': expenses[] }
-  const [budget, setBudget]           = useState(0)
-  const [loading, setLoading]         = useState(true)
+  const [monthOffset,   setMonthOffset]   = useState(0)
+  const [dayTab,        setDayTab]        = useState('week') // 'week' | 'month'
+  const [weightTab,     setWeightTab]     = useState('week') // 'week' | 'month'
+  const [allData,       setAllData]       = useState({})     // { 'YYYY-MM': expenses[] }
+  const [budget,        setBudget]        = useState(0)
+  const [weightLogs,    setWeightLogs]    = useState([])
+  const [weightProfile, setWeightProfile] = useState({ height_cm: 0 })
+  const [loading,       setLoading]       = useState(true)
 
   const targetMonth = offsetMonth(monthOffset)
 
-  // Load 13 months of data once
+  // Load 13 months of expense data + all weight logs
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [b, ...results] = await Promise.all([
+      const [b, wLogs, wProf, ...results] = await Promise.all([
         window.electronAPI.getTrackerBudget().catch(() => 0),
+        window.electronAPI.getWeightLogs({ userId: user.id }).catch(() => []),
+        window.electronAPI.getWeightProfile(user.id).catch(() => ({ height_cm: 0 })),
         ...Array.from({ length: 13 }, (_, i) => {
           const m = offsetMonth(-12 + i)
           return window.electronAPI.getAllExpenses({ month: m }).then(data => [m, data])
         }),
       ])
       setBudget(b || 0)
+      setWeightLogs(wLogs || [])
+      setWeightProfile(wProf || { height_cm: 0 })
       const map = {}
       results.forEach(([m, data]) => { map[m] = data })
       setAllData(map)
     } catch {}
     setLoading(false)
-  }, [])
+  }, [user.id])
 
   useEffect(() => { load() }, [load])
 
@@ -224,6 +324,32 @@ export default function TrackerDashboard({ user }) {
   const monthDelta   = total - prevTotal
   const deltaSign    = monthDelta >= 0 ? '+' : ''
   const deltaColor   = monthDelta > 0 ? '#EF4444' : '#10B981'
+
+  // ── Weight computed values ──────────────────────────────────────────────
+  const sortedWt    = [...weightLogs].sort((a, b) => a.date.localeCompare(b.date))
+  const latestWt    = sortedWt.length ? sortedWt[sortedWt.length - 1] : null
+  const currentWt   = latestWt?.weight_kg ?? null
+
+  const bmi = currentWt && weightProfile.height_cm > 50
+    ? currentWt / ((weightProfile.height_cm / 100) ** 2)
+    : null
+  const bmiInfo = !bmi ? null
+    : bmi < 18.5 ? { label: 'Underweight', color: '#3B82F6' }
+    : bmi < 25   ? { label: 'Normal',      color: '#10B981' }
+    : bmi < 30   ? { label: 'Overweight',  color: '#F59E0B' }
+    :              { label: 'Obese',        color: '#EF4444' }
+
+  const thisMonthWt   = sortedWt.filter(l => l.date.slice(0, 7) === cymStr)
+  const wtMonthStart  = thisMonthWt[0]?.weight_kg ?? null
+  const wtMonthChange = wtMonthStart && currentWt ? currentWt - wtMonthStart : null
+
+  // Weight chart date range
+  const wtWeekFrom = (() => { const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().split('T')[0] })()
+  const wtWeekTo   = todayStr
+  const wtMonthFrom = `${targetMonth}-01`
+  const wtMonthTo   = `${targetMonth}-${String(daysInMonth(targetMonth)).padStart(2, '0')}`
+  const wtFrom = weightTab === 'week' ? wtWeekFrom : wtMonthFrom
+  const wtTo   = weightTab === 'week' ? wtWeekTo   : wtMonthTo
 
   return (
     <>
@@ -358,6 +484,70 @@ export default function TrackerDashboard({ user }) {
               })}
             </div>
           )}
+        </div>
+
+        {/* ── Weight section divider ── */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px bg-gray-200" />
+          <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Weight</span>
+          <div className="flex-1 h-px bg-gray-200" />
+        </div>
+
+        {/* ── Weight stats row ── */}
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            {
+              label: 'Current Weight',
+              value: currentWt ? `${currentWt} kg` : '—',
+              sub:   latestWt ? latestWt.date : 'No logs yet',
+            },
+            {
+              label: 'BMI',
+              value: bmi ? bmi.toFixed(1) : '—',
+              sub:   bmiInfo?.label ?? (weightProfile.height_cm > 0 ? '' : 'Set height first'),
+              color: bmiInfo?.color,
+            },
+            {
+              label: 'This Month Change',
+              value: wtMonthChange !== null
+                ? `${wtMonthChange >= 0 ? '+' : ''}${wtMonthChange.toFixed(1)} kg`
+                : '—',
+              sub:   wtMonthStart ? `Started at ${wtMonthStart} kg` : 'No logs this month',
+              color: wtMonthChange !== null
+                ? wtMonthChange < 0 ? '#10B981' : wtMonthChange > 0 ? '#EF4444' : '#6B7280'
+                : undefined,
+            },
+          ].map(c => (
+            <div key={c.label} className="bg-white rounded-2xl shadow-sm p-4 text-center border border-gray-50">
+              <p className="text-xs text-gray-400 mb-1">{c.label}</p>
+              <p className="text-lg font-bold" style={{ color: c.color || '#111827' }}>{c.value}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Weight trend chart ── */}
+        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-sm font-bold text-gray-800">Weight Trend</p>
+            <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+              {[['week', 'Last 7 days'], ['month', 'This month']].map(([id, label]) => (
+                <button key={id} onClick={() => setWeightTab(id)}
+                  className="px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-150"
+                  style={{
+                    backgroundColor: weightTab === id ? '#10B981' : 'transparent',
+                    color: weightTab === id ? 'white' : '#6B7280',
+                  }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {loading
+            ? <div className="h-40 flex items-center justify-center text-gray-300 text-sm">Loading…</div>
+            : <LineChart logs={sortedWt} from={wtFrom} to={wtTo} height={160} />
+          }
+          <p className="text-xs text-gray-400 mt-2 text-center">🟡 = today · Green line = weight trend</p>
         </div>
 
       </div>

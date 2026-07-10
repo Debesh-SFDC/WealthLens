@@ -28,6 +28,7 @@ export function initDatabase() {
   migrateProfileV2()
   migrateWeightTracking()
   migrateRebalancingActions()
+  migrateGoalsV2()
   return db
 }
 
@@ -379,6 +380,92 @@ function migrateWeightTracking() {
     );
   `)
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_weight_logs_user_date ON weight_logs(user_id, date)') } catch {}
+}
+
+// Rebuilds the goals table around the 4 goal-type model (emergency fund, opportunity
+// fund, life goal, debt payoff) and adds goal_contributions as an append-only ledger.
+// Old rows (type='need'/'want', target_year) are preserved as life_goal entries.
+function migrateGoalsV2() {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='goals'").get()
+  const alreadyMigrated = row && row.sql.includes('target_date')
+
+  if (!alreadyMigrated) {
+    db.pragma('foreign_keys = OFF')
+    const migrate = db.transaction(() => {
+      db.exec(`
+        CREATE TABLE goals_v2 (
+          id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+          title                TEXT NOT NULL,
+          type                 TEXT CHECK(type IN ('emergency_fund','opportunity_fund','life_goal','debt_payoff')) NOT NULL DEFAULT 'life_goal',
+          category             TEXT CHECK(category IN ('need','want')) NOT NULL DEFAULT 'need',
+          target_amount        REAL NOT NULL DEFAULT 0,
+          current_amount       REAL DEFAULT 0,
+          target_date          TEXT,
+          bank_or_provider     TEXT,
+          linked_investment_id INTEGER REFERENCES investments(id) ON DELETE SET NULL,
+          emoji                TEXT,
+          color                TEXT,
+          inflation_adjust     INTEGER DEFAULT 0,
+          inflation_rate       REAL DEFAULT 6,
+          monthly_emi          REAL DEFAULT 0,
+          notes                TEXT,
+          is_achieved          INTEGER DEFAULT 0,
+          achieved_at          TEXT,
+          created_at           TEXT DEFAULT (datetime('now')),
+          updated_at           TEXT DEFAULT (datetime('now'))
+        );
+      `)
+
+      const oldGoals = db.prepare('SELECT * FROM goals').all()
+      const findLinkedInvestments = db.prepare(
+        'SELECT id, current_value, bank_or_amc FROM investments WHERE goal_id = ? ORDER BY current_value DESC'
+      )
+      const insert = db.prepare(`
+        INSERT INTO goals_v2
+          (id, title, type, category, target_amount, current_amount, target_date,
+           bank_or_provider, linked_investment_id, emoji, color, inflation_adjust,
+           inflation_rate, notes, is_achieved, achieved_at, created_at, updated_at)
+        VALUES (?, ?, 'life_goal', ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, NULL, ?, ?, ?, ?)
+      `)
+
+      for (const g of oldGoals) {
+        const linked = findLinkedInvestments.all(g.id)
+        const currentAmount = linked.reduce((s, i) => s + (i.current_value || 0), 0)
+        const primaryInv = linked[0]
+        const targetDate = g.target_year ? `${g.target_year}-12-31` : null
+        const achieved = Boolean(g.is_achieved)
+        insert.run(
+          g.id, g.title, g.type === 'want' ? 'want' : 'need',
+          g.target_amount || 0, currentAmount, targetDate,
+          primaryInv?.bank_or_amc || null, primaryInv?.id || null,
+          g.emoji, g.color, g.inflation_rate ?? 6,
+          achieved ? 1 : 0, achieved ? g.created_at : null,
+          g.created_at, g.created_at
+        )
+      }
+
+      db.exec('DROP TABLE goals')
+      db.exec('ALTER TABLE goals_v2 RENAME TO goals')
+    })
+    migrate()
+    db.pragma('foreign_keys = ON')
+  }
+
+  // monthly_emi may be missing on a v2 table created before this column was added
+  try { db.exec('ALTER TABLE goals ADD COLUMN monthly_emi REAL DEFAULT 0') } catch {}
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goal_contributions (
+      id                INTEGER PRIMARY KEY AUTOINCREMENT,
+      goal_id           INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+      amount            REAL NOT NULL,
+      note              TEXT,
+      contributed_at    TEXT NOT NULL DEFAULT (datetime('now')),
+      contribution_type TEXT CHECK(contribution_type IN ('manual','auto_linked')) NOT NULL DEFAULT 'manual',
+      created_at        TEXT DEFAULT (datetime('now'))
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_goal_contributions_goal ON goal_contributions(goal_id)') } catch {}
 }
 
 // ── Exported DB functions ──────────────────────────────────────────────────
