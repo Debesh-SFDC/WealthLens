@@ -29,6 +29,7 @@ export function initDatabase() {
   migrateWeightTracking()
   migrateRebalancingActions()
   migrateGoalsV2()
+  migrateGoalsV3()
   return db
 }
 
@@ -466,6 +467,55 @@ function migrateGoalsV2() {
     );
   `)
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_goal_contributions_goal ON goal_contributions(goal_id)') } catch {}
+}
+
+// Adds 'custom' as a 5th goal type alongside the original 4 — requires rebuilding
+// the table since SQLite can't ALTER a CHECK constraint in place.
+function migrateGoalsV3() {
+  const row = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='goals'").get()
+  if (!row || row.sql.includes("'custom'")) return
+
+  db.pragma('foreign_keys = OFF')
+  const migrate = db.transaction(() => {
+    db.exec(`
+      CREATE TABLE goals_v3 (
+        id                   INTEGER PRIMARY KEY AUTOINCREMENT,
+        title                TEXT NOT NULL,
+        type                 TEXT CHECK(type IN ('emergency_fund','opportunity_fund','life_goal','debt_payoff','custom')) NOT NULL DEFAULT 'life_goal',
+        category             TEXT CHECK(category IN ('need','want')) NOT NULL DEFAULT 'need',
+        target_amount        REAL NOT NULL DEFAULT 0,
+        current_amount       REAL DEFAULT 0,
+        target_date          TEXT,
+        bank_or_provider     TEXT,
+        linked_investment_id INTEGER REFERENCES investments(id) ON DELETE SET NULL,
+        emoji                TEXT,
+        color                TEXT,
+        inflation_adjust     INTEGER DEFAULT 0,
+        inflation_rate       REAL DEFAULT 6,
+        monthly_emi          REAL DEFAULT 0,
+        notes                TEXT,
+        is_achieved          INTEGER DEFAULT 0,
+        achieved_at          TEXT,
+        created_at           TEXT DEFAULT (datetime('now')),
+        updated_at           TEXT DEFAULT (datetime('now'))
+      );
+    `)
+    db.exec(`
+      INSERT INTO goals_v3
+        (id, title, type, category, target_amount, current_amount, target_date,
+         bank_or_provider, linked_investment_id, emoji, color, inflation_adjust,
+         inflation_rate, monthly_emi, notes, is_achieved, achieved_at, created_at, updated_at)
+      SELECT
+        id, title, type, category, target_amount, current_amount, target_date,
+        bank_or_provider, linked_investment_id, emoji, color, inflation_adjust,
+        inflation_rate, monthly_emi, notes, is_achieved, achieved_at, created_at, updated_at
+      FROM goals;
+    `)
+    db.exec('DROP TABLE goals')
+    db.exec('ALTER TABLE goals_v3 RENAME TO goals')
+  })
+  migrate()
+  db.pragma('foreign_keys = ON')
 }
 
 // ── Exported DB functions ──────────────────────────────────────────────────

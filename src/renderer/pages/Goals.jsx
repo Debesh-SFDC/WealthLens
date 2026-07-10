@@ -65,6 +65,7 @@ const TYPE_META = {
   opportunity_fund: { label: 'Opportunity Fund', icon: '💼', color: '#8B5CF6', desc: "Cash parked and ready to seize an investment opportunity" },
   life_goal:        { label: 'Life Goal',        icon: '🎯', color: '#F97316', desc: 'Bike, car, vacation, gadget, home down payment & more' },
   debt_payoff:      { label: 'Debt Payoff',      icon: '💳', color: '#EF4444', desc: 'Pay off a loan faster and save on interest' },
+  custom:           { label: 'Custom Goal',      icon: '⭐', color: '#F59E0B', desc: "Anything else — savings target, personal milestone, or any goal that doesn't fit above" },
 }
 
 const EMOJIS = [
@@ -98,7 +99,7 @@ const BLANK_FORM = {
 
 // ── Domain calculations (shared by cards, rows, detail screen, wizard) ─────
 function effectiveTarget(goal) {
-  if (goal.type === 'life_goal' && goal.inflation_adjust) {
+  if ((goal.type === 'life_goal' || goal.type === 'custom') && goal.inflation_adjust) {
     const years = Math.max(0, monthsRemaining(goal.target_date) / 12)
     return (goal.target_amount || 0) * Math.pow(1 + (goal.inflation_rate || 6) / 100, years)
   }
@@ -120,6 +121,7 @@ function sipNeeded(target, saved, months, annualReturn = 12) {
 }
 
 function monthlyNeeded(goal) {
+  if (!goal.target_date) return null
   const target = effectiveTarget(goal)
   const remaining = Math.max(0, target - (goal.current_amount || 0))
   const months = monthsRemaining(goal.target_date)
@@ -209,6 +211,11 @@ function nudgesFor(goal, contributions) {
   return nudges
 }
 
+function typeBadgeStyle(goal, accent) {
+  if (goal.type === 'custom') return { backgroundColor: '#f3f4f6', color: '#6b7280' }
+  return { backgroundColor: accent + '15', color: accent }
+}
+
 // ── Icons ────────────────────────────────────────────────────────────────
 const EditIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -269,6 +276,29 @@ function ToggleSwitch({ on, onClick, accent }) {
       style={{ width: 40, height: 22, borderRadius: 999, position: 'relative', backgroundColor: on ? accent : '#d1d5db', transition: 'background-color .2s', flexShrink: 0 }}>
       <span style={{ position: 'absolute', top: 2, left: on ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
     </button>
+  )
+}
+
+function InflationAdjustFields({ form, set, accent }) {
+  return (
+    <>
+      <div className="flex items-center justify-between mb-1">
+        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Adjust for Inflation</label>
+        <ToggleSwitch on={form.inflation_adjust} accent={accent} onClick={() => set('inflation_adjust', !form.inflation_adjust)} />
+      </div>
+      <p className="text-xs text-gray-400 mb-3">Future cost = today's cost × (1 + rate)^years to target</p>
+      {form.inflation_adjust && (
+        <>
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-gray-500">Inflation Rate</span>
+            <span className="text-sm font-bold" style={{ color: accent }}>{form.inflation_rate}%</span>
+          </div>
+          <input type="range" min={1} max={15} step={0.5} value={form.inflation_rate}
+            onChange={e => set('inflation_rate', parseFloat(e.target.value))}
+            className="w-full h-2 rounded-full appearance-none cursor-pointer bg-gray-200" style={{ accentColor: accent }} />
+        </>
+      )}
+    </>
   )
 }
 
@@ -333,7 +363,7 @@ function GoalCardGrid({ goal, onView, onEdit, onDelete, onContribute }) {
             </div>
             <div className="min-w-0">
               <h3 className="font-semibold text-gray-900 leading-tight text-sm truncate">{goal.title}</h3>
-              <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={{ backgroundColor: accent + '15', color: accent }}>
+              <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={typeBadgeStyle(goal, accent)}>
                 {meta.label}
               </span>
             </div>
@@ -414,7 +444,7 @@ function GoalListRow({ goal, onView, onEdit, onDelete, onContribute }) {
         <div className="min-w-0">
           <p className="font-semibold text-gray-900 text-sm truncate">{goal.title}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold shrink-0" style={{ backgroundColor: accent + '15', color: accent }}>{meta.label}</span>
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold shrink-0" style={typeBadgeStyle(goal, accent)}>{meta.label}</span>
             {goal.bank_or_provider && <span className="text-[11px] text-gray-400 truncate">{goal.bank_or_provider}</span>}
           </div>
         </div>
@@ -474,6 +504,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
     monthly_emi: initial.monthly_emi ?? '',
   } : BLANK_FORM)
   const [showEmoji, setShowEmoji] = useState(false)
+  const [showAdvanced, setShowAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -481,7 +512,9 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
   const accent = form.color || meta.color
   const isDebt = form.type === 'debt_payoff'
   const isLife = form.type === 'life_goal'
+  const isCustom = form.type === 'custom'
   const bankRequired = form.type === 'emergency_fund' || form.type === 'opportunity_fund' || isDebt
+  const dateRequired = !isCustom
 
   const previewGoal = {
     type: form.type,
@@ -489,7 +522,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
     target_amount: Number(form.target_amount) || 0,
     current_amount: isDebt ? (initial?.current_amount || 0) : Number(form.current_amount) || 0,
     target_date: form.target_date,
-    inflation_adjust: isLife && form.inflation_adjust,
+    inflation_adjust: (isLife || isCustom) && form.inflation_adjust,
     inflation_rate: Number(form.inflation_rate) || 6,
     monthly_emi: isDebt ? Number(form.monthly_emi) || 0 : 0,
     created_at: initial?.created_at || new Date().toISOString(),
@@ -498,7 +531,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
   const needed = monthlyNeeded(previewGoal)
   const debtStats = isDebt ? debtPayoffStats(previewGoal) : null
 
-  const canProceedStep2 = Boolean(form.title.trim() && form.target_amount && form.target_date && (!bankRequired || form.bank_or_provider.trim()))
+  const canProceedStep2 = Boolean(form.title.trim() && form.target_amount && (!dateRequired || form.target_date) && (!bankRequired || form.bank_or_provider.trim()))
 
   const handleSave = async () => {
     setSaving(true)
@@ -509,12 +542,12 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
         category: form.category,
         target_amount: Number(form.target_amount) || 0,
         current_amount: isDebt ? (initial?.current_amount || 0) : Number(form.current_amount) || 0,
-        target_date: form.target_date,
+        target_date: form.target_date || null,
         bank_or_provider: form.bank_or_provider.trim() || null,
         linked_investment_id: form.linked_investment_id ? Number(form.linked_investment_id) : null,
         emoji: form.emoji,
         color: form.color,
-        inflation_adjust: isLife && form.inflation_adjust,
+        inflation_adjust: (isLife || isCustom) && form.inflation_adjust,
         inflation_rate: Number(form.inflation_rate) || 6,
         monthly_emi: isDebt ? Number(form.monthly_emi) || 0 : 0,
         notes: form.notes.trim() || null,
@@ -551,17 +584,29 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
 
         <div className="flex-1 overflow-y-auto p-6">
           {step === 1 && (
-            <div className="grid grid-cols-2 gap-4">
-              {Object.entries(TYPE_META).map(([key, m]) => (
-                <button key={key}
-                  onClick={() => { set('type', key); set('color', m.color); set('emoji', m.icon); setStep(2) }}
-                  className="text-left p-5 rounded-2xl border-2 transition-all hover:shadow-md"
-                  style={{ borderColor: form.type === key ? m.color : '#e5e7eb', backgroundColor: form.type === key ? m.color + '0c' : '#fff' }}>
-                  <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-3" style={{ backgroundColor: m.color + '18' }}>{m.icon}</div>
-                  <p className="font-bold text-gray-900 text-sm mb-1">{m.label}</p>
-                  <p className="text-xs text-gray-500 leading-snug">{m.desc}</p>
-                </button>
-              ))}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {Object.entries(TYPE_META).filter(([key]) => key !== 'custom').map(([key, m]) => (
+                  <button key={key}
+                    onClick={() => { set('type', key); set('color', m.color); set('emoji', m.icon); setStep(2) }}
+                    className="text-left p-5 rounded-2xl border-2 transition-all hover:shadow-md"
+                    style={{ borderColor: form.type === key ? m.color : '#e5e7eb', backgroundColor: form.type === key ? m.color + '0c' : '#fff' }}>
+                    <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-3" style={{ backgroundColor: m.color + '18' }}>{m.icon}</div>
+                    <p className="font-bold text-gray-900 text-sm mb-1">{m.label}</p>
+                    <p className="text-xs text-gray-500 leading-snug">{m.desc}</p>
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => { set('type', 'custom'); set('color', TYPE_META.custom.color); set('emoji', TYPE_META.custom.icon); setStep(2) }}
+                className="w-full text-left p-5 rounded-2xl border-2 transition-all hover:shadow-md flex items-center gap-4"
+                style={{ borderColor: form.type === 'custom' ? TYPE_META.custom.color : '#e5e7eb', backgroundColor: form.type === 'custom' ? TYPE_META.custom.color + '0c' : '#fff' }}>
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ backgroundColor: TYPE_META.custom.color + '18' }}>{TYPE_META.custom.icon}</div>
+                <div>
+                  <p className="font-bold text-gray-900 text-sm mb-1">{TYPE_META.custom.label}</p>
+                  <p className="text-xs text-gray-500 leading-snug">{TYPE_META.custom.desc}</p>
+                </div>
+              </button>
             </div>
           )}
 
@@ -622,10 +667,13 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                    {isDebt ? 'Target Payoff Date' : 'Target Date'}
+                    {isDebt ? 'Target Payoff Date' : 'Target Date'} {isCustom && <span className="font-normal normal-case text-gray-400">optional</span>}
                   </label>
                   <input type="date" className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2"
                     value={form.target_date} onChange={e => set('target_date', e.target.value)} />
+                  {isCustom && !form.target_date && (
+                    <p className="text-xs text-gray-400 mt-1">No date → open-ended goal, tracked by progress % only</p>
+                  )}
                 </div>
               </div>
 
@@ -669,21 +717,20 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
 
               {isLife && (
                 <div className="rounded-xl border border-gray-200 p-4">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Adjust for Inflation</label>
-                    <ToggleSwitch on={form.inflation_adjust} accent={accent} onClick={() => set('inflation_adjust', !form.inflation_adjust)} />
-                  </div>
-                  <p className="text-xs text-gray-400 mb-3">Future cost = today's cost × (1 + rate)^years to target</p>
-                  {form.inflation_adjust && (
-                    <>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-gray-500">Inflation Rate</span>
-                        <span className="text-sm font-bold" style={{ color: accent }}>{form.inflation_rate}%</span>
-                      </div>
-                      <input type="range" min={1} max={15} step={0.5} value={form.inflation_rate}
-                        onChange={e => set('inflation_rate', parseFloat(e.target.value))}
-                        className="w-full h-2 rounded-full appearance-none cursor-pointer bg-gray-200" style={{ accentColor: accent }} />
-                    </>
+                  <InflationAdjustFields form={form} set={set} accent={accent} />
+                </div>
+              )}
+
+              {isCustom && (
+                <div>
+                  <button type="button" onClick={() => setShowAdvanced(v => !v)}
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+                    <span>{showAdvanced ? '▾' : '▸'}</span> Advanced options
+                  </button>
+                  {showAdvanced && (
+                    <div className="rounded-xl border border-gray-200 p-4 mt-2">
+                      <InflationAdjustFields form={form} set={set} accent={accent} />
+                    </div>
                   )}
                 </div>
               )}
@@ -723,10 +770,10 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-white rounded-xl p-3.5 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">
-                      {isDebt ? 'Total Outstanding' : isLife && form.inflation_adjust ? 'Inflation-Adjusted Target' : 'Target'}
+                      {isDebt ? 'Total Outstanding' : (isLife || isCustom) && form.inflation_adjust ? 'Inflation-Adjusted Target' : 'Target'}
                     </p>
                     <p className="text-lg font-bold" style={{ color: accent }}>{fmtCr(target)}</p>
-                    {isLife && form.inflation_adjust && <p className="text-xs text-gray-400">today's cost {fmtCr(Number(form.target_amount) || 0)}</p>}
+                    {(isLife || isCustom) && form.inflation_adjust && <p className="text-xs text-gray-400">today's cost {fmtCr(Number(form.target_amount) || 0)}</p>}
                   </div>
                   <div className="bg-white rounded-xl p-3.5 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">Target Date</p>
@@ -734,13 +781,23 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                     <p className="text-xs text-gray-400">{countdownLabel(form.target_date)}</p>
                   </div>
                   <div className="bg-white rounded-xl p-3.5 shadow-sm col-span-2">
-                    <p className="text-xs text-gray-400 mb-0.5">
-                      {isLife ? 'Monthly SIP Needed' : isDebt ? 'Extra Monthly Payment Needed' : 'Monthly Needed'}
-                    </p>
-                    <p className="text-2xl font-bold text-gray-900">{fmtCr(isDebt ? debtStats.extraMonthly : needed)}</p>
-                    <p className="text-xs text-gray-400">
-                      {isLife ? 'at 12% expected return' : isDebt ? `over current EMI of ${fmtCr(debtStats.emi)}` : 'to reach target on time'}
-                    </p>
+                    {needed === null ? (
+                      <>
+                        <p className="text-xs text-gray-400 mb-0.5">Timeline</p>
+                        <p className="text-2xl font-bold text-gray-700">Open-ended goal</p>
+                        <p className="text-xs text-gray-400">No target date — we'll just track progress %</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-xs text-gray-400 mb-0.5">
+                          {isLife ? 'Monthly SIP Needed' : isDebt ? 'Extra Monthly Payment Needed' : 'Monthly Needed'}
+                        </p>
+                        <p className="text-2xl font-bold text-gray-900">{fmtCr(isDebt ? debtStats.extraMonthly : needed)}</p>
+                        <p className="text-xs text-gray-400">
+                          {isLife ? 'at 12% expected return' : isDebt ? `over current EMI of ${fmtCr(debtStats.emi)}` : 'to reach target on time'}
+                        </p>
+                      </>
+                    )}
                   </div>
                   {isDebt && debtStats.interestSaved > 0 && (
                     <div className="bg-white rounded-xl p-3.5 shadow-sm col-span-2">
@@ -936,7 +993,7 @@ function GoalDetailScreen({ goal, investments, contributions, onBack, onEdit, on
             <div className="flex-1">
               <div className="flex items-center gap-2 flex-wrap mb-1">
                 <h1 className="text-2xl font-bold text-gray-900">{goal.title}</h1>
-                <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={{ backgroundColor: accent + '15', color: accent }}>{meta.label}</span>
+                <span className="px-2.5 py-1 rounded-full text-xs font-semibold" style={typeBadgeStyle(goal, accent)}>{meta.label}</span>
                 {achieved && <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-green-50 text-green-700">✅ Achieved</span>}
               </div>
               <p className="text-sm text-gray-500">
@@ -998,7 +1055,7 @@ function GoalDetailScreen({ goal, investments, contributions, onBack, onEdit, on
           </>
         ) : (
           <>
-            {isLife && (
+            {(isLife || (goal.type === 'custom' && goal.inflation_adjust)) && (
               <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
                 <p className="text-xs text-gray-400 mb-1">Today's Cost</p>
                 <p className="text-lg font-bold text-gray-900">{fmtCr(goal.target_amount || 0)}</p>
@@ -1006,9 +1063,19 @@ function GoalDetailScreen({ goal, investments, contributions, onBack, onEdit, on
               </div>
             )}
             <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
-              <p className="text-xs text-gray-400 mb-1">{isLife ? 'Monthly SIP Needed' : 'Monthly Needed'}</p>
-              <p className="text-lg font-bold" style={{ color: accent }}>{fmtCr(needed)}/mo</p>
-              <p className="text-xs text-gray-400 mt-0.5">{isLife ? 'at 12% expected return' : 'to reach target on time'}</p>
+              {needed === null ? (
+                <>
+                  <p className="text-xs text-gray-400 mb-1">Timeline</p>
+                  <p className="text-lg font-bold text-gray-700">Open-ended</p>
+                  <p className="text-xs text-gray-400 mt-0.5">No target date — tracking progress only</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-400 mb-1">{isLife ? 'Monthly SIP Needed' : 'Monthly Needed'}</p>
+                  <p className="text-lg font-bold" style={{ color: accent }}>{fmtCr(needed)}/mo</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{isLife ? 'at 12% expected return' : 'to reach target on time'}</p>
+                </>
+              )}
             </div>
             <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
               <p className="text-xs text-gray-400 mb-1">Category</p>
