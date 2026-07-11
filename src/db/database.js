@@ -30,6 +30,7 @@ export function initDatabase() {
   migrateRebalancingActions()
   migrateGoalsV2()
   migrateGoalsV3()
+  migrateGoalInvestmentsJunction()
   return db
 }
 
@@ -516,6 +517,32 @@ function migrateGoalsV3() {
   })
   migrate()
   db.pragma('foreign_keys = ON')
+}
+
+// Replaces the single linked_investment_id column with a goal_investments junction
+// table so a goal can pull its current_amount from many investments (SIPs, FDs, etc.)
+function migrateGoalInvestmentsJunction() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goal_investments (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      goal_id       INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+      investment_id INTEGER NOT NULL REFERENCES investments(id) ON DELETE CASCADE,
+      created_at    TEXT DEFAULT (datetime('now')),
+      UNIQUE(goal_id, investment_id)
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_goal_investments_goal ON goal_investments(goal_id)') } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_goal_investments_investment ON goal_investments(investment_id)') } catch {}
+
+  const cols = db.prepare("PRAGMA table_info(goals)").all().map(c => c.name)
+  if (cols.includes('linked_investment_id')) {
+    db.exec(`
+      INSERT OR IGNORE INTO goal_investments (goal_id, investment_id)
+      SELECT id, linked_investment_id FROM goals WHERE linked_investment_id IS NOT NULL
+    `)
+    try { db.exec('ALTER TABLE goals DROP COLUMN linked_investment_id') } catch {}
+  }
+  try { db.exec('ALTER TABLE goals ADD COLUMN last_synced_at TEXT') } catch {}
 }
 
 // ── Exported DB functions ──────────────────────────────────────────────────

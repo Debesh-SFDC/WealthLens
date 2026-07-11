@@ -98,6 +98,7 @@ app.whenReady().then(() => {
   }
   initDatabase()
   setupIpcHandlers()
+  syncAllGoalsWithInvestments(getDb())
   createWindow()
 
   app.on('activate', () => {
@@ -169,6 +170,47 @@ function autoApplySIPs(db) {
       const addition = periods * inv.monthly_sip_amount
       applyUpdate.run(addition, addition, inv.id)
     }
+  }
+}
+
+// Pulls current_value from every investment linked to a goal, sums them into the
+// goal's current_amount, and logs the net change as a single 'auto_linked' contribution.
+function syncGoalFromInvestments(db, goalId) {
+  const goal = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId)
+  if (!goal) return { synced: false }
+
+  const linked = db.prepare(`
+    SELECT i.* FROM goal_investments gi
+    JOIN investments i ON i.id = gi.investment_id
+    WHERE gi.goal_id = ?
+  `).all(goalId)
+  if (linked.length === 0) return { synced: false, linkedCount: 0 }
+
+  const sum = linked.reduce((s, inv) => s + (inv.current_value || 0), 0)
+  const delta = sum - (goal.current_amount || 0)
+  const names = linked.map(inv => inv.name).join(', ')
+
+  const tx = db.transaction(() => {
+    if (Math.abs(delta) >= 0.01) {
+      db.prepare(`
+        INSERT INTO goal_contributions (goal_id, amount, note, contributed_at, contribution_type)
+        VALUES (?, ?, ?, datetime('now'), 'auto_linked')
+      `).run(goalId, delta, `Auto-synced from: ${names}`)
+    }
+    db.prepare(`UPDATE goals SET current_amount = ?, last_synced_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`)
+      .run(sum, goalId)
+  })
+  tx()
+
+  return { synced: true, changed: Math.abs(delta) >= 0.01, newAmount: sum, linkedCount: linked.length, investments: linked }
+}
+
+// Silently syncs every goal that has at least one linked investment. Called once on
+// app startup so goal totals are fresh without the user needing to open each goal.
+function syncAllGoalsWithInvestments(db) {
+  const goalIds = db.prepare('SELECT DISTINCT goal_id FROM goal_investments').all().map(r => r.goal_id)
+  for (const goalId of goalIds) {
+    try { syncGoalFromInvestments(db, goalId) } catch (e) { console.error('Startup goal sync failed for goal', goalId, e) }
   }
 }
 
@@ -343,12 +385,12 @@ function setupIpcHandlers() {
   ipcMain.handle('goals:create', (_, d) => {
     const result = db.prepare(`
       INSERT INTO goals (title, type, category, target_amount, current_amount, target_date,
-        bank_or_provider, linked_investment_id, emoji, color, inflation_adjust, inflation_rate,
+        bank_or_provider, emoji, color, inflation_adjust, inflation_rate,
         monthly_emi, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
-      d.target_date ?? null, d.bank_or_provider ?? null, d.linked_investment_id ?? null,
+      d.target_date ?? null, d.bank_or_provider ?? null,
       d.emoji ?? null, d.color ?? null, d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6,
       d.monthly_emi ?? 0, d.notes ?? null
     )
@@ -358,13 +400,13 @@ function setupIpcHandlers() {
   ipcMain.handle('goals:update', (_, d) => {
     db.prepare(`
       UPDATE goals SET title = ?, type = ?, category = ?, target_amount = ?, current_amount = ?,
-        target_date = ?, bank_or_provider = ?, linked_investment_id = ?, emoji = ?, color = ?,
+        target_date = ?, bank_or_provider = ?, emoji = ?, color = ?,
         inflation_adjust = ?, inflation_rate = ?, monthly_emi = ?, notes = ?,
         is_achieved = ?, achieved_at = ?, updated_at = datetime('now')
       WHERE id = ?
     `).run(
       d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
-      d.target_date ?? null, d.bank_or_provider ?? null, d.linked_investment_id ?? null,
+      d.target_date ?? null, d.bank_or_provider ?? null,
       d.emoji ?? null, d.color ?? null, d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6,
       d.monthly_emi ?? 0, d.notes ?? null,
       d.is_achieved ? 1 : 0, d.is_achieved ? (d.achieved_at || new Date().toISOString()) : null,
@@ -378,27 +420,40 @@ function setupIpcHandlers() {
     return { success: true }
   })
 
-  // Auto-pull: refresh a goal's current_amount from its linked investment's current_value,
-  // logging the delta as an 'auto_linked' contribution so the ledger stays consistent.
+  // Auto-pull: refresh a goal's current_amount from the sum of ALL its linked investments'
+  // current_value, logging the net delta as a single 'auto_linked' contribution.
   ipcMain.handle('goals:syncLinkedInvestment', (_, goalId) => {
-    const goal = db.prepare('SELECT * FROM goals WHERE id = ?').get(goalId)
-    if (!goal || !goal.linked_investment_id) return { synced: false }
-    const inv = db.prepare('SELECT id, name, current_value FROM investments WHERE id = ?').get(goal.linked_investment_id)
-    if (!inv) return { synced: false }
+    const result = syncGoalFromInvestments(db, goalId)
+    return result
+  })
 
-    const delta = (inv.current_value || 0) - (goal.current_amount || 0)
-    if (Math.abs(delta) < 0.01) return { synced: false, investment: inv }
+  // ── Goal ↔ Investment links (many-to-many) ───────────────────────────────
+  ipcMain.handle('goalInvestments:getForGoal', (_, goalId) => {
+    return db.prepare(`
+      SELECT i.* FROM goal_investments gi
+      JOIN investments i ON i.id = gi.investment_id
+      WHERE gi.goal_id = ?
+      ORDER BY i.type, i.name
+    `).all(goalId)
+  })
 
+  ipcMain.handle('goalInvestments:getAllLinks', () => {
+    return db.prepare(`
+      SELECT gi.goal_id as goal_id, i.*
+      FROM goal_investments gi
+      JOIN investments i ON i.id = gi.investment_id
+      ORDER BY gi.goal_id, i.type, i.name
+    `).all()
+  })
+
+  ipcMain.handle('goalInvestments:setForGoal', (_, { goalId, investmentIds }) => {
     const tx = db.transaction(() => {
-      db.prepare(`
-        INSERT INTO goal_contributions (goal_id, amount, note, contributed_at, contribution_type)
-        VALUES (?, ?, ?, datetime('now'), 'auto_linked')
-      `).run(goalId, delta, `Auto-synced from ${inv.name}`)
-      db.prepare(`UPDATE goals SET current_amount = ?, updated_at = datetime('now') WHERE id = ?`)
-        .run(inv.current_value, goalId)
+      db.prepare('DELETE FROM goal_investments WHERE goal_id = ?').run(goalId)
+      const insert = db.prepare('INSERT INTO goal_investments (goal_id, investment_id) VALUES (?, ?)')
+      for (const investmentId of investmentIds || []) insert.run(goalId, investmentId)
     })
     tx()
-    return { synced: true, investment: inv, newAmount: inv.current_value }
+    return { success: true }
   })
 
   // ── Goal Contributions ────────────────────────────────────────────────────

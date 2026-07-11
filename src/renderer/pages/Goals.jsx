@@ -91,7 +91,6 @@ const BLANK_FORM = {
   target_amount: '',
   current_amount: '',
   bank_or_provider: '',
-  linked_investment_id: '',
   inflation_adjust: false,
   inflation_rate: 6,
   monthly_emi: '',
@@ -120,14 +119,45 @@ function sipNeeded(target, saved, months, annualReturn = 12) {
   return Math.max(0, (target - saved * factor) * r / (factor - 1))
 }
 
-function monthlyNeeded(goal) {
+function totalLinkedSip(linkedInvestments) {
+  return (linkedInvestments || []).filter(i => i.type === 'mf_sip').reduce((s, i) => s + (i.monthly_sip_amount || 0), 0)
+}
+
+function monthlyNeeded(goal, linkedInvestments) {
   if (!goal.target_date) return null
   const target = effectiveTarget(goal)
   const remaining = Math.max(0, target - (goal.current_amount || 0))
   const months = monthsRemaining(goal.target_date)
   if (months <= 0) return remaining
-  if (goal.type === 'life_goal') return sipNeeded(target, goal.current_amount || 0, months)
-  return remaining / months
+  const raw = goal.type === 'life_goal' ? sipNeeded(target, goal.current_amount || 0, months) : remaining / months
+  return Math.max(0, raw - totalLinkedSip(linkedInvestments))
+}
+
+// Literal spec formula for the "SIPs already contributing" nudge — deliberately linear
+// (not the SIP-compounding assumption monthlyNeeded uses for life goals).
+function sipContributionNudge(goal, linkedInvestments) {
+  if (goal.is_achieved || !goal.target_date) return null
+  const target = effectiveTarget(goal)
+  const gap = Math.max(0, target - (goal.current_amount || 0))
+  const months = monthsRemaining(goal.target_date)
+  if (months <= 0) return null
+  const rawNeeded = gap / months
+  const sip = totalLinkedSip(linkedInvestments)
+  if (sip <= 0) return null
+  const dateLabel = fmtDate(goal.target_date)
+  if (sip >= rawNeeded) {
+    return {
+      icon: '🎉',
+      tone: 'success',
+      text: `Your existing SIPs of ${fmtCr(sip)}/mo are enough to hit this goal by ${dateLabel}. No additional investment needed! 🎉`,
+    }
+  }
+  const additional = rawNeeded - sip
+  return {
+    icon: '💹',
+    tone: 'info',
+    text: `Your SIPs contribute ${fmtCr(sip)}/mo toward this goal. You need ${fmtCr(additional)}/mo more to hit your target by ${dateLabel}.`,
+  }
 }
 
 function guessLoanRate(title) {
@@ -338,13 +368,31 @@ function SummaryBar({ activeCount, achievedCount, totalTarget, totalSaved, overa
 }
 
 // ── Card grid view ───────────────────────────────────────────────────────────
-function GoalCardGrid({ goal, onView, onEdit, onDelete, onContribute }) {
+function LinkedInvestmentChips({ linkedInvestments, className = 'mb-3' }) {
+  if (!linkedInvestments || linkedInvestments.length === 0) return null
+  const visible = linkedInvestments.slice(0, 2)
+  const extra = linkedInvestments.length - visible.length
+  return (
+    <div className={`flex items-center gap-1 flex-wrap ${className}`}>
+      {visible.map(inv => (
+        <span key={inv.id} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-600 truncate max-w-[120px]">
+          {inv.name}
+        </span>
+      ))}
+      {extra > 0 && (
+        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-500">+{extra} more</span>
+      )}
+    </div>
+  )
+}
+
+function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onContribute }) {
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
   const pct = progressPct(goal)
   const isDebt = goal.type === 'debt_payoff'
-  const needed = monthlyNeeded(goal)
+  const needed = monthlyNeeded(goal, linkedInvestments)
   const achieved = Boolean(goal.is_achieved)
   const outstanding = isDebt ? Math.max(0, (goal.target_amount || 0) - (goal.current_amount || 0)) : null
   const ringColor = achieved ? '#10B981' : accent
@@ -375,7 +423,8 @@ function GoalCardGrid({ goal, onView, onEdit, onDelete, onContribute }) {
           </div>
         </div>
 
-        {goal.bank_or_provider && <p className="text-xs text-gray-400 mb-3 truncate">📍 {goal.bank_or_provider}</p>}
+        {goal.bank_or_provider && <p className="text-xs text-gray-400 mb-1.5 truncate">📍 {goal.bank_or_provider}</p>}
+        <LinkedInvestmentChips linkedInvestments={linkedInvestments} />
 
         {achieved && (
           <div className="px-2.5 py-1.5 rounded-lg bg-green-50 mb-3 text-center">
@@ -421,13 +470,13 @@ function GoalCardGrid({ goal, onView, onEdit, onDelete, onContribute }) {
 }
 
 // ── List view row ─────────────────────────────────────────────────────────
-function GoalListRow({ goal, onView, onEdit, onDelete, onContribute }) {
+function GoalListRow({ goal, linkedInvestments, onView, onEdit, onDelete, onContribute }) {
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
   const pct = progressPct(goal)
   const isDebt = goal.type === 'debt_payoff'
-  const needed = monthlyNeeded(goal)
+  const needed = monthlyNeeded(goal, linkedInvestments)
   const achieved = Boolean(goal.is_achieved)
   const outstanding = isDebt ? Math.max(0, (goal.target_amount || 0) - (goal.current_amount || 0)) : null
   const ringColor = achieved ? '#10B981' : accent
@@ -447,6 +496,7 @@ function GoalListRow({ goal, onView, onEdit, onDelete, onContribute }) {
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold shrink-0" style={typeBadgeStyle(goal, accent)}>{meta.label}</span>
             {goal.bank_or_provider && <span className="text-[11px] text-gray-400 truncate">{goal.bank_or_provider}</span>}
           </div>
+          <LinkedInvestmentChips linkedInvestments={linkedInvestments} className="mt-1" />
         </div>
       </div>
 
@@ -498,7 +548,6 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
     target_amount: initial.target_amount ?? '',
     current_amount: initial.current_amount ?? '',
     bank_or_provider: initial.bank_or_provider || '',
-    linked_investment_id: initial.linked_investment_id || '',
     inflation_adjust: Boolean(initial.inflation_adjust),
     inflation_rate: initial.inflation_rate ?? 6,
     monthly_emi: initial.monthly_emi ?? '',
@@ -506,8 +555,19 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
   const [showEmoji, setShowEmoji] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [linkedIds, setLinkedIds] = useState([])
+  const [showPicker, setShowPicker] = useState(false)
+
+  useEffect(() => {
+    if (initial?.id) {
+      window.electronAPI.getGoalInvestments(initial.id)
+        .then(rows => setLinkedIds((rows || []).map(r => r.id)))
+        .catch(() => {})
+    }
+  }, [initial?.id])
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const toggleLink = (id) => setLinkedIds(ids => (ids.includes(id) ? ids.filter(x => x !== id) : [...ids, id]))
   const meta = TYPE_META[form.type] || TYPE_META.life_goal
   const accent = form.color || meta.color
   const isDebt = form.type === 'debt_payoff'
@@ -515,6 +575,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
   const isCustom = form.type === 'custom'
   const bankRequired = form.type === 'emergency_fund' || form.type === 'opportunity_fund' || isDebt
   const dateRequired = !isCustom
+  const linkedInvestmentObjs = isDebt ? [] : linkedIds.map(id => investments.find(i => i.id === id)).filter(Boolean)
 
   const previewGoal = {
     type: form.type,
@@ -528,7 +589,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
     created_at: initial?.created_at || new Date().toISOString(),
   }
   const target = effectiveTarget(previewGoal)
-  const needed = monthlyNeeded(previewGoal)
+  const needed = monthlyNeeded(previewGoal, linkedInvestmentObjs)
   const debtStats = isDebt ? debtPayoffStats(previewGoal) : null
 
   const canProceedStep2 = Boolean(form.title.trim() && form.target_amount && (!dateRequired || form.target_date) && (!bankRequired || form.bank_or_provider.trim()))
@@ -544,13 +605,13 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
         current_amount: isDebt ? (initial?.current_amount || 0) : Number(form.current_amount) || 0,
         target_date: form.target_date || null,
         bank_or_provider: form.bank_or_provider.trim() || null,
-        linked_investment_id: form.linked_investment_id ? Number(form.linked_investment_id) : null,
         emoji: form.emoji,
         color: form.color,
         inflation_adjust: (isLife || isCustom) && form.inflation_adjust,
         inflation_rate: Number(form.inflation_rate) || 6,
         monthly_emi: isDebt ? Number(form.monthly_emi) || 0 : 0,
         notes: form.notes.trim() || null,
+        linkedInvestmentIds: isDebt ? [] : linkedIds,
       })
     } finally {
       setSaving(false)
@@ -695,25 +756,43 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                   <input className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2"
                     placeholder={isDebt ? 'e.g. HDFC Bank' : 'e.g. SBI Savings'} value={form.bank_or_provider} onChange={e => set('bank_or_provider', e.target.value)} />
                 </div>
-                {isDebt ? (
+                {isDebt && (
                   <div>
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Current Monthly EMI (₹)</label>
                     <input type="number" className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2"
                       placeholder="e.g. 25000" value={form.monthly_emi} onChange={e => set('monthly_emi', e.target.value)} />
                   </div>
-                ) : investments.length > 0 ? (
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
-                      Link Investment <span className="font-normal normal-case text-gray-400">optional</span>
-                    </label>
-                    <select className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2"
-                      value={form.linked_investment_id} onChange={e => set('linked_investment_id', e.target.value)}>
-                      <option value="">— None (manual updates) —</option>
-                      {investments.map(inv => <option key={inv.id} value={inv.id}>{inv.name} · {fmtCr(inv.current_value)}</option>)}
-                    </select>
-                  </div>
-                ) : <div />}
+                )}
               </div>
+
+              {!isDebt && (
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Linked Investments</label>
+                    {investments.length > 0 && (
+                      <button type="button" onClick={() => setShowPicker(true)} className="text-xs font-semibold" style={{ color: accent }}>
+                        + Link Investment
+                      </button>
+                    )}
+                  </div>
+                  {linkedIds.length === 0 ? (
+                    <p className="text-xs text-gray-400">
+                      {investments.length > 0 ? 'No investments linked — progress will be tracked manually.' : 'No investments to link yet.'}
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {linkedInvestmentObjs.map(inv => (
+                        <span key={inv.id} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
+                          {inv.name}
+                          <button type="button" onClick={() => toggleLink(inv.id)} className="w-4 h-4 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors leading-none">
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {isLife && (
                 <div className="rounded-xl border border-gray-200 p-4">
@@ -811,9 +890,9 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
               {form.bank_or_provider && (
                 <p className="text-sm text-gray-500">📍 Sitting in <span className="font-semibold text-gray-700">{form.bank_or_provider}</span></p>
               )}
-              {form.linked_investment_id && (
+              {linkedInvestmentObjs.length > 0 && (
                 <p className="text-sm text-gray-500">
-                  🔗 Linked to <span className="font-semibold text-gray-700">{investments.find(i => i.id === Number(form.linked_investment_id))?.name}</span> for auto-pull
+                  🔗 Linked to <span className="font-semibold text-gray-700">{linkedInvestmentObjs.map(i => i.name).join(', ')}</span> for auto-pull
                 </p>
               )}
             </div>
@@ -838,6 +917,76 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
               {saving ? 'Saving…' : initial ? 'Save Changes' : 'Create Goal'}
             </button>
           )}
+        </div>
+      </div>
+
+      {showPicker && (
+        <InvestmentPickerModal
+          investments={investments}
+          selectedIds={linkedIds}
+          onToggle={toggleLink}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── Multi-select investment picker (grouped by type, with search) ────────────
+function InvestmentPickerModal({ investments, selectedIds, onToggle, onClose }) {
+  const [search, setSearch] = useState('')
+  const filtered = investments.filter(i => i.name.toLowerCase().includes(search.trim().toLowerCase()))
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+          <h3 className="font-bold text-gray-900">Link Investments</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
+        </div>
+        <div className="p-4 border-b border-gray-100 shrink-0">
+          <input
+            autoFocus
+            className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2"
+            placeholder="Search investments…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-5">
+          {investments.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">No investments yet — add some on the Investments page first.</p>
+          ) : filtered.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-8">No investments match "{search}".</p>
+          ) : (
+            INVESTMENT_GROUPS.map(group => {
+              const items = filtered.filter(i => group.types.includes(i.type))
+              if (items.length === 0) return null
+              return (
+                <div key={group.key}>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wide mb-2">{group.icon} {group.label}</p>
+                  <div className="space-y-1">
+                    {items.map(inv => (
+                      <label key={inv.id} className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-gray-50 cursor-pointer">
+                        <input type="checkbox" checked={selectedIds.includes(inv.id)} onChange={() => onToggle(inv.id)} className="w-4 h-4 rounded shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">{inv.name}</p>
+                          <p className="text-xs text-gray-400">
+                            {inv.type === 'mf_sip' && inv.monthly_sip_amount > 0 && `${fmtCr(inv.monthly_sip_amount)}/mo SIP — `}
+                            {group.key === 'fd' ? 'Maturity' : 'Current'}: {fmtCr(inv.current_value)}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </div>
+        <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 shrink-0">
+          <span className="text-xs text-gray-400">{selectedIds.length} selected</span>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: '#6C63FF' }}>Done</button>
         </div>
       </div>
     </div>
@@ -937,19 +1086,38 @@ const NUDGE_STYLE = {
   success: { bg: '#ecfdf5', border: '#a7f3d0', text: '#047857' },
   warning: { bg: '#fffbeb', border: '#fde68a', text: '#92400e' },
   danger:  { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' },
+  info:    { bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
 }
 
-function GoalDetailScreen({ goal, investments, contributions, onBack, onEdit, onAchieve, onAddContribution }) {
+const INV_TYPE_LABELS = {
+  mf_sip: 'SIP', mf_lumpsum: 'Mutual Fund', stocks: 'Stocks', fd: 'FD',
+  epf: 'EPF', ppf: 'PPF', nps: 'NPS', gold: 'Gold', insurance: 'Insurance',
+}
+
+const INVESTMENT_GROUPS = [
+  { key: 'sip',    label: 'SIP / Mutual Fund',            icon: '💹', types: ['mf_sip', 'mf_lumpsum'] },
+  { key: 'stocks', label: 'Stocks',                        icon: '📈', types: ['stocks'] },
+  { key: 'fd',     label: 'FD / Debt',                     icon: '🏦', types: ['fd'] },
+  { key: 'others', label: 'Others (PPF, NPS, Gold etc.)',  icon: '🪙', types: ['epf', 'ppf', 'nps', 'gold', 'insurance'] },
+]
+
+function fmtDateTime(d) {
+  const dt = parseDate(d)
+  if (!dt) return '—'
+  return dt.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+}
+
+function GoalDetailScreen({ goal, linkedInvestments, contributions, syncing, onBack, onEdit, onAchieve, onAddContribution, onSyncAll }) {
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
   const pct = progressPct(goal)
-  const needed = monthlyNeeded(goal)
+  const needed = monthlyNeeded(goal, linkedInvestments)
   const isDebt = goal.type === 'debt_payoff'
   const isLife = goal.type === 'life_goal'
   const debtStats = isDebt ? debtPayoffStats(goal) : null
-  const linkedInv = goal.linked_investment_id ? investments.find(i => i.id === goal.linked_investment_id) : null
-  const lastSync = contributions.find(c => c.contribution_type === 'auto_linked')
+  const totalSip = totalLinkedSip(linkedInvestments)
+  const sipNudge = sipContributionNudge(goal, linkedInvestments)
   const nudges = nudgesFor(goal, contributions)
   const outstanding = isDebt ? Math.max(0, (goal.target_amount || 0) - (goal.current_amount || 0)) : null
   const achieved = Boolean(goal.is_achieved)
@@ -973,7 +1141,7 @@ function GoalDetailScreen({ goal, investments, contributions, onBack, onEdit, on
         </div>
       </div>
 
-      {nudges.map((n, i) => {
+      {[...nudges, ...(sipNudge ? [sipNudge] : [])].map((n, i) => {
         const s = NUDGE_STYLE[n.tone] || NUDGE_STYLE.warning
         return (
           <div key={i} className="flex items-start gap-2.5 px-4 py-3 rounded-xl mb-3 border" style={{ backgroundColor: s.bg, borderColor: s.border }}>
@@ -1088,18 +1256,57 @@ function GoalDetailScreen({ goal, investments, contributions, onBack, onEdit, on
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
         <h2 className="font-semibold text-gray-800 mb-3">Where the Money Sits</h2>
         <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm font-medium text-gray-800">{goal.bank_or_provider || '—'}</p>
-            {linkedInv && <p className="text-xs text-gray-400 mt-0.5">🔗 Linked to {linkedInv.name} · {fmtCr(linkedInv.current_value)} current value</p>}
-          </div>
-          {linkedInv && <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600">Auto-synced</span>}
+          <p className="text-sm font-medium text-gray-800">{goal.bank_or_provider || '—'}</p>
+          {linkedInvestments.length > 0 && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-600">Auto-synced</span>
+          )}
         </div>
-        {linkedInv && (
-          <p className="text-xs text-gray-400 mt-2">
-            {lastSync ? `Last synced from ${linkedInv.name} on ${fmtDate(lastSync.contributed_at)}` : `Synced from ${linkedInv.name}`}
-          </p>
+        {goal.last_synced_at && (
+          <p className="text-xs text-gray-400 mt-2">Last synced: {fmtDateTime(goal.last_synced_at)}</p>
         )}
         {goal.notes && <p className="text-sm text-gray-500 mt-3 pt-3 border-t border-gray-50">{goal.notes}</p>}
+      </div>
+
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-800">Linked Investments</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{linkedInvestments.length} investment{linkedInvestments.length !== 1 ? 's' : ''} funding this goal</p>
+          </div>
+          {linkedInvestments.length > 0 && (
+            <button onClick={onSyncAll} disabled={syncing}
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50">
+              {syncing ? 'Syncing…' : '↻ Sync All'}
+            </button>
+          )}
+        </div>
+        {linkedInvestments.length === 0 ? (
+          <div className="flex items-center justify-center py-8 text-sm text-gray-400">No investments linked. Edit this goal to link some.</div>
+        ) : (
+          <>
+            {totalSip > 0 && (
+              <div className="px-5 py-3 bg-indigo-50 border-b border-indigo-100">
+                <p className="text-sm font-semibold text-indigo-700">💹 {fmtCr(totalSip)}/mo flowing into this goal via SIPs</p>
+              </div>
+            )}
+            <div className="divide-y divide-gray-50">
+              {linkedInvestments.map(inv => (
+                <div key={inv.id} className="flex items-center justify-between px-5 py-3.5">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-gray-800 truncate">{inv.name}</p>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500 shrink-0">{INV_TYPE_LABELS[inv.type] || inv.type}</span>
+                    </div>
+                    {inv.type === 'mf_sip' && inv.monthly_sip_amount > 0 && (
+                      <p className="text-xs text-indigo-600 mt-0.5">Contributing {fmtCr(inv.monthly_sip_amount)}/mo to this goal</p>
+                    )}
+                  </div>
+                  <span className="font-semibold text-gray-800 shrink-0 ml-3">{fmtCr(inv.current_value)}</span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
@@ -1136,10 +1343,13 @@ function GoalDetailScreen({ goal, investments, contributions, onBack, onEdit, on
 export default function Goals() {
   const [goals, setGoals] = useState([])
   const [investments, setInvestments] = useState([])
+  const [goalInvestmentsMap, setGoalInvestmentsMap] = useState({})
   const [loading, setLoading] = useState(true)
   const [view, setView] = useState('grid')
   const [selectedGoal, setSelectedGoal] = useState(null)
   const [contributions, setContributions] = useState([])
+  const [detailInvestments, setDetailInvestments] = useState([])
+  const [syncing, setSyncing] = useState(false)
   const [showWizard, setShowWizard] = useState(false)
   const [editGoal, setEditGoal] = useState(null)
   const [contribGoal, setContribGoal] = useState(null)
@@ -1147,12 +1357,19 @@ export default function Goals() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const [g, inv] = await Promise.all([
+      const [g, inv, links] = await Promise.all([
         window.electronAPI.getAllGoals(),
         window.electronAPI.getAllInvestments(),
+        window.electronAPI.getAllGoalInvestmentLinks(),
       ])
       setGoals(g || [])
       setInvestments(inv || [])
+      const map = {}
+      for (const row of links || []) {
+        if (!map[row.goal_id]) map[row.goal_id] = []
+        map[row.goal_id].push(row)
+      }
+      setGoalInvestmentsMap(map)
     } catch (e) {
       console.error(e)
     } finally {
@@ -1165,41 +1382,71 @@ export default function Goals() {
   const openDetail = useCallback(async (goal) => {
     setSelectedGoal(goal)
     setContributions([])
-    if (goal.linked_investment_id) {
-      try {
-        const res = await window.electronAPI.syncGoalInvestment(goal.id)
-        if (res?.synced) {
-          const fresh = await window.electronAPI.getAllGoals()
-          setGoals(fresh || [])
-          const updated = (fresh || []).find(x => x.id === goal.id)
-          if (updated) setSelectedGoal(updated)
-        }
-      } catch (e) { console.error(e) }
-    }
+    setDetailInvestments([])
     try {
-      const c = await window.electronAPI.getGoalContributions(goal.id)
+      const res = await window.electronAPI.syncGoalInvestment(goal.id)
+      if (res?.synced) {
+        const fresh = await window.electronAPI.getAllGoals()
+        setGoals(fresh || [])
+        const updated = (fresh || []).find(x => x.id === goal.id)
+        if (updated) setSelectedGoal(updated)
+      }
+    } catch (e) { console.error(e) }
+    try {
+      const [c, inv] = await Promise.all([
+        window.electronAPI.getGoalContributions(goal.id),
+        window.electronAPI.getGoalInvestments(goal.id),
+      ])
       setContributions(c || [])
+      setDetailInvestments(inv || [])
     } catch (e) { console.error(e) }
   }, [])
 
-  const closeDetail = () => { setSelectedGoal(null); setContributions([]) }
+  const closeDetail = () => { setSelectedGoal(null); setContributions([]); setDetailInvestments([]) }
   const openWizard = (goal = null) => { setEditGoal(goal); setShowWizard(true) }
   const closeWizard = () => { setEditGoal(null); setShowWizard(false) }
   const openContribution = (goal) => setContribGoal(goal)
   const closeContribution = () => setContribGoal(null)
 
   const handleSaveGoal = async (payload) => {
+    const { linkedInvestmentIds, ...goalData } = payload
+    let goalId
     if (editGoal) {
-      await window.electronAPI.updateGoal({ ...payload, id: editGoal.id, is_achieved: editGoal.is_achieved, achieved_at: editGoal.achieved_at })
+      await window.electronAPI.updateGoal({ ...goalData, id: editGoal.id, is_achieved: editGoal.is_achieved, achieved_at: editGoal.achieved_at })
+      goalId = editGoal.id
     } else {
-      await window.electronAPI.createGoal(payload)
+      const { id } = await window.electronAPI.createGoal(goalData)
+      goalId = id
     }
-    const editedId = editGoal?.id
+    await window.electronAPI.setGoalInvestments(goalId, linkedInvestmentIds || [])
     closeWizard()
     await load()
-    if (selectedGoal && editedId === selectedGoal.id) {
-      const fresh = await window.electronAPI.getAllGoals()
-      setSelectedGoal(fresh.find(g => g.id === editedId) || null)
+    if (selectedGoal && goalId === selectedGoal.id) {
+      const [fresh, inv] = await Promise.all([
+        window.electronAPI.getAllGoals(),
+        window.electronAPI.getGoalInvestments(goalId),
+      ])
+      setSelectedGoal(fresh.find(g => g.id === goalId) || null)
+      setDetailInvestments(inv || [])
+    }
+  }
+
+  const handleSyncAll = async () => {
+    if (!selectedGoal) return
+    setSyncing(true)
+    try {
+      await window.electronAPI.syncGoalInvestment(selectedGoal.id)
+      const [fresh, c, inv] = await Promise.all([
+        window.electronAPI.getAllGoals(),
+        window.electronAPI.getGoalContributions(selectedGoal.id),
+        window.electronAPI.getGoalInvestments(selectedGoal.id),
+      ])
+      setGoals(fresh || [])
+      setSelectedGoal(fresh.find(g => g.id === selectedGoal.id) || null)
+      setContributions(c || [])
+      setDetailInvestments(inv || [])
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -1257,12 +1504,14 @@ export default function Goals() {
       <>
         <GoalDetailScreen
           goal={live}
-          investments={investments}
+          linkedInvestments={detailInvestments}
           contributions={contributions}
+          syncing={syncing}
           onBack={closeDetail}
           onEdit={() => openWizard(live)}
           onAchieve={() => handleAchieve(live)}
           onAddContribution={() => openContribution(live)}
+          onSyncAll={handleSyncAll}
         />
         {showWizard && (
           <GoalFormWizard initial={editGoal} investments={investments} onSave={handleSaveGoal} onClose={closeWizard} />
@@ -1323,13 +1572,15 @@ export default function Goals() {
       ) : view === 'grid' ? (
         <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
           {sorted.map(g => (
-            <GoalCardGrid key={g.id} goal={g} onView={openDetail} onEdit={openWizard} onDelete={handleDelete} onContribute={openContribution} />
+            <GoalCardGrid key={g.id} goal={g} linkedInvestments={goalInvestmentsMap[g.id]}
+              onView={openDetail} onEdit={openWizard} onDelete={handleDelete} onContribute={openContribution} />
           ))}
         </div>
       ) : (
         <div className="space-y-2">
           {sorted.map(g => (
-            <GoalListRow key={g.id} goal={g} onView={openDetail} onEdit={openWizard} onDelete={handleDelete} onContribute={openContribution} />
+            <GoalListRow key={g.id} goal={g} linkedInvestments={goalInvestmentsMap[g.id]}
+              onView={openDetail} onEdit={openWizard} onDelete={handleDelete} onContribute={openContribution} />
           ))}
         </div>
       )}
