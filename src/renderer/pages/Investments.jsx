@@ -67,9 +67,37 @@ function calcInsuranceDisplayValue(inv) {
   return depositedMonths * monthly
 }
 
-// Returns the effective "current value" for any investment type (insurance computed live)
+// RD: standard recurring-deposit maturity formula (quarterly compounding)
+// M = R × [(1+i)^n - 1] / (1 - (1+i)^(-1/3)), R=monthly deposit, i=annual_rate/400, n=tenure in months
+function calcRDMaturity(monthly, annualRatePct, tenureMonths) {
+  if (!monthly || !annualRatePct || !tenureMonths) return 0
+  const i = annualRatePct / 400
+  return monthly * (Math.pow(1 + i, tenureMonths) - 1) / (1 - Math.pow(1 + i, -1 / 3))
+}
+
+// RD: deposited-so-far until maturity, then switches to maturity amount.
+// Fields reused: monthly_sip_amount=monthly deposit, units=tenure in months,
+//                purchase_price=maturity amount, start_date, maturity_date
+function calcRDDisplayValue(inv) {
+  const monthly      = Number(inv.monthly_sip_amount) || 0
+  const tenureMonths = Number(inv.units) || 0
+  const maturityAmt  = Number(inv.purchase_price) || 0
+  const start        = inv.start_date ? new Date(inv.start_date).getTime() : null
+  const maturityTs   = inv.maturity_date ? new Date(inv.maturity_date).getTime() : null
+
+  if (!start || !monthly) return 0
+  if (maturityTs && Date.now() >= maturityTs) return maturityAmt
+
+  const msPerMonth    = 30.4375 * 24 * 60 * 60 * 1000
+  const monthsElapsed = Math.floor((Date.now() - start) / msPerMonth)
+  const depositedMonths = Math.min(Math.max(0, monthsElapsed), tenureMonths)
+  return depositedMonths * monthly
+}
+
+// Returns the effective "current value" for any investment type (insurance/RD computed live)
 function effectiveCurrentValue(inv) {
   if (inv.type === 'insurance') return calcInsuranceDisplayValue(inv)
+  if (inv.type === 'rd') return calcRDDisplayValue(inv)
   return inv.current_value || 0
 }
 
@@ -79,6 +107,7 @@ const TYPE_META = {
   mf_lumpsum:{ label: 'MF Lump',   color: '#3B82F6', bg: '#eff6ff', group: 'mf' },
   stocks:    { label: 'Stocks',    color: '#EF4444', bg: '#fef2f2', group: 'stocks' },
   fd:        { label: 'FD',        color: '#8B5CF6', bg: '#f5f3ff', group: 'fd' },
+  rd:        { label: 'RD',        color: '#0D9488', bg: '#f0fdfa', group: 'fd' },
   epf:       { label: 'EPF',       color: '#10B981', bg: '#ecfdf5', group: 'others' },
   ppf:       { label: 'PPF',       color: '#059669', bg: '#ecfdf5', group: 'others' },
   nps:       { label: 'NPS',       color: '#F59E0B', bg: '#fffbeb', group: 'others' },
@@ -90,7 +119,7 @@ const TYPE_GROUPS = {
   all:    () => true,
   mf:     t => TYPE_META[t]?.group === 'mf',
   stocks: t => t === 'stocks',
-  fd:     t => t === 'fd',
+  fd:     t => t === 'fd' || t === 'rd',
   others: t => TYPE_META[t]?.group === 'others',
 }
 
@@ -98,6 +127,7 @@ const CHART_GROUPS = [
   { key: 'mf',        label: 'Mutual Funds',     color: '#6C63FF', types: ['mf_sip', 'mf_lumpsum'] },
   { key: 'stocks',    label: 'Stocks',            color: '#EF4444', types: ['stocks'] },
   { key: 'fd',        label: 'Fixed Deposits',    color: '#8B5CF6', types: ['fd'] },
+  { key: 'rd',        label: 'Recurring Deposits',color: '#0D9488', types: ['rd'] },
   { key: 'epf',       label: 'EPF',               color: '#10B981', types: ['epf'] },
   { key: 'ppf',       label: 'PPF',               color: '#059669', types: ['ppf'] },
   { key: 'nps',       label: 'NPS',               color: '#F59E0B', types: ['nps'] },
@@ -109,7 +139,7 @@ const FILTER_TABS = [
   { key: 'all',    label: 'All' },
   { key: 'mf',     label: 'Mutual Funds' },
   { key: 'stocks', label: 'Stocks' },
-  { key: 'fd',     label: 'Fixed Deposits' },
+  { key: 'fd',     label: 'FD / Debt' },
   { key: 'others', label: 'Others' },
 ]
 
@@ -135,8 +165,8 @@ function isStockBroker(inv) {
 
 function isEquityType(inv) {
   if (inv.type === 'stocks') return true
-  // Hard-safe: EPF/PPF/FD/NPS are never equity regardless of platform
-  if (['epf', 'ppf', 'fd', 'nps'].includes(inv.type)) return false
+  // Hard-safe: EPF/PPF/FD/RD/NPS are never equity regardless of platform
+  if (['epf', 'ppf', 'fd', 'rd', 'nps'].includes(inv.type)) return false
   // Gold: conservative (safe) by default
   if (inv.type === 'gold') return false
   // Insurance: Kite/Zerodha don't offer insurance products — if provider is a
@@ -325,11 +355,13 @@ function SummaryBar({ investments }) {
 // ── Quick Value Update modal ──────────────────────────────────────────────
 function QuickUpdateModal({ inv, onSave, onClose }) {
   const isInsurance  = inv.type === 'insurance'
+  const isRD         = inv.type === 'rd'
+  const isAutoTracked = isInsurance || isRD
   const isMF         = ['mf_sip', 'mf_lumpsum'].includes(inv.type)
   const isGold       = inv.type === 'gold'
   const isRetirement = ['epf', 'ppf', 'nps'].includes(inv.type)
 
-  const [value, setValue]       = useState(String(isInsurance ? '' : (inv.current_value || '')))
+  const [value, setValue]       = useState(String(isAutoTracked ? '' : (inv.current_value || '')))
   const [units, setUnits]       = useState(String(inv.units || ''))
   const [saving, setSaving]     = useState(false)
   const [fetchSt, setFetchSt]   = useState(null)
@@ -344,6 +376,11 @@ function QuickUpdateModal({ inv, onSave, onClose }) {
   const insMaturityAmt   = isInsurance ? (Number(inv.purchase_price) || 0) : 0
   const insTotalPremium  = isInsurance ? Math.round((Number(inv.monthly_sip_amount) || 0) * 12 * (Number(inv.interest_rate) || 0)) : 0
   const insIsPastMat     = isInsurance && inv.maturity_date && Date.now() >= new Date(inv.maturity_date).getTime()
+
+  // RD computed view
+  const rdDisplayVal     = isRD ? calcRDDisplayValue(inv) : 0
+  const rdMaturityAmt    = isRD ? (Number(inv.purchase_price) || 0) : 0
+  const rdIsPastMat      = isRD && inv.maturity_date && Date.now() >= new Date(inv.maturity_date).getTime()
 
   const handleFetchNav = async () => {
     if (!inv.scheme_code) return
@@ -407,28 +444,28 @@ function QuickUpdateModal({ inv, onSave, onClose }) {
         {/* Body */}
         <div className="px-5 py-4 space-y-4">
 
-          {isInsurance ? (
-            /* Insurance: auto-tracked, show read-only progress */
+          {isAutoTracked ? (
+            /* Insurance / RD: auto-tracked, show read-only progress */
             <div className="space-y-3">
               <div className="rounded-2xl p-4 space-y-2" style={{ backgroundColor: meta.bg }}>
                 <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: meta.color }}>
-                  {insIsPastMat ? 'Policy Matured' : 'Auto-tracked'}
+                  {isRD ? (rdIsPastMat ? 'RD Matured' : 'Auto-tracked') : (insIsPastMat ? 'Policy Matured' : 'Auto-tracked')}
                 </p>
                 <div className="flex items-end justify-between">
                   <div>
-                    <p className="text-xs text-gray-500">{insIsPastMat ? 'Matured Value' : 'Deposited So Far'}</p>
-                    <p className="text-2xl font-bold text-gray-900">{fmt(insDisplayVal)}</p>
+                    <p className="text-xs text-gray-500">{(isRD ? rdIsPastMat : insIsPastMat) ? 'Matured Value' : 'Deposited So Far'}</p>
+                    <p className="text-2xl font-bold text-gray-900">{fmt(isRD ? rdDisplayVal : insDisplayVal)}</p>
                   </div>
-                  {insMaturityAmt > 0 && (
+                  {(isRD ? rdMaturityAmt : insMaturityAmt) > 0 && (
                     <div className="text-right">
                       <p className="text-xs text-gray-400">At maturity</p>
-                      <p className="text-sm font-bold" style={{ color: meta.color }}>{fmt(insMaturityAmt)}</p>
+                      <p className="text-sm font-bold" style={{ color: meta.color }}>{fmt(isRD ? rdMaturityAmt : insMaturityAmt)}</p>
                       <p className="text-xs text-gray-400">{formatDate(inv.maturity_date)}</p>
                     </div>
                   )}
                 </div>
               </div>
-              {insTotalPremium > 0 && (
+              {!isRD && insTotalPremium > 0 && (
                 <div className="flex justify-between text-xs text-gray-400 px-1">
                   <span>Total premium to pay</span>
                   <span className="font-medium text-gray-600">{fmt(insTotalPremium)}</span>
@@ -525,9 +562,9 @@ function QuickUpdateModal({ inv, onSave, onClose }) {
         <div className="flex gap-2.5 px-5 pb-6 pt-1">
           <button onClick={onClose}
             className="flex-1 py-2.5 rounded-2xl text-sm font-semibold text-gray-600 bg-gray-100 hover:bg-gray-200 transition-colors">
-            {isInsurance ? 'Close' : 'Cancel'}
+            {isAutoTracked ? 'Close' : 'Cancel'}
           </button>
-          {!isInsurance && (
+          {!isAutoTracked && (
             <button onClick={handleSave} disabled={saving || !numVal}
               className="flex-2 px-6 py-2.5 rounded-2xl text-sm font-semibold text-white transition-opacity disabled:opacity-50 hover:opacity-90"
               style={{ backgroundColor: meta.color || '#6C63FF' }}>
@@ -608,8 +645,71 @@ function InsuranceCard({ inv, onEdit, onDelete, onClick }) {
   )
 }
 
+function RDCard({ inv, onEdit, onDelete, onClick }) {
+  const meta            = TYPE_META.rd
+  const monthly         = Number(inv.monthly_sip_amount) || 0
+  const tenureMonths    = Number(inv.units) || 0
+  const maturityAmt     = Number(inv.purchase_price) || 0
+  const depositedSoFar  = calcRDDisplayValue(inv)
+  const isPastMaturity  = inv.maturity_date && Date.now() >= new Date(inv.maturity_date).getTime()
+
+  const msPerMonth = 30.4375 * 24 * 60 * 60 * 1000
+  const monthsElapsed = inv.start_date
+    ? Math.min(Math.max(0, Math.floor((Date.now() - new Date(inv.start_date).getTime()) / msPerMonth)), tenureMonths)
+    : 0
+  const progress = tenureMonths > 0 ? monthsElapsed / tenureMonths : 0
+
+  return (
+    <div onClick={onClick}
+      className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-150 cursor-pointer group relative">
+      {/* Actions */}
+      <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        onClick={e => e.stopPropagation()}>
+        <button onClick={() => onEdit(inv)} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"><EditIcon /></button>
+        <button onClick={() => onDelete(inv.id)} className="p-1 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><TrashIcon /></button>
+      </div>
+
+      {/* Row 1: name + value */}
+      <div className="flex items-start justify-between px-3 pt-2.5 pb-1 pr-16">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+            <h3 className="text-xs font-semibold text-gray-900 truncate">{inv.name}</h3>
+            <span className="shrink-0 px-1 py-px rounded-full text-[10px] font-semibold"
+              style={{ backgroundColor: meta.bg, color: meta.color }}>{meta.label}</span>
+          </div>
+          <p className="text-xs text-gray-400 truncate">{inv.bank_or_amc || '—'}</p>
+        </div>
+        <div className="text-right shrink-0 ml-2">
+          <p className="text-sm font-bold text-gray-900">{fmt(depositedSoFar)}</p>
+          <p className="text-[10px] text-gray-400">{isPastMaturity ? 'matured' : 'deposited'}</p>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      {!isPastMaturity && tenureMonths > 0 && (
+        <div className="px-3 pb-1">
+          <div className="h-1 rounded-full bg-gray-100 overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: `${Math.round(progress * 100)}%`, backgroundColor: meta.color }} />
+          </div>
+        </div>
+      )}
+
+      {/* Row 3: status + maturity */}
+      <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
+        <div className="flex items-center gap-1">
+          {isPastMaturity
+            ? <span className="text-[10px] font-semibold text-green-600">✓ Matured</span>
+            : <span className="text-[10px] font-medium" style={{ color: meta.color }}>{fmt(monthly)}/mo · {monthsElapsed}/{tenureMonths} mo</span>}
+        </div>
+        <p className="text-[10px] text-gray-400">{fmt(maturityAmt)} · {formatDate(inv.maturity_date)}</p>
+      </div>
+    </div>
+  )
+}
+
 function InvestmentCard({ inv, onEdit, onDelete, onRefresh, refreshing, onClick }) {
   if (inv.type === 'insurance') return <InsuranceCard inv={inv} onEdit={onEdit} onDelete={onDelete} onClick={onClick} />
+  if (inv.type === 'rd') return <RDCard inv={inv} onEdit={onEdit} onDelete={onDelete} onClick={onClick} />
 
   const meta = TYPE_META[inv.type] || { label: inv.type, color: '#6b7280', bg: '#f9fafb' }
   const ret = calcReturn(inv.invested_amount, inv.current_value)
@@ -995,7 +1095,7 @@ const RISK_BUCKETS = [
     sublabel: 'No Risk',
     color: '#10B981',
     bg: '#ecfdf5',
-    types: ['epf', 'ppf', 'fd', 'insurance'],
+    types: ['epf', 'ppf', 'fd', 'rd', 'insurance'],
     returnRange: '6–8.25% p.a.',
   },
   {
@@ -1019,6 +1119,15 @@ function getMonthlyContrib(inv) {
     if (!start || !monthly || !premYears) return 0
     const yrs = (Date.now() - start) / (365.25 * 24 * 60 * 60 * 1000)
     return yrs < premYears ? monthly : 0
+  }
+  if (inv.type === 'rd') {
+    const monthly = Number(inv.monthly_sip_amount) || 0
+    const tenureMonths = Number(inv.units) || 0
+    const start = inv.start_date ? new Date(inv.start_date).getTime() : null
+    if (!start || !monthly || !tenureMonths) return 0
+    const msPerMonth = 30.4375 * 24 * 60 * 60 * 1000
+    const monthsElapsed = Math.floor((Date.now() - start) / msPerMonth)
+    return monthsElapsed < tenureMonths ? monthly : 0
   }
   return 0
 }
@@ -1324,6 +1433,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
   const hasEPF       = investments.some(i => i.type === 'epf')
   const hasNPS       = investments.some(i => i.type === 'nps')
   const hasFD        = investments.some(i => i.type === 'fd')
+  const hasRD        = investments.some(i => i.type === 'rd')
   const hasGold      = investments.some(i => i.type === 'gold')
   const hasInsurance = investments.some(i => i.type === 'insurance')
   const hasEmergency = investments.some(i => {
@@ -1347,7 +1457,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
     suggestions.push({ type: 'caution', text: `Equity is ${equityGap.toFixed(0)}% above ideal for age ${age}. Consider adding ~${fmt(equityGapValue)} to PPF, Debt MF, or FD to rebalance toward safety.` })
   }
   if (!hasGold) suggestions.push({ type: 'tip', text: 'No Gold allocation — consider Sovereign Gold Bonds or Gold ETF for a 5–8% portfolio hedge against inflation.' })
-  if (!hasDebtMF && !hasFD && suggestions.length < 4) suggestions.push({ type: 'tip', text: 'No Debt MF or FD exposure — adding even 10–15% in debt lowers overall portfolio volatility.' })
+  if (!hasDebtMF && !hasFD && !hasRD && suggestions.length < 4) suggestions.push({ type: 'tip', text: 'No Debt MF, FD, or RD exposure — adding even 10–15% in debt lowers overall portfolio volatility.' })
   if (!hasEmergency && suggestions.length < 4) suggestions.push({ type: 'warn', text: 'No Emergency Fund detected — keep 6 months of expenses in a liquid fund before investing further.' })
   if (hasStocks && suggestions.length < 4) {
     const stocksValue = investments.filter(i => i.type === 'stocks').reduce((s, i) => s + effectiveCurrentValue(i), 0)
@@ -1405,7 +1515,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
     reduceActions.push(`Overall equity is ${equityGap.toFixed(0)}% above ideal — redirect ${equityGap.toFixed(0)}% of future contributions to PPF, Debt MF, or FD`)
   }
   if (!hasGold)                 addActions.push('Add Gold allocation — Sovereign Gold Bond or Gold ETF (target 5–8% of portfolio for inflation hedge)')
-  if (!hasDebtMF && !hasFD)     addActions.push('Add Debt MF or FD — even 10–15% in debt reduces volatility without sacrificing much return')
+  if (!hasDebtMF && !hasFD && !hasRD) addActions.push('Add Debt MF, FD, or RD — even 10–15% in debt reduces volatility without sacrificing much return')
   if (!hasNPS)                  addActions.push('Add NPS — extra ₹50,000 tax deduction under 80CCD(1B) with good long-term returns')
   if (!hasEmergency)            addActions.push('Build Emergency Fund — 6 months of expenses in a liquid fund before investing further')
   if (!hasIntl)                 addActions.push('Consider International exposure — 5–10% in US/Global index fund for geographic diversification (optional)')
@@ -1649,6 +1759,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                     { has: hasPPF,       label: 'PPF',            icon: '🏛️' },
                     { has: hasNPS,       label: 'NPS',            icon: '🏦' },
                     { has: hasFD,        label: 'Fixed Deposit',  icon: '🏧' },
+                    { has: hasRD,        label: 'Recurring Deposit', icon: '🔁' },
                     { has: hasGold,      label: 'Gold',           icon: '🥇' },
                     { has: hasInsurance, label: 'Insurance',      icon: '🛡️' },
                     { has: hasEmergency, label: 'Emergency Fund', icon: '🚨' },
@@ -2211,6 +2322,15 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
     }
   }, [form.type, form.start_date, policyTermYears])
 
+  // RD: auto-compute maturity_date from start_date + tenure (months, stored in `units`)
+  useEffect(() => {
+    if (form.type === 'rd' && form.start_date && form.units) {
+      const d = new Date(form.start_date)
+      d.setMonth(d.getMonth() + Number(form.units))
+      set('maturity_date', d.toISOString().split('T')[0])
+    }
+  }, [form.type, form.start_date, form.units])
+
   const handleFetchNav = async () => {
     if (!form.scheme_code) return
     setFetchStatus('fetching')
@@ -2247,6 +2367,12 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
     ? calcFDMaturity(Number(form.invested_amount), Number(form.interest_rate), form.start_date, form.maturity_date)
     : 0
 
+  const rdMonthly        = Number(form.monthly_sip_amount) || 0
+  const rdTenureMonths   = Number(form.units) || 0
+  const rdRate           = Number(form.interest_rate) || 0
+  const rdTotalDeposited = rdMonthly * rdTenureMonths
+  const rdMaturity       = form.type === 'rd' ? calcRDMaturity(rdMonthly, rdRate, rdTenureMonths) : 0
+
   const liveRet = calcReturn(Number(form.invested_amount) || 0, Number(form.current_value) || 0)
 
   const handleSave = async () => {
@@ -2254,6 +2380,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
     setSaving(true)
     const isRetirement = ['epf', 'ppf', 'nps'].includes(form.type)
     const isInsurance  = form.type === 'insurance'
+    const isRD         = form.type === 'rd'
     const currentVal   = Number(form.current_value) || 0
     try {
       if (isInsurance) {
@@ -2274,6 +2401,27 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
           monthly_sip_amount: Number(form.monthly_sip_amount) || 0,
           interest_rate: Number(form.interest_rate) || 0,
           units: 0,
+          goal_id: form.goal_id || null,
+        })
+      } else if (isRD) {
+        const monthly      = Number(form.monthly_sip_amount) || 0
+        const tenureMonths = Number(form.units) || 0
+        const rate         = Number(form.interest_rate) || 0
+        const maturityAmt  = calcRDMaturity(monthly, rate, tenureMonths)
+        const displayVal   = calcRDDisplayValue({
+          ...form,
+          monthly_sip_amount: monthly,
+          units: tenureMonths,
+          purchase_price: maturityAmt,
+        })
+        await onSave({
+          ...form,
+          invested_amount: monthly * tenureMonths,
+          current_value: displayVal,
+          purchase_price: Math.round(maturityAmt) || 0,
+          monthly_sip_amount: monthly,
+          interest_rate: rate,
+          units: tenureMonths,
           goal_id: form.goal_id || null,
         })
       } else {
@@ -2340,6 +2488,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                     form.type === 'mf_sip' ? 'e.g. Mirae Asset Large Cap'
                     : form.type === 'stocks' ? 'e.g. TCS'
                     : form.type === 'insurance' ? 'e.g. Bajaj Allianz Smart Wealth Goal'
+                    : form.type === 'rd' ? 'e.g. SBI RD 2026'
                     : 'e.g. SBI FD 2024'
                   }
                   value={form.name} onChange={e => set('name', e.target.value)} />
@@ -2456,6 +2605,53 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                     <div className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between">
                       <p className="text-xs text-gray-500">Maturity Amount</p>
                       <p className="text-sm font-bold text-purple-700">{fmt(fdMaturity)}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ── RD specific ── */}
+              {form.type === 'rd' && (
+                <div className="space-y-3 p-4 rounded-xl bg-teal-50/50 border border-teal-100">
+                  <p className="text-xs font-semibold text-teal-700 uppercase tracking-wide">Recurring Deposit Details</p>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Bank Name</label>
+                    <input className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-100"
+                      placeholder="e.g. SBI, HDFC Bank" value={form.bank_or_amc} onChange={e => set('bank_or_amc', e.target.value)} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Monthly Deposit (₹)</label>
+                      <input type="number" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-100"
+                        placeholder="e.g. 5000" value={form.monthly_sip_amount} onChange={e => set('monthly_sip_amount', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 mb-1">Tenure (months)</label>
+                      <input type="number" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-100"
+                        placeholder="e.g. 24" value={form.units} onChange={e => set('units', e.target.value)} />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Interest Rate (% p.a.)</label>
+                    <input type="number" step="0.01" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-100"
+                      placeholder="e.g. 6.75" value={form.interest_rate} onChange={e => set('interest_rate', e.target.value)} />
+                  </div>
+                  {(rdTotalDeposited > 0 || rdMaturity > 0) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-white rounded-xl px-3 py-2 flex flex-col">
+                        <p className="text-xs text-gray-400">Total Deposited</p>
+                        <p className="text-sm font-bold text-teal-700">{fmt(rdTotalDeposited)}</p>
+                      </div>
+                      <div className="bg-white rounded-xl px-3 py-2 flex flex-col">
+                        <p className="text-xs text-gray-400">Maturity on</p>
+                        <p className="text-sm font-bold text-teal-700">{form.maturity_date ? formatDate(form.maturity_date) : '—'}</p>
+                      </div>
+                      {rdMaturity > 0 && (
+                        <div className="bg-white rounded-xl px-3 py-2 flex flex-col col-span-2">
+                          <p className="text-xs text-gray-400">Maturity Amount</p>
+                          <p className="text-sm font-bold text-teal-700">{fmt(rdMaturity)}</p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2609,7 +2805,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
 
               {/* Common fields */}
               <div className="border-t border-gray-100 pt-4 space-y-4">
-                {!['epf', 'ppf', 'nps', 'insurance'].includes(form.type) && (
+                {!['epf', 'ppf', 'nps', 'insurance', 'rd'].includes(form.type) && (
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Invested Amount (₹)</label>
@@ -2688,6 +2884,36 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                         <div className="bg-white rounded-xl p-3 shadow-sm">
                           <p className="text-xs text-gray-400 mb-0.5">Maturity Amount</p>
                           <p className="text-xl font-bold text-sky-700">{fmt(matAmt)}</p>
+                          <p className="text-xs text-gray-400">{formatDate(form.maturity_date)}</p>
+                        </div>
+                      )}
+                    </>
+                  )
+                })() : form.type === 'rd' ? (() => {
+                  const liveDeposit = calcRDDisplayValue({
+                    ...form,
+                    monthly_sip_amount: rdMonthly,
+                    units: rdTenureMonths,
+                    purchase_price: rdMaturity,
+                  })
+                  return (
+                    <>
+                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                        <p className="text-xs text-gray-400 mb-0.5">Monthly Deposit</p>
+                        <p className="text-xl font-bold text-teal-700">{fmt(rdMonthly)}</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                        <p className="text-xs text-gray-400 mb-0.5">Total Deposited ({rdTenureMonths || 0} mo)</p>
+                        <p className="text-xl font-bold text-gray-900">{fmt(rdTotalDeposited)}</p>
+                      </div>
+                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                        <p className="text-xs text-gray-400 mb-0.5">Deposited So Far</p>
+                        <p className="text-xl font-bold text-gray-900">{fmt(liveDeposit)}</p>
+                      </div>
+                      {rdMaturity > 0 && (
+                        <div className="bg-white rounded-xl p-3 shadow-sm">
+                          <p className="text-xs text-gray-400 mb-0.5">Maturity Amount</p>
+                          <p className="text-xl font-bold text-teal-700">{fmt(rdMaturity)}</p>
                           <p className="text-xs text-gray-400">{formatDate(form.maturity_date)}</p>
                         </div>
                       )}
@@ -2815,7 +3041,7 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
     let changed = 0
     try {
       for (const inv of investments) {
-        if (inv.type === 'insurance') continue // auto-calculated — skip
+        if (inv.type === 'insurance' || inv.type === 'rd') continue // auto-calculated — skip
         const newVal = Number(values[inv.id]) || 0
         const oldVal = Number(inv.current_value) || 0
         if (Math.abs(newVal - oldVal) > 0.01) {
@@ -2833,14 +3059,14 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
   // Derived totals
   const totalOld = investments.reduce((s, inv) => s + effectiveCurrentValue(inv), 0)
   const totalNew = investments.reduce((s, inv) => {
-    if (inv.type === 'insurance') return s + effectiveCurrentValue(inv)
+    if (inv.type === 'insurance' || inv.type === 'rd') return s + effectiveCurrentValue(inv)
     return s + (Number(values[inv.id]) || 0)
   }, 0)
   const totalChange    = totalNew - totalOld
   const totalChangePct = totalOld > 0 ? (totalChange / totalOld) * 100 : 0
 
   // Type ordering for display
-  const TYPE_ORDER = ['mf_sip','mf_lumpsum','stocks','gold','epf','ppf','nps','fd','insurance']
+  const TYPE_ORDER = ['mf_sip','mf_lumpsum','stocks','gold','epf','ppf','nps','fd','rd','insurance']
   const grouped = TYPE_ORDER
     .map(type => ({ type, items: investments.filter(i => i.type === type) }))
     .filter(g => g.items.length > 0)
@@ -2902,7 +3128,7 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
         <div className="flex-1 overflow-y-auto">
           {grouped.map(({ type, items }) => {
             const meta      = TYPE_META[type] || { label: type, color: '#6b7280', bg: '#f9fafb' }
-            const isAutoCalc = type === 'insurance'
+            const isAutoCalc = type === 'insurance' || type === 'rd'
             const canAutoFetch = ['mf_sip','mf_lumpsum','gold'].includes(type)
             return (
               <div key={type}>
@@ -3136,7 +3362,7 @@ export default function Investments() {
       <div className="flex items-center justify-between mb-4">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Investments</h2>
-          <p className="mt-1 text-sm text-gray-500">MF · Stocks · FD · Gold · EPF · PPF · NPS</p>
+          <p className="mt-1 text-sm text-gray-500">MF · Stocks · FD · RD · Gold · EPF · PPF · NPS</p>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowMassUpdate(true)}

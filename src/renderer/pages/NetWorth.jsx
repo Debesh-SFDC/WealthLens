@@ -25,7 +25,26 @@ function effectiveCurrentValue(inv) {
     const n = Math.min(Math.floor((Date.now() - start) / msPerMonth), Math.round(premiumYears * 12))
     return n * monthly
   }
+  if (inv.type === 'rd') {
+    const monthly = Number(inv.monthly_sip_amount) || 0
+    const tenureMonths = Number(inv.units) || 0
+    const maturityAmt = Number(inv.purchase_price) || 0
+    const start = inv.start_date ? new Date(inv.start_date).getTime() : null
+    const maturityTs = inv.maturity_date ? new Date(inv.maturity_date).getTime() : null
+    if (!start || !monthly) return 0
+    if (maturityTs && Date.now() >= maturityTs) return maturityAmt
+    const msPerMonth = 30.4375 * 24 * 60 * 60 * 1000
+    const n = Math.min(Math.floor((Date.now() - start) / msPerMonth), tenureMonths)
+    return n * monthly
+  }
   return Number(inv.current_value) || 0
+}
+
+// RD: standard recurring-deposit maturity formula (quarterly compounding)
+function calcRDMaturity(monthly, annualRatePct, tenureMonths) {
+  if (!monthly || !annualRatePct || !tenureMonths) return 0
+  const i = annualRatePct / 400
+  return monthly * (Math.pow(1 + i, tenureMonths) - 1) / (1 - Math.pow(1 + i, -1 / 3))
 }
 
 function calcMonthlySIP(investments) {
@@ -39,6 +58,15 @@ function calcMonthlySIP(investments) {
       if (!start || !monthly || !premYears) return sum
       const yearsElapsed = (Date.now() - start) / (365.25 * 24 * 60 * 60 * 1000)
       return sum + (yearsElapsed < premYears ? monthly : 0)
+    }
+    if (inv.type === 'rd') {
+      const monthly = Number(inv.monthly_sip_amount) || 0
+      const tenureMonths = Number(inv.units) || 0
+      const start = inv.start_date ? new Date(inv.start_date).getTime() : null
+      if (!start || !monthly || !tenureMonths) return sum
+      const msPerMonth = 30.4375 * 24 * 60 * 60 * 1000
+      const monthsElapsed = Math.floor((Date.now() - start) / msPerMonth)
+      return sum + (monthsElapsed < tenureMonths ? monthly : 0)
     }
     return sum
   }, 0)
@@ -91,6 +119,16 @@ function projectFD(inv, yearsFromNow) {
   return fvLumpsum(cv, rate, yearsFromNow)
 }
 
+function projectRD(inv, yearsFromNow) {
+  if (yearsFromNow === 0) return effectiveCurrentValue(inv)
+  const maturityAmt = Number(inv.purchase_price) || 0
+  if (maturityAmt > 0) return maturityAmt
+  const monthly = Number(inv.monthly_sip_amount) || 0
+  const tenureMonths = Number(inv.units) || 0
+  const rate = Number(inv.interest_rate) || 0
+  return calcRDMaturity(monthly, rate, tenureMonths)
+}
+
 function projectInvestment(inv, yearsFromNow, rates) {
   const cv = effectiveCurrentValue(inv)
   switch (inv.type) {
@@ -101,6 +139,7 @@ function projectInvestment(inv, yearsFromNow, rates) {
     case 'ppf':        return fvWithSIP(cv, Number(inv.monthly_sip_amount) || 0, rates.ppf / 100, yearsFromNow)
     case 'nps':        return fvWithSIP(cv, Number(inv.monthly_sip_amount) || 0, rates.nps / 100, yearsFromNow)
     case 'fd':         return projectFD(inv, yearsFromNow)
+    case 'rd':         return projectRD(inv, yearsFromNow)
     case 'gold':       return fvLumpsum(cv, rates.gold / 100, yearsFromNow)
     case 'insurance':  return projectInsurance(inv, yearsFromNow)
     default:           return cv
@@ -122,6 +161,7 @@ const ASSET_GROUPS = [
   { key: 'ppf',       label: 'PPF',            color: '#059669', types: ['ppf'] },
   { key: 'nps',       label: 'NPS',            color: '#F59E0B', types: ['nps'] },
   { key: 'fd',        label: 'Fixed Deposits', color: '#8B5CF6', types: ['fd'] },
+  { key: 'rd',        label: 'Recurring Deposits', color: '#0D9488', types: ['rd'] },
   { key: 'gold',      label: 'Gold',           color: '#D97706', types: ['gold'] },
   { key: 'insurance', label: 'Insurance',      color: '#0EA5E9', types: ['insurance'] },
 ]
@@ -284,6 +324,15 @@ function calcBreakdown(inv, years, scRates) {
     case 'fd': {
       const rate = Number(inv.interest_rate) || 6.5
       return [{ component: `FD grown @ ${rate}% p.a. (individual rate)`, value: projectFD(inv, years) }]
+    }
+    case 'rd': {
+      const maturity = Number(inv.purchase_price) || 0
+      const monthly = Number(inv.monthly_sip_amount) || 0
+      const tenureMonths = Number(inv.units) || 0
+      return [
+        { component: `Deposits paid (${fmt(monthly)}/mo × ${tenureMonths}mo)`, value: null },
+        { component: 'Guaranteed maturity payout', value: maturity },
+      ]
     }
     case 'insurance': {
       const maturity = Number(inv.purchase_price) || 0
@@ -710,7 +759,9 @@ export default function NetWorth() {
                 </span>
               </div>
               <span className={`text-gray-400 transition-transform duration-200 ${showRates ? 'rotate-180' : ''}`}>
-                <ChevronDown />
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
               </span>
             </button>
 
@@ -770,6 +821,7 @@ export default function NetWorth() {
                       { label: 'PPF', value: '7.1%' },
                       { label: 'Gold', value: '8.5%' },
                       { label: 'FD', value: 'individual rates' },
+                      { label: 'RD', value: 'individual rates' },
                       { label: 'Insurance', value: 'deposited → maturity' },
                     ].map(b => (
                       <span key={b.label} className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600">

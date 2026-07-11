@@ -61,7 +61,7 @@ function createTables() {
     CREATE TABLE IF NOT EXISTS investments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
-      type TEXT CHECK(type IN ('mf_sip','mf_lumpsum','epf','ppf','nps','stocks','fd','gold')) NOT NULL,
+      type TEXT CHECK(type IN ('mf_sip','mf_lumpsum','epf','ppf','nps','stocks','fd','gold','rd')) NOT NULL,
       provider TEXT,
       bank_or_amc TEXT,
       account_number TEXT,

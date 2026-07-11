@@ -1090,14 +1090,14 @@ const NUDGE_STYLE = {
 }
 
 const INV_TYPE_LABELS = {
-  mf_sip: 'SIP', mf_lumpsum: 'Mutual Fund', stocks: 'Stocks', fd: 'FD',
+  mf_sip: 'SIP', mf_lumpsum: 'Mutual Fund', stocks: 'Stocks', fd: 'FD', rd: 'RD',
   epf: 'EPF', ppf: 'PPF', nps: 'NPS', gold: 'Gold', insurance: 'Insurance',
 }
 
 const INVESTMENT_GROUPS = [
   { key: 'sip',    label: 'SIP / Mutual Fund',            icon: '💹', types: ['mf_sip', 'mf_lumpsum'] },
   { key: 'stocks', label: 'Stocks',                        icon: '📈', types: ['stocks'] },
-  { key: 'fd',     label: 'FD / Debt',                     icon: '🏦', types: ['fd'] },
+  { key: 'fd',     label: 'FD / Debt',                     icon: '🏦', types: ['fd', 'rd'] },
   { key: 'others', label: 'Others (PPF, NPS, Gold etc.)',  icon: '🪙', types: ['epf', 'ppf', 'nps', 'gold', 'insurance'] },
 ]
 
