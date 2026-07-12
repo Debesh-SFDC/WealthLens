@@ -38,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getGoalInvestments: (goalId) => ipcRenderer.invoke('goalInvestments:getForGoal', goalId),
   getAllGoalInvestmentLinks: () => ipcRenderer.invoke('goalInvestments:getAllLinks'),
   setGoalInvestments: (goalId, investmentIds) => ipcRenderer.invoke('goalInvestments:setForGoal', { goalId, investmentIds }),
+  getGoalsForInvestment: (investmentId) => ipcRenderer.invoke('goalInvestments:getForInvestment', investmentId),
 
   // Investments
   getAllInvestments: (goalId) => ipcRenderer.invoke('investments:getAll', goalId),
@@ -88,6 +89,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   driveBackupNow:     () => ipcRenderer.invoke('drive:backup'),
   driveSyncPush:      () => ipcRenderer.invoke('drive:syncPush'),
   driveSyncPull:      () => ipcRenderer.invoke('drive:syncPull'),
+  syncNow:            () => ipcRenderer.invoke('sync:now'),
+  getSyncLog:         () => ipcRenderer.invoke('sync:getLog'),
+  getDeviceId:        () => ipcRenderer.invoke('sync:getDeviceId'),
   listDriveBackups: () => ipcRenderer.invoke('drive:listBackups'),
   driveRestore: (fileId) => ipcRenderer.invoke('drive:restore', fileId),
   getDriveAutoBackup: () => ipcRenderer.invoke('drive:getAutoBackup'),

@@ -31,6 +31,8 @@ export function initDatabase() {
   migrateGoalsV2()
   migrateGoalsV3()
   migrateGoalInvestmentsJunction()
+  migrateSyncColumns()
+  createSyncLogTable()
   return db
 }
 
@@ -543,6 +545,101 @@ function migrateGoalInvestmentsJunction() {
     try { db.exec('ALTER TABLE goals DROP COLUMN linked_investment_id') } catch {}
   }
   try { db.exec('ALTER TABLE goals ADD COLUMN last_synced_at TEXT') } catch {}
+}
+
+// Adds the row-level sync bookkeeping columns (sync_id UUID, deleted_at soft-delete,
+// device_id) that the Google Drive row-level sync engine (src/db/sync.js) needs on
+// every synced table, and backfills sync_id for pre-existing rows so they survive
+// the first sync unchanged. Safe to re-run — every ALTER is wrapped in try/catch
+// and every backfill only targets rows where sync_id IS NULL.
+function migrateSyncColumns() {
+  const addCol = (table, col, type) => {
+    try { db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${type}`) } catch {}
+  }
+
+  addCol('expenses', 'updated_at', 'TEXT')
+  addCol('expenses', 'deleted_at', 'TEXT')
+  addCol('expenses', 'device_id', 'TEXT')
+  db.exec(`UPDATE expenses SET updated_at = COALESCE(updated_at, created_at, datetime('now')) WHERE updated_at IS NULL`)
+
+  addCol('goals', 'sync_id', 'TEXT')
+  addCol('goals', 'deleted_at', 'TEXT')
+  addCol('goals', 'device_id', 'TEXT')
+
+  addCol('goal_contributions', 'sync_id', 'TEXT')
+  addCol('goal_contributions', 'updated_at', 'TEXT')
+  addCol('goal_contributions', 'deleted_at', 'TEXT')
+  addCol('goal_contributions', 'device_id', 'TEXT')
+  db.exec(`UPDATE goal_contributions SET updated_at = COALESCE(updated_at, created_at, datetime('now')) WHERE updated_at IS NULL`)
+
+  addCol('goal_investments', 'sync_id', 'TEXT')
+  addCol('goal_investments', 'updated_at', 'TEXT')
+  addCol('goal_investments', 'deleted_at', 'TEXT')
+  addCol('goal_investments', 'device_id', 'TEXT')
+  db.exec(`UPDATE goal_investments SET updated_at = COALESCE(updated_at, created_at, datetime('now')) WHERE updated_at IS NULL`)
+
+  addCol('investments', 'sync_id', 'TEXT')
+  addCol('investments', 'created_at', 'TEXT')
+  addCol('investments', 'deleted_at', 'TEXT')
+  addCol('investments', 'device_id', 'TEXT')
+  db.exec(`UPDATE investments SET created_at = COALESCE(created_at, last_updated_at, datetime('now')) WHERE created_at IS NULL`)
+
+  addCol('salary_plans', 'sync_id', 'TEXT')
+  addCol('salary_plans', 'updated_at', 'TEXT')
+  addCol('salary_plans', 'deleted_at', 'TEXT')
+  addCol('salary_plans', 'device_id', 'TEXT')
+  db.exec(`UPDATE salary_plans SET updated_at = COALESCE(updated_at, created_at, datetime('now')) WHERE updated_at IS NULL`)
+
+  addCol('salary_plan_items', 'sync_id', 'TEXT')
+  addCol('salary_plan_items', 'created_at', 'TEXT')
+  addCol('salary_plan_items', 'updated_at', 'TEXT')
+  addCol('salary_plan_items', 'deleted_at', 'TEXT')
+  addCol('salary_plan_items', 'device_id', 'TEXT')
+  db.exec(`UPDATE salary_plan_items SET created_at = COALESCE(created_at, datetime('now')) WHERE created_at IS NULL`)
+  db.exec(`UPDATE salary_plan_items SET updated_at = COALESCE(updated_at, created_at, datetime('now')) WHERE updated_at IS NULL`)
+
+  addCol('profile', 'sync_id', 'TEXT')
+  addCol('profile', 'updated_at', 'TEXT')
+  addCol('profile', 'device_id', 'TEXT')
+  db.exec(`UPDATE profile SET updated_at = COALESCE(updated_at, salary_updated_at, datetime('now')) WHERE updated_at IS NULL`)
+
+  const backfillSyncId = (table) => {
+    const rows = db.prepare(`SELECT id FROM ${table} WHERE sync_id IS NULL`).all()
+    if (rows.length === 0) return
+    const upd = db.prepare(`UPDATE ${table} SET sync_id = ? WHERE id = ?`)
+    for (const row of rows) upd.run(randomUUID(), row.id)
+  }
+  for (const table of ['goals', 'goal_contributions', 'goal_investments', 'investments',
+    'salary_plans', 'salary_plan_items', 'profile']) {
+    backfillSyncId(table)
+    try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_${table}_sync_id ON ${table}(sync_id)`) } catch {}
+  }
+}
+
+function createSyncLogTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS sync_log (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      synced_at       TEXT NOT NULL DEFAULT (datetime('now')),
+      device_id       TEXT NOT NULL,
+      status          TEXT CHECK(status IN ('success', 'failed')) NOT NULL,
+      rows_uploaded   INTEGER DEFAULT 0,
+      rows_downloaded INTEGER DEFAULT 0,
+      error_message   TEXT
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_sync_log_synced_at ON sync_log(synced_at DESC)') } catch {}
+}
+
+export function logSyncEvent(db, { deviceId, status, rowsUploaded = 0, rowsDownloaded = 0, errorMessage = null }) {
+  db.prepare(`
+    INSERT INTO sync_log (device_id, status, rows_uploaded, rows_downloaded, error_message)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(deviceId, status, rowsUploaded, rowsDownloaded, errorMessage)
+}
+
+export function getSyncLog(db, limit = 20) {
+  return db.prepare('SELECT * FROM sync_log ORDER BY synced_at DESC, id DESC LIMIT ?').all(limit)
 }
 
 // ── Exported DB functions ──────────────────────────────────────────────────

@@ -38,6 +38,21 @@ function loadTokensSecure() {
   }
 }
 
+// Row-level sync shares the same "last contact with Drive" bookkeeping the
+// full-DB backup feature already uses, so the existing TopBar 🟢/🟡/🔴
+// indicator and getSyncStatus() reflect row-level syncs too, without a
+// separate parallel status system.
+export function markSyncSuccess() {
+  const tokens = loadTokensSecure()
+  if (!tokens) return
+  saveTokensSecure({ ...tokens, lastBackup: new Date().toISOString() })
+  _syncFailed = false
+}
+
+export function markSyncFailed() {
+  _syncFailed = true
+}
+
 // ── Client credentials (Client ID / Secret — user-supplied, not sensitive) ──
 export function getStoredCreds() {
   if (!existsSync(CREDS_PATH)) return null
@@ -263,12 +278,58 @@ export function getDbLastModified(dbPath) {
 }
 
 // ── Device ID (persisted in app_settings.json) ────────────────────────────
+// Format: "mac-<uuid>" / "win-<uuid>" — lets sync payloads and the Sync Log
+// show which physical device last touched a row without a lookup table.
 export function getOrCreateDeviceId() {
   const settings = getAppSettings()
   if (settings.deviceId) return settings.deviceId
-  const id = randomUUID()
+  const prefix = process.platform === 'darwin' ? 'mac' : process.platform === 'win32' ? 'win' : process.platform
+  const id = `${prefix}-${randomUUID()}`
   saveAppSettings({ ...settings, deviceId: id })
   return id
+}
+
+// ── Unified row-level sync file (single shared WealthLens_sync.json) ──────
+const SYNC_FILE_NAME = 'WealthLens_sync.json'
+
+async function findSyncFile(drive, folderId) {
+  const res = await drive.files.list({
+    q: `name='${SYNC_FILE_NAME}' and '${folderId}' in parents and trashed=false`,
+    fields: 'files(id)',
+    spaces: 'drive',
+  })
+  return res.data.files?.[0]?.id || null
+}
+
+// Returns null if no sync file exists yet on Drive (first-ever sync for this account).
+export async function pullSyncFile() {
+  const auth     = getAuthorizedClient()
+  const drive    = google.drive({ version: 'v3', auth })
+  const folderId = await ensureFolder(drive)
+  const fileId   = await findSyncFile(drive, folderId)
+  if (!fileId) return null
+
+  const resp = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' })
+  const text = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data)
+  return JSON.parse(text)
+}
+
+export async function pushSyncFile(syncObject) {
+  const auth     = getAuthorizedClient()
+  const drive    = google.drive({ version: 'v3', auth })
+  const folderId = await ensureFolder(drive)
+  const fileId   = await findSyncFile(drive, folderId)
+  const body     = JSON.stringify(syncObject)
+
+  if (fileId) {
+    await drive.files.update({ fileId, media: { mimeType: 'application/json', body } })
+  } else {
+    await drive.files.create({
+      requestBody: { name: SYNC_FILE_NAME, parents: [folderId] },
+      media:       { mimeType: 'application/json', body },
+      fields:      'id',
+    })
+  }
 }
 
 // ── Incremental expense sync ──────────────────────────────────────────────

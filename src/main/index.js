@@ -1,19 +1,22 @@
 import { app, BrowserWindow, ipcMain, shell, safeStorage } from 'electron'
 import { join } from 'path'
 import { is } from '@electron-toolkit/utils'
-import { pbkdf2Sync, randomBytes } from 'crypto'
+import { pbkdf2Sync, randomBytes, randomUUID } from 'crypto'
 import { readFileSync, writeFileSync, existsSync } from 'fs'
 import bcrypt from 'bcryptjs'
 import {
   initDatabase, getDb,
   getAllUsers, getAllUsersWithHash, getUserById, updateUser, updateUserPin, updateUserLastLogin,
   generateExpenseSyncId, getAllExpensesForSync, mergeExpensesFromSync,
+  logSyncEvent, getSyncLog,
 } from '../db/database.js'
+import { buildSyncFile, applySyncMerge } from '../db/sync.js'
 import {
   initiateAuth, disconnect as driveDisconnect, backupDatabase, listBackups,
   restoreFromDrive, getDriveStatus, getSyncStatus, getDbLastModified,
   getStoredCreds, saveCreds, getAppSettings, saveAppSettings,
   getOrCreateDeviceId, pushExpensesSync, pullExpensesSync,
+  pullSyncFile, pushSyncFile, markSyncSuccess,
 } from './googleDrive.js'
 
 let mainWindow
@@ -98,8 +101,13 @@ app.whenReady().then(() => {
   }
   initDatabase()
   setupIpcHandlers()
+  repairGoalInvestmentLinks(getDb())
   syncAllGoalsWithInvestments(getDb())
   createWindow()
+
+  // Auto-sync on open — fire and forget so window creation isn't blocked on a
+  // network round-trip. No-ops silently if Drive isn't connected.
+  performFullSync(getDb()).catch(() => {})
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -107,6 +115,10 @@ app.whenReady().then(() => {
 })
 
 app.on('before-quit', async () => {
+  // Auto-sync on close, independent of the full-DB "auto-backup" toggle below —
+  // this is the row-level sync, always attempted while a Drive account is connected.
+  try { await performFullSync(getDb()) } catch {}
+
   const settings = getAppSettings()
   if (!settings.autoBackup) return
   const creds = getStoredCreds()
@@ -182,7 +194,7 @@ function syncGoalFromInvestments(db, goalId) {
   const linked = db.prepare(`
     SELECT i.* FROM goal_investments gi
     JOIN investments i ON i.id = gi.investment_id
-    WHERE gi.goal_id = ?
+    WHERE gi.goal_id = ? AND i.deleted_at IS NULL
   `).all(goalId)
   if (linked.length === 0) return { synced: false, linkedCount: 0 }
 
@@ -211,6 +223,102 @@ function syncAllGoalsWithInvestments(db) {
   const goalIds = db.prepare('SELECT DISTINCT goal_id FROM goal_investments').all().map(r => r.goal_id)
   for (const goalId of goalIds) {
     try { syncGoalFromInvestments(db, goalId) } catch (e) { console.error('Startup goal sync failed for goal', goalId, e) }
+  }
+}
+
+// Keeps the goal_investments junction table in sync with the single "Link to Goal"
+// dropdown on the investment form. The dropdown can only represent one goal at a
+// time, so this only ever touches the (oldGoalId, investmentId) / (newGoalId,
+// investmentId) rows — it never wipes links created via the goal-side multi-select
+// picker (goalInvestments:setForGoal) for OTHER goals on the same investment.
+function syncInvestmentGoalLink(db, investmentId, oldGoalId, newGoalId) {
+  const insertLink = db.prepare(`
+    INSERT OR IGNORE INTO goal_investments (sync_id, goal_id, investment_id, updated_at)
+    VALUES (?, ?, ?, datetime('now'))
+  `)
+  if (oldGoalId === newGoalId) {
+    if (newGoalId) insertLink.run(randomUUID(), newGoalId, investmentId)
+    return
+  }
+  const tx = db.transaction(() => {
+    if (oldGoalId) db.prepare('DELETE FROM goal_investments WHERE goal_id = ? AND investment_id = ?').run(oldGoalId, investmentId)
+    if (newGoalId) insertLink.run(randomUUID(), newGoalId, investmentId)
+  })
+  tx()
+}
+
+// One-time repair: investments saved with a goal_id before this fix existed never
+// got a goal_investments row, so they were invisible to Goal Detail's "Linked
+// Investments" list and to the current_amount auto-sync. Backfill them. Idempotent —
+// safe to run on every startup (a no-op once the junction rows exist).
+function repairGoalInvestmentLinks(db) {
+  const orphaned = db.prepare(`
+    SELECT i.id as investment_id, i.name as investment_name, i.goal_id, g.title as goal_title
+    FROM investments i
+    JOIN goals g ON g.id = i.goal_id
+    WHERE i.goal_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM goal_investments gi
+        WHERE gi.investment_id = i.id AND gi.goal_id = i.goal_id
+      )
+  `).all()
+
+  if (orphaned.length === 0) {
+    console.log('[repairGoalInvestmentLinks] no orphaned investment→goal links found')
+    return
+  }
+
+  console.log(`[repairGoalInvestmentLinks] found ${orphaned.length} investment(s) with a goal_id but no goal_investments row — backfilling:`)
+  const insert = db.prepare('INSERT OR IGNORE INTO goal_investments (goal_id, investment_id) VALUES (?, ?)')
+  const affectedGoalIds = new Set()
+  for (const row of orphaned) {
+    console.log(`  - "${row.investment_name}" (investment #${row.investment_id}) → "${row.goal_title}" (goal #${row.goal_id})`)
+    insert.run(row.goal_id, row.investment_id)
+    affectedGoalIds.add(row.goal_id)
+  }
+
+  for (const goalId of affectedGoalIds) {
+    const result = syncGoalFromInvestments(db, goalId)
+    console.log(`  [repairGoalInvestmentLinks] synced goal #${goalId} →`, result)
+  }
+}
+
+// ── Row-level Google Drive sync (WealthLens_sync.json) ─────────────────────
+// Pull → merge (last-write-wins per row) → push the merged snapshot back, so
+// Drive always ends up holding the union of both sides. Safe to call whenever
+// — it's a no-op beyond a single round-trip if Drive isn't connected or
+// nothing changed. Every call is logged to sync_log for Settings → Sync History.
+let _syncInFlight = false
+async function performFullSync(db) {
+  if (_syncInFlight) return { success: false, error: 'Sync already in progress' }
+  const { connected } = getDriveStatus()
+  if (!connected) return { success: false, error: 'Not connected to Google Drive' }
+
+  _syncInFlight = true
+  const deviceId = getOrCreateDeviceId()
+  try {
+    const remote = await pullSyncFile() // null on first-ever sync
+    const { downloaded } = applySyncMerge(db, remote?.data, deviceId)
+    // A merge can pull in investments/links created on another device — re-run
+    // the existing goal auto-sync so current_amount reflects them immediately.
+    if (downloaded > 0) syncAllGoalsWithInvestments(db)
+
+    const merged = buildSyncFile(db, deviceId)
+    await pushSyncFile(merged)
+
+    const uploaded = merged.data
+      ? Object.values(merged.data).reduce((s, v) => s + (Array.isArray(v) ? v.length : v ? 1 : 0), 0)
+      : 0
+
+    markSyncSuccess()
+    logSyncEvent(db, { deviceId, status: 'success', rowsUploaded: uploaded, rowsDownloaded: downloaded })
+    return { success: true, rowsUploaded: uploaded, rowsDownloaded: downloaded, syncedAt: new Date().toISOString() }
+  } catch (e) {
+    markSyncFailed()
+    logSyncEvent(db, { deviceId, status: 'failed', errorMessage: e.message })
+    return { success: false, error: e.message }
+  } finally {
+    _syncInFlight = false
   }
 }
 
@@ -364,45 +472,48 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('profile:save', (_, data) => {
+    const deviceId = getOrCreateDeviceId()
     const existing = db.prepare('SELECT id FROM profile LIMIT 1').get()
     if (existing) {
       db.prepare(
-        `UPDATE profile SET name = ?, monthly_salary = ?, salary_updated_at = datetime('now'), date_of_birth = ?, retirement_age = ? WHERE id = ?`
-      ).run(data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60, existing.id)
+        `UPDATE profile SET name = ?, monthly_salary = ?, salary_updated_at = datetime('now'), date_of_birth = ?, retirement_age = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`
+      ).run(data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60, deviceId, existing.id)
       return { id: existing.id }
     }
     const result = db.prepare(
-      `INSERT INTO profile (name, monthly_salary, salary_updated_at, date_of_birth, retirement_age) VALUES (?, ?, datetime('now'), ?, ?)`
-    ).run(data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60)
+      `INSERT INTO profile (sync_id, name, monthly_salary, salary_updated_at, date_of_birth, retirement_age, updated_at, device_id) VALUES (?, ?, ?, datetime('now'), ?, ?, datetime('now'), ?)`
+    ).run(randomUUID(), data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60, deviceId)
     return { id: result.lastInsertRowid }
   })
 
   // ── Goals ─────────────────────────────────────────────────────────────────
   ipcMain.handle('goals:getAll', () => {
-    return db.prepare('SELECT * FROM goals ORDER BY created_at DESC').all()
+    return db.prepare('SELECT * FROM goals WHERE deleted_at IS NULL ORDER BY created_at DESC').all()
   })
 
   ipcMain.handle('goals:create', (_, d) => {
+    const deviceId = getOrCreateDeviceId()
     const result = db.prepare(`
-      INSERT INTO goals (title, type, category, target_amount, current_amount, target_date,
+      INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
         bank_or_provider, emoji, color, inflation_adjust, inflation_rate,
-        monthly_emi, notes)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        monthly_emi, notes, device_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
+      randomUUID(), d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
       d.target_date ?? null, d.bank_or_provider ?? null,
       d.emoji ?? null, d.color ?? null, d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6,
-      d.monthly_emi ?? 0, d.notes ?? null
+      d.monthly_emi ?? 0, d.notes ?? null, deviceId
     )
     return { id: result.lastInsertRowid }
   })
 
   ipcMain.handle('goals:update', (_, d) => {
+    const deviceId = getOrCreateDeviceId()
     db.prepare(`
       UPDATE goals SET title = ?, type = ?, category = ?, target_amount = ?, current_amount = ?,
         target_date = ?, bank_or_provider = ?, emoji = ?, color = ?,
         inflation_adjust = ?, inflation_rate = ?, monthly_emi = ?, notes = ?,
-        is_achieved = ?, achieved_at = ?, updated_at = datetime('now')
+        is_achieved = ?, achieved_at = ?, updated_at = datetime('now'), device_id = ?
       WHERE id = ?
     `).run(
       d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
@@ -410,13 +521,24 @@ function setupIpcHandlers() {
       d.emoji ?? null, d.color ?? null, d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6,
       d.monthly_emi ?? 0, d.notes ?? null,
       d.is_achieved ? 1 : 0, d.is_achieved ? (d.achieved_at || new Date().toISOString()) : null,
-      d.id
+      deviceId, d.id
     )
     return { success: true }
   })
 
   ipcMain.handle('goals:delete', (_, id) => {
-    db.prepare('DELETE FROM goals WHERE id = ?').run(id)
+    const deviceId = getOrCreateDeviceId()
+    // Soft delete — the schema's ON DELETE SET NULL / CASCADE only fire on a real
+    // DELETE, so replicate that cleanup by hand: unlink any investments still
+    // tagged to this goal and drop the (regenerable) junction rows.
+    const tx = db.transaction(() => {
+      db.prepare(`UPDATE goals SET deleted_at = datetime('now'), updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+        .run(deviceId, id)
+      db.prepare(`UPDATE investments SET goal_id = NULL, last_updated_at = datetime('now'), device_id = ? WHERE goal_id = ?`)
+        .run(deviceId, id)
+      db.prepare('DELETE FROM goal_investments WHERE goal_id = ?').run(id)
+    })
+    tx()
     return { success: true }
   })
 
@@ -432,7 +554,7 @@ function setupIpcHandlers() {
     return db.prepare(`
       SELECT i.* FROM goal_investments gi
       JOIN investments i ON i.id = gi.investment_id
-      WHERE gi.goal_id = ?
+      WHERE gi.goal_id = ? AND i.deleted_at IS NULL
       ORDER BY i.type, i.name
     `).all(goalId)
   })
@@ -442,15 +564,20 @@ function setupIpcHandlers() {
       SELECT gi.goal_id as goal_id, i.*
       FROM goal_investments gi
       JOIN investments i ON i.id = gi.investment_id
+      WHERE i.deleted_at IS NULL
       ORDER BY gi.goal_id, i.type, i.name
     `).all()
   })
 
   ipcMain.handle('goalInvestments:setForGoal', (_, { goalId, investmentIds }) => {
+    const deviceId = getOrCreateDeviceId()
     const tx = db.transaction(() => {
       db.prepare('DELETE FROM goal_investments WHERE goal_id = ?').run(goalId)
-      const insert = db.prepare('INSERT INTO goal_investments (goal_id, investment_id) VALUES (?, ?)')
-      for (const investmentId of investmentIds || []) insert.run(goalId, investmentId)
+      const insert = db.prepare(`
+        INSERT INTO goal_investments (sync_id, goal_id, investment_id, updated_at, device_id)
+        VALUES (?, ?, ?, datetime('now'), ?)
+      `)
+      for (const investmentId of investmentIds || []) insert.run(randomUUID(), goalId, investmentId, deviceId)
     })
     tx()
     return { success: true }
@@ -459,28 +586,31 @@ function setupIpcHandlers() {
   // ── Goal Contributions ────────────────────────────────────────────────────
   ipcMain.handle('goalContributions:getAll', (_, goalId) => {
     return db.prepare(
-      'SELECT * FROM goal_contributions WHERE goal_id = ? ORDER BY contributed_at DESC, id DESC'
+      'SELECT * FROM goal_contributions WHERE goal_id = ? AND deleted_at IS NULL ORDER BY contributed_at DESC, id DESC'
     ).all(goalId)
   })
 
   ipcMain.handle('goalContributions:create', (_, d) => {
+    const deviceId = getOrCreateDeviceId()
     const tx = db.transaction(() => {
       db.prepare(`
-        INSERT INTO goal_contributions (goal_id, amount, note, contributed_at, contribution_type)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(d.goal_id, d.amount, d.note ?? null, d.contributed_at || new Date().toISOString(), d.contribution_type || 'manual')
-      db.prepare(`UPDATE goals SET current_amount = current_amount + ?, updated_at = datetime('now') WHERE id = ?`)
-        .run(d.amount, d.goal_id)
+        INSERT INTO goal_contributions (sync_id, goal_id, amount, note, contributed_at, contribution_type, updated_at, device_id)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      `).run(randomUUID(), d.goal_id, d.amount, d.note ?? null, d.contributed_at || new Date().toISOString(), d.contribution_type || 'manual', deviceId)
+      db.prepare(`UPDATE goals SET current_amount = current_amount + ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+        .run(d.amount, deviceId, d.goal_id)
     })
     tx()
     return { success: true }
   })
 
   ipcMain.handle('goalContributions:delete', (_, d) => {
+    const deviceId = getOrCreateDeviceId()
     const tx = db.transaction(() => {
-      db.prepare('DELETE FROM goal_contributions WHERE id = ?').run(d.id)
-      db.prepare(`UPDATE goals SET current_amount = current_amount - ?, updated_at = datetime('now') WHERE id = ?`)
-        .run(d.amount, d.goal_id)
+      db.prepare(`UPDATE goal_contributions SET deleted_at = datetime('now'), updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+        .run(deviceId, d.id)
+      db.prepare(`UPDATE goals SET current_amount = current_amount - ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+        .run(d.amount, deviceId, d.goal_id)
     })
     tx()
     return { success: true }
@@ -492,62 +622,104 @@ function setupIpcHandlers() {
     const norm = rows => rows.map(r => ({ ...r, sip_frequency: r.sip_frequency ?? 'monthly' }))
     if (goalId) {
       return norm(db.prepare(
-        'SELECT * FROM investments WHERE goal_id = ? ORDER BY last_updated_at DESC'
+        'SELECT * FROM investments WHERE goal_id = ? AND deleted_at IS NULL ORDER BY last_updated_at DESC'
       ).all(goalId))
     }
     return norm(db.prepare(`
       SELECT i.*, g.title as goal_title
       FROM investments i
       LEFT JOIN goals g ON i.goal_id = g.id
+      WHERE i.deleted_at IS NULL
       ORDER BY i.last_updated_at DESC
     `).all())
   })
 
   ipcMain.handle('investments:create', (_, d) => {
+    const deviceId = getOrCreateDeviceId()
     const result = db.prepare(`
-      INSERT INTO investments (name, type, provider, bank_or_amc, account_number,
+      INSERT INTO investments (sync_id, name, type, provider, bank_or_amc, account_number,
         invested_amount, current_value, monthly_sip_amount, sip_frequency,
         start_date, maturity_date, goal_id, notes, units, purchase_price,
-        scheme_code, interest_rate, ticker_symbol, exchange, purity, sip_last_applied_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        scheme_code, interest_rate, ticker_symbol, exchange, purity, sip_last_applied_at,
+        created_at, device_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
     `).run(
-      d.name, d.type, d.provider ?? null, d.bank_or_amc ?? null,
+      randomUUID(), d.name, d.type, d.provider ?? null, d.bank_or_amc ?? null,
       d.account_number ?? null, d.invested_amount ?? 0, d.current_value ?? 0,
       d.monthly_sip_amount ?? 0, d.sip_frequency ?? 'monthly',
       d.start_date ?? null, d.maturity_date ?? null,
       d.goal_id ?? null, d.notes ?? null,
       d.units ?? 0, d.purchase_price ?? 0, d.scheme_code ?? null,
       d.interest_rate ?? 0, d.ticker_symbol ?? null,
-      d.exchange ?? 'NSE', d.purity ?? '24K'
+      d.exchange ?? 'NSE', d.purity ?? '24K', deviceId
     )
-    return { id: result.lastInsertRowid }
+    const investmentId = result.lastInsertRowid
+    const newGoalId = d.goal_id ?? null
+    if (newGoalId) {
+      syncInvestmentGoalLink(db, investmentId, null, newGoalId)
+      syncGoalFromInvestments(db, newGoalId)
+    }
+    return { id: investmentId }
   })
 
   ipcMain.handle('investments:update', (_, d) => {
+    const before = db.prepare('SELECT goal_id FROM investments WHERE id = ?').get(d.id)
+    const oldGoalId = before?.goal_id ?? null
+    const newGoalId = d.goal_id ?? null
+    const deviceId = getOrCreateDeviceId()
+
     db.prepare(`
       UPDATE investments SET name = ?, type = ?, provider = ?, bank_or_amc = ?,
         account_number = ?, invested_amount = ?, current_value = ?, monthly_sip_amount = ?,
         sip_frequency = ?, start_date = ?, maturity_date = ?, goal_id = ?, notes = ?,
         units = ?, purchase_price = ?, scheme_code = ?, interest_rate = ?,
         ticker_symbol = ?, exchange = ?, purity = ?,
-        last_updated_at = datetime('now')
+        last_updated_at = datetime('now'), device_id = ?
       WHERE id = ?
     `).run(
       d.name, d.type, d.provider ?? null, d.bank_or_amc ?? null,
       d.account_number ?? null, d.invested_amount, d.current_value,
       d.monthly_sip_amount ?? 0, d.sip_frequency ?? 'monthly',
       d.start_date ?? null, d.maturity_date ?? null,
-      d.goal_id ?? null, d.notes ?? null,
+      newGoalId, d.notes ?? null,
       d.units ?? 0, d.purchase_price ?? 0, d.scheme_code ?? null,
       d.interest_rate ?? 0, d.ticker_symbol ?? null,
-      d.exchange ?? 'NSE', d.purity ?? '24K', d.id
+      d.exchange ?? 'NSE', d.purity ?? '24K', deviceId, d.id
     )
+
+    syncInvestmentGoalLink(db, d.id, oldGoalId, newGoalId)
+    // Re-sync both the old goal (link removed/moved away) and the new one (link
+    // added/value changed) so current_amount reflects this save immediately.
+    if (oldGoalId && oldGoalId !== newGoalId) syncGoalFromInvestments(db, oldGoalId)
+    if (newGoalId) syncGoalFromInvestments(db, newGoalId)
+
     return { success: true }
   })
 
   ipcMain.handle('investments:delete', (_, id) => {
-    db.prepare('DELETE FROM investments WHERE id = ?').run(id)
+    const deviceId = getOrCreateDeviceId()
+    const linkedGoalIds = db.prepare('SELECT DISTINCT goal_id FROM goal_investments WHERE investment_id = ?').all(id).map(r => r.goal_id)
+    // Soft delete — a real DELETE would never propagate to the other device's
+    // Drive merge. Junction rows aren't independently synced state (they're
+    // regenerated wholesale by the goal/investment forms), so those still
+    // get hard-removed here, same as before.
+    const tx = db.transaction(() => {
+      db.prepare(`UPDATE investments SET deleted_at = datetime('now'), last_updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+        .run(deviceId, id)
+      db.prepare('DELETE FROM goal_investments WHERE investment_id = ?').run(id)
+    })
+    tx()
+    for (const goalId of linkedGoalIds) {
+      try { syncGoalFromInvestments(db, goalId) } catch (e) { console.error('Post-delete goal sync failed for goal', goalId, e) }
+    }
     return { success: true }
+  })
+
+  // Goals a specific investment is currently linked to — used by the Edit
+  // Investment form to pre-select the "Link to Goal" dropdown from the source
+  // of truth (goal_investments) rather than the investment's own goal_id column.
+  ipcMain.handle('goalInvestments:getForInvestment', (_, investmentId) => {
+    return db.prepare('SELECT goal_id FROM goal_investments WHERE investment_id = ?').all(investmentId).map(r => r.goal_id)
   })
 
   // ── External price / NAV APIs (called from main to avoid CORS) ────────────
@@ -693,36 +865,37 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('plans:create', (_, { label, monthly_salary, effective_from, notes, items }) => {
+    const deviceId = getOrCreateDeviceId()
     const tx = db.transaction(() => {
       // Close current active plan
       const active = db.prepare('SELECT id FROM salary_plans WHERE is_active = 1 LIMIT 1').get()
       if (active) {
         const prevDay = new Date(new Date(effective_from).getTime() - 86_400_000)
           .toISOString().slice(0, 10)
-        db.prepare('UPDATE salary_plans SET is_active = 0, effective_to = ? WHERE id = ?')
-          .run(prevDay, active.id)
+        db.prepare(`UPDATE salary_plans SET is_active = 0, effective_to = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+          .run(prevDay, deviceId, active.id)
       }
       // Insert new plan
       const { lastInsertRowid: planId } = db.prepare(
-        `INSERT INTO salary_plans (label, monthly_salary, effective_from, is_active, notes)
-         VALUES (?, ?, ?, 1, ?)`
-      ).run(label, monthly_salary, effective_from, notes ?? null)
+        `INSERT INTO salary_plans (sync_id, label, monthly_salary, effective_from, is_active, notes, updated_at, device_id)
+         VALUES (?, ?, ?, ?, 1, ?, datetime('now'), ?)`
+      ).run(randomUUID(), label, monthly_salary, effective_from, notes ?? null, deviceId)
       // Insert items
-      const ins = db.prepare(
-        `INSERT INTO salary_plan_items (plan_id, name, amount, category, bank_or_provider, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
+      const ins = db.prepare(`
+        INSERT INTO salary_plan_items (sync_id, plan_id, name, amount, category, bank_or_provider, sort_order, updated_at, device_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      `)
       ;(items || []).forEach((it, i) => {
-        ins.run(planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, i)
+        ins.run(randomUUID(), planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, i, deviceId)
       })
       // Update profile salary
       const prof = db.prepare('SELECT id FROM profile LIMIT 1').get()
       if (prof) {
-        db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now') WHERE id = ?`)
-          .run(monthly_salary, prof.id)
+        db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now'), updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+          .run(monthly_salary, deviceId, prof.id)
       } else {
-        db.prepare(`INSERT INTO profile (name, monthly_salary, salary_updated_at) VALUES ('', ?, datetime('now'))`)
-          .run(monthly_salary)
+        db.prepare(`INSERT INTO profile (sync_id, name, monthly_salary, salary_updated_at, updated_at, device_id) VALUES (?, '', ?, datetime('now'), datetime('now'), ?)`)
+          .run(randomUUID(), monthly_salary, deviceId)
       }
       return planId
     })
@@ -730,23 +903,26 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('plans:updateItems', (_, { planId, items, monthly_salary, label }) => {
+    const deviceId = getOrCreateDeviceId()
     db.transaction(() => {
-      if (label != null)          db.prepare('UPDATE salary_plans SET label = ? WHERE id = ?').run(label, planId)
+      if (label != null)
+        db.prepare(`UPDATE salary_plans SET label = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`).run(label, deviceId, planId)
       if (monthly_salary != null) {
-        db.prepare('UPDATE salary_plans SET monthly_salary = ? WHERE id = ?').run(monthly_salary, planId)
+        db.prepare(`UPDATE salary_plans SET monthly_salary = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+          .run(monthly_salary, deviceId, planId)
         const prof = db.prepare('SELECT id FROM profile LIMIT 1').get()
         if (prof) {
-          db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now') WHERE id = ?`)
-            .run(monthly_salary, prof.id)
+          db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now'), updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+            .run(monthly_salary, deviceId, prof.id)
         }
       }
       db.prepare('DELETE FROM salary_plan_items WHERE plan_id = ?').run(planId)
-      const ins = db.prepare(
-        `INSERT INTO salary_plan_items (plan_id, name, amount, category, bank_or_provider, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?)`
-      )
+      const ins = db.prepare(`
+        INSERT INTO salary_plan_items (sync_id, plan_id, name, amount, category, bank_or_provider, sort_order, updated_at, device_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      `)
       ;(items || []).forEach((it, i) => {
-        ins.run(planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, i)
+        ins.run(randomUUID(), planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, i, deviceId)
       })
     })()
     return { success: true }
@@ -754,7 +930,7 @@ function setupIpcHandlers() {
 
   // ── Expenses ──────────────────────────────────────────────────────────────
   ipcMain.handle('expenses:getAll', (_, filter = {}) => {
-    let query = 'SELECT e.*, u.name as logged_by_name FROM expenses e LEFT JOIN users u ON e.logged_by_user_id = u.id WHERE 1=1'
+    let query = 'SELECT e.*, u.name as logged_by_name FROM expenses e LEFT JOIN users u ON e.logged_by_user_id = u.id WHERE e.deleted_at IS NULL'
     const params = []
     // filter.month is a 'YYYY-MM' string
     if (filter?.month) {
@@ -770,14 +946,15 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('expenses:create', (_, d) => {
-    const syncId  = generateExpenseSyncId()
-    const result  = db.prepare(
-      'INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(syncId, d.amount, d.category, d.note ?? null, d.date, currentUserSession?.id ?? null)
+    const syncId   = generateExpenseSyncId()
+    const deviceId = getOrCreateDeviceId()
+    const result  = db.prepare(`
+      INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id, updated_at, device_id)
+      VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
+    `).run(syncId, d.amount, d.category, d.note ?? null, d.date, currentUserSession?.id ?? null, deviceId)
     // Auto-push to Drive in background (fire and forget)
     const { connected } = getDriveStatus()
     if (connected) {
-      const deviceId = getOrCreateDeviceId()
       getAllExpensesForSync(db)
       pushExpensesSync(getAllExpensesForSync(db), deviceId).catch(() => {})
     }
@@ -785,14 +962,19 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('expenses:update', (_, d) => {
+    const deviceId = getOrCreateDeviceId()
     db.prepare(`
-      UPDATE expenses SET amount = ?, category = ?, note = ?, date = ? WHERE id = ?
-    `).run(d.amount, d.category, d.note ?? null, d.date, d.id)
+      UPDATE expenses SET amount = ?, category = ?, note = ?, date = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?
+    `).run(d.amount, d.category, d.note ?? null, d.date, deviceId, d.id)
     return { success: true }
   })
 
   ipcMain.handle('expenses:delete', (_, id) => {
-    db.prepare('DELETE FROM expenses WHERE id = ?').run(id)
+    const deviceId = getOrCreateDeviceId()
+    // Soft delete — a hard DELETE here would never make it to the other device's
+    // Drive merge, and the row would silently reappear on their next sync.
+    db.prepare(`UPDATE expenses SET deleted_at = datetime('now'), updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+      .run(deviceId, id)
     return { success: true }
   })
 
@@ -826,6 +1008,11 @@ function setupIpcHandlers() {
     }
     return { success: true, merged, total: remoteExpenses.length }
   })
+
+  // ── Unified row-level sync (all tables, single WealthLens_sync.json) ──────
+  ipcMain.handle('sync:now', () => performFullSync(db))
+  ipcMain.handle('sync:getLog', () => getSyncLog(db, 20))
+  ipcMain.handle('sync:getDeviceId', () => getOrCreateDeviceId())
 
   ipcMain.handle('expenses:deleteCategory', (_, id) => {
     db.prepare('DELETE FROM expense_categories WHERE id = ? AND is_default = 0').run(id)

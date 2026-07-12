@@ -154,6 +154,12 @@ export default function Settings({ onSyncRefresh }) {
   const [toast, setToast]             = useState(null)
   const [restoring, setRestoring]     = useState(false)
 
+  // Row-level sync (all tables)
+  const [deviceId, setDeviceId]       = useState('')
+  const [syncLog, setSyncLog]         = useState([])
+  const [syncing, setSyncing]         = useState(false)
+  const [lastSyncResult, setLastSyncResult] = useState(null)
+
   // Browser picker
   const [showBrowserPicker, setShowBrowserPicker] = useState(false)
   const [browserList, setBrowserList]             = useState([])
@@ -169,19 +175,23 @@ export default function Settings({ onSyncRefresh }) {
 
   async function loadAll() {
     try {
-      const [profile, status, hasCr, creds, ab, loadedUsers] = await Promise.all([
+      const [profile, status, hasCr, creds, ab, loadedUsers, devId, log] = await Promise.all([
         window.electronAPI.getProfile(),
         window.electronAPI.getDriveStatus(),
         window.electronAPI.hasDriveCreds(),
         window.electronAPI.getDriveCredentials(),
         window.electronAPI.getDriveAutoBackup(),
         window.electronAPI.getUsers(),
+        window.electronAPI.getDeviceId(),
+        window.electronAPI.getSyncLog(),
       ])
       if (profile) setProfileForm({ name: profile.name || '', monthly_salary: profile.monthly_salary || '', date_of_birth: profile.date_of_birth || '', retirement_age: String(profile.retirement_age || 60) })
       setDriveStatus(status || { connected: false, email: null, lastBackup: null })
       setHasCreds(Boolean(hasCr))
       setStoredCreds(creds || null)
       setAutoBackup(Boolean(ab))
+      setDeviceId(devId || '')
+      setSyncLog(log || [])
 
       if (loadedUsers) {
         setUsers(loadedUsers)
@@ -290,6 +300,28 @@ export default function Settings({ onSyncRefresh }) {
       showToast(e.message || 'Backup failed', 'error')
     } finally {
       setDriveOp(null)
+    }
+  }
+
+  async function syncNow() {
+    try {
+      setSyncing(true)
+      const result = await window.electronAPI.syncNow()
+      setLastSyncResult(result)
+      onSyncRefresh?.()
+      const log = await window.electronAPI.getSyncLog()
+      setSyncLog(log || [])
+      if (result?.success) {
+        setDriveStatus(s => ({ ...s, lastBackup: result.syncedAt }))
+        showToast(`Synced! ${result.rowsUploaded} rows uploaded, ${result.rowsDownloaded} rows downloaded`)
+      } else {
+        showToast(result?.error || 'Sync failed', 'error')
+      }
+    } catch (e) {
+      onSyncRefresh?.()
+      showToast(e.message || 'Sync failed', 'error')
+    } finally {
+      setSyncing(false)
     }
   }
 
@@ -778,7 +810,7 @@ export default function Settings({ onSyncRefresh }) {
       </div>
 
       {/* ── Google Drive Backup ─────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h3 className="text-base font-semibold text-gray-800">Google Drive Backup</h3>
@@ -941,6 +973,58 @@ export default function Settings({ onSyncRefresh }) {
                 )}
               </div>
 
+              {/* Row-level sync (all tables, other devices via WealthLens_sync.json) */}
+              <div className="p-4 rounded-xl border border-indigo-100 bg-indigo-50/50 space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Sync with other devices</p>
+                    <p className="text-xs text-gray-500 mt-0.5">Last synced: {fmtDate(driveStatus.lastBackup)}</p>
+                  </div>
+                  <button
+                    onClick={syncNow}
+                    disabled={syncing}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                    style={{ backgroundColor: '#6C63FF' }}
+                  >
+                    {syncing ? '⏳ Syncing…' : '🔄 Sync Now'}
+                  </button>
+                </div>
+                {lastSyncResult?.success && (
+                  <p className="text-xs text-indigo-700">
+                    Synced! {lastSyncResult.rowsUploaded} rows uploaded, {lastSyncResult.rowsDownloaded} rows downloaded
+                  </p>
+                )}
+                <p className="text-[11px] text-gray-400">
+                  Auto-syncs every time the app opens and closes. Also runs on the WealthLens PWA (Android) with the same Google account.
+                </p>
+              </div>
+
+              {/* Sync History */}
+              {syncLog.length > 0 && (
+                <div className="border border-gray-100 rounded-xl overflow-hidden">
+                  <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                    <p className="text-xs font-bold text-gray-500 uppercase tracking-wide">Sync History</p>
+                  </div>
+                  <div className="divide-y divide-gray-50 max-h-56 overflow-y-auto">
+                    {syncLog.map(ev => (
+                      <div key={ev.id} className="flex items-center gap-3 px-4 py-2.5">
+                        <span className="text-sm shrink-0">{ev.status === 'success' ? '✅' : '❌'}</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs text-gray-700 truncate">
+                            {fmtDate(ev.synced_at)} · <span className="font-mono">{ev.device_id}</span>
+                          </p>
+                          <p className="text-[11px] text-gray-400">
+                            {ev.status === 'success'
+                              ? `${ev.rows_uploaded} rows uploaded, ${ev.rows_downloaded} rows downloaded`
+                              : (ev.error_message || 'Sync failed')}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Auto-backup toggle */}
               <div className="flex items-center justify-between p-4 rounded-xl border border-gray-100 bg-gray-50">
                 <div>
@@ -1021,6 +1105,21 @@ export default function Settings({ onSyncRefresh }) {
               )}
             </>
           )}
+        </div>
+      </div>
+
+      {/* ── About ────────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-800">About</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Device identity used for sync</p>
+        </div>
+        <div className="p-6 flex items-center justify-between flex-wrap gap-2">
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Device ID</p>
+            <p className="text-sm font-mono text-gray-700 select-all">{deviceId || '—'}</p>
+          </div>
+          <p className="text-xs text-gray-400">WealthLens v1.0.0</p>
         </div>
       </div>
     </div>
