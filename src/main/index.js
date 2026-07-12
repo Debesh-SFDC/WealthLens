@@ -314,9 +314,14 @@ async function performFullSync(db) {
     logSyncEvent(db, { deviceId, status: 'success', rowsUploaded: uploaded, rowsDownloaded: downloaded })
     return { success: true, rowsUploaded: uploaded, rowsDownloaded: downloaded, syncedAt: new Date().toISOString() }
   } catch (e) {
+    // driveApiCall (googleDrive.js) already cleared the stale tokens and
+    // notified the renderer for an invalid_grant/expired-session failure —
+    // just log a friendlier message here and return normally, never throw.
+    const isAuthExpired = e.message === 'DRIVE_DISCONNECTED'
+    const message = isAuthExpired ? 'Drive disconnected — reconnect in Settings' : e.message
     markSyncFailed()
-    logSyncEvent(db, { deviceId, status: 'failed', errorMessage: e.message })
-    return { success: false, error: e.message }
+    logSyncEvent(db, { deviceId, status: 'failed', errorMessage: message })
+    return { success: false, error: message, disconnected: isAuthExpired }
   } finally {
     _syncInFlight = false
   }

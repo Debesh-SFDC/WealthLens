@@ -12,6 +12,7 @@ const SYNC_META = {
   synced:       { color: '#10B981', label: 'Synced with Google Drive' },
   unsynced:     { color: '#F59E0B', label: 'Unsynced changes — backup recommended' },
   failed:       { color: '#EF4444', label: 'Last backup failed' },
+  auth_expired: { color: '#EF4444', label: 'Drive disconnected — reconnect in Settings' },
   disconnected: null,
 }
 
@@ -67,9 +68,10 @@ export default function TopBar({ activePage, profileName, syncStatus, onSignOut 
                 boxShadow: `0 0 0 3px ${syncMeta.color}30`,
               }}
             />
-            {syncStatus.status === 'synced'   && 'Synced'}
-            {syncStatus.status === 'unsynced' && 'Unsynced'}
-            {syncStatus.status === 'failed'   && 'Sync failed'}
+            {syncStatus.status === 'synced'       && 'Synced'}
+            {syncStatus.status === 'unsynced'     && 'Unsynced'}
+            {syncStatus.status === 'failed'       && 'Sync failed'}
+            {syncStatus.status === 'auth_expired' && 'Reconnect Drive'}
           </div>
         )}
 

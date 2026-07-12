@@ -2,7 +2,7 @@ import http from 'http'
 import { execFile } from 'child_process'
 import { createReadStream, createWriteStream, readFileSync, writeFileSync, existsSync, renameSync, unlinkSync, statSync } from 'fs'
 import { join } from 'path'
-import { shell, app, safeStorage } from 'electron'
+import { shell, app, safeStorage, BrowserWindow } from 'electron'
 import { google } from 'googleapis'
 import { randomUUID } from 'crypto'
 
@@ -17,6 +17,12 @@ const SETTINGS_PATH = join(app.getPath('userData'), 'app_settings.json')
 
 // Tracks whether the last backup attempt failed
 let _syncFailed = false
+
+// Tracks whether the current disconnect was caused by an expired/revoked OAuth
+// refresh token (invalid_grant), as opposed to the user never having connected
+// or having clicked Disconnect themselves — so the UI can show a specific
+// "reconnect" prompt instead of just quietly hiding the sync indicator.
+let _authExpired = false
 
 // ── Secure token storage (Electron safeStorage) ───────────────────────────
 function saveTokensSecure(tokens) {
@@ -140,6 +146,7 @@ export function initiateAuth(clientId, clientSecret, browserApp = null) {
 
           saveTokensSecure({ ...tokens, email: userInfo.email })
           _syncFailed = false
+          _authExpired = false
           resolve({ email: userInfo.email })
         } catch (e) {
           server.close()
@@ -150,9 +157,48 @@ export function initiateAuth(clientId, clientSecret, browserApp = null) {
   })
 }
 
-export function disconnect() {
-  if (existsSync(TOKEN_PATH)) unlinkSync(TOKEN_PATH)
+// Deletes the stored OAuth tokens. Shared by the user-initiated Disconnect
+// button and the automatic invalid_grant handler below — the actual storage
+// mechanism is the encrypted token file (this app doesn't use an OS keychain
+// API like safeStorage.deletePassword, which doesn't exist on Electron's
+// safeStorage; safeStorage only encrypts/decrypts strings).
+function clearDriveCredentials() {
+  if (existsSync(TOKEN_PATH)) { try { unlinkSync(TOKEN_PATH) } catch {} }
   _syncFailed = false
+}
+
+export function disconnect() {
+  clearDriveCredentials()
+  _authExpired = false // this was a deliberate disconnect, not a session expiry
+}
+
+// Wraps any Drive API call. If Google rejects the refresh token (invalid_grant
+// — expired after 7 days in OAuth "Testing" mode, or revoked from the user's
+// Google Account), this clears the stale tokens, flips status to
+// "auth_expired" for the TopBar/Settings UI, pushes a live notification to the
+// renderer, and throws a stable DRIVE_DISCONNECTED sentinel so callers can
+// stop retrying instead of failing repeatedly with a cryptic OAuth error.
+async function driveApiCall(fn) {
+  try {
+    return await fn()
+  } catch (error) {
+    const msg = error?.message || String(error)
+    const isAuthExpired =
+      msg.includes('invalid_grant') ||
+      msg.includes('Token has been expired') ||
+      msg.includes('401') ||
+      error?.code === 401 ||
+      error?.response?.status === 401
+
+    if (isAuthExpired) {
+      clearDriveCredentials()
+      _authExpired = true
+      const win = BrowserWindow.getAllWindows()[0]
+      win?.webContents.send('drive:disconnected', 'Google Drive session expired. Please reconnect in Settings.')
+      throw new Error('DRIVE_DISCONNECTED')
+    }
+    throw error
+  }
 }
 
 // ── Drive folder helper ───────────────────────────────────────────────────
@@ -174,23 +220,25 @@ async function ensureFolder(drive) {
 // ── Backup ────────────────────────────────────────────────────────────────
 export async function backupDatabase(dbPath) {
   try {
-    const auth  = getAuthorizedClient()
-    const drive = google.drive({ version: 'v3', auth })
-    const folderId = await ensureFolder(drive)
+    return await driveApiCall(async () => {
+      const auth  = getAuthorizedClient()
+      const drive = google.drive({ version: 'v3', auth })
+      const folderId = await ensureFolder(drive)
 
-    const dateStr  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
-    const fileName = `WealthLens_backup_${dateStr}.db`
+      const dateStr  = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      const fileName = `WealthLens_backup_${dateStr}.db`
 
-    const res = await drive.files.create({
-      requestBody: { name: fileName, parents: [folderId] },
-      media: { mimeType: 'application/octet-stream', body: createReadStream(dbPath) },
-      fields: 'id,name,createdTime',
+      const res = await drive.files.create({
+        requestBody: { name: fileName, parents: [folderId] },
+        media: { mimeType: 'application/octet-stream', body: createReadStream(dbPath) },
+        fields: 'id,name,createdTime',
+      })
+
+      const tokens = loadTokensSecure()
+      saveTokensSecure({ ...tokens, lastBackup: new Date().toISOString() })
+      _syncFailed = false
+      return { id: res.data.id, name: res.data.name }
     })
-
-    const tokens = loadTokensSecure()
-    saveTokensSecure({ ...tokens, lastBackup: new Date().toISOString() })
-    _syncFailed = false
-    return { id: res.data.id, name: res.data.name }
   } catch (e) {
     _syncFailed = true
     throw e
@@ -199,40 +247,44 @@ export async function backupDatabase(dbPath) {
 
 // ── List backups ──────────────────────────────────────────────────────────
 export async function listBackups() {
-  const auth  = getAuthorizedClient()
-  const drive = google.drive({ version: 'v3', auth })
+  return driveApiCall(async () => {
+    const auth  = getAuthorizedClient()
+    const drive = google.drive({ version: 'v3', auth })
 
-  const res = await drive.files.list({
-    q: "name contains 'WealthLens_backup' and trashed=false",
-    fields: 'files(id,name,createdTime,size)',
-    orderBy: 'createdTime desc',
-    spaces: 'drive',
+    const res = await drive.files.list({
+      q: "name contains 'WealthLens_backup' and trashed=false",
+      fields: 'files(id,name,createdTime,size)',
+      orderBy: 'createdTime desc',
+      spaces: 'drive',
+    })
+    return res.data.files || []
   })
-  return res.data.files || []
 }
 
 // ── Restore ───────────────────────────────────────────────────────────────
 export async function restoreFromDrive(fileId, dbPath) {
-  const auth  = getAuthorizedClient()
-  const drive = google.drive({ version: 'v3', auth })
+  return driveApiCall(async () => {
+    const auth  = getAuthorizedClient()
+    const drive = google.drive({ version: 'v3', auth })
 
-  const tmpPath = dbPath + '.restore_tmp'
-  const destStream = createWriteStream(tmpPath)
+    const tmpPath = dbPath + '.restore_tmp'
+    const destStream = createWriteStream(tmpPath)
 
-  const res = await drive.files.get(
-    { fileId, alt: 'media' },
-    { responseType: 'stream' }
-  )
+    const res = await drive.files.get(
+      { fileId, alt: 'media' },
+      { responseType: 'stream' }
+    )
 
-  await new Promise((resolve, reject) => {
-    res.data.pipe(destStream)
-    destStream.on('finish', resolve)
-    destStream.on('error', reject)
-    res.data.on('error', reject)
+    await new Promise((resolve, reject) => {
+      res.data.pipe(destStream)
+      destStream.on('finish', resolve)
+      destStream.on('error', reject)
+      res.data.on('error', reject)
+    })
+
+    renameSync(tmpPath, dbPath)
+    return { success: true }
   })
-
-  renameSync(tmpPath, dbPath)
-  return { success: true }
 }
 
 // ── Status ────────────────────────────────────────────────────────────────
@@ -243,11 +295,16 @@ export function getDriveStatus() {
     connected,
     email: tokens?.email || null,
     lastBackup: tokens?.lastBackup || null,
+    authExpired: _authExpired,
   }
 }
 
 export function getSyncStatus(dbPath) {
   const tokens = loadTokensSecure()
+
+  if (_authExpired) {
+    return { status: 'auth_expired', message: 'Drive disconnected — reconnect in Settings' }
+  }
   if (!tokens?.access_token) return { status: 'disconnected' }
 
   if (_syncFailed) {
@@ -303,86 +360,94 @@ async function findSyncFile(drive, folderId) {
 
 // Returns null if no sync file exists yet on Drive (first-ever sync for this account).
 export async function pullSyncFile() {
-  const auth     = getAuthorizedClient()
-  const drive    = google.drive({ version: 'v3', auth })
-  const folderId = await ensureFolder(drive)
-  const fileId   = await findSyncFile(drive, folderId)
-  if (!fileId) return null
+  return driveApiCall(async () => {
+    const auth     = getAuthorizedClient()
+    const drive    = google.drive({ version: 'v3', auth })
+    const folderId = await ensureFolder(drive)
+    const fileId   = await findSyncFile(drive, folderId)
+    if (!fileId) return null
 
-  const resp = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' })
-  const text = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data)
-  return JSON.parse(text)
+    const resp = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'text' })
+    const text = typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data)
+    return JSON.parse(text)
+  })
 }
 
 export async function pushSyncFile(syncObject) {
-  const auth     = getAuthorizedClient()
-  const drive    = google.drive({ version: 'v3', auth })
-  const folderId = await ensureFolder(drive)
-  const fileId   = await findSyncFile(drive, folderId)
-  const body     = JSON.stringify(syncObject)
+  return driveApiCall(async () => {
+    const auth     = getAuthorizedClient()
+    const drive    = google.drive({ version: 'v3', auth })
+    const folderId = await ensureFolder(drive)
+    const fileId   = await findSyncFile(drive, folderId)
+    const body     = JSON.stringify(syncObject)
 
-  if (fileId) {
-    await drive.files.update({ fileId, media: { mimeType: 'application/json', body } })
-  } else {
-    await drive.files.create({
-      requestBody: { name: SYNC_FILE_NAME, parents: [folderId] },
-      media:       { mimeType: 'application/json', body },
-      fields:      'id',
-    })
-  }
+    if (fileId) {
+      await drive.files.update({ fileId, media: { mimeType: 'application/json', body } })
+    } else {
+      await drive.files.create({
+        requestBody: { name: SYNC_FILE_NAME, parents: [folderId] },
+        media:       { mimeType: 'application/json', body },
+        fields:      'id',
+      })
+    }
+  })
 }
 
 // ── Incremental expense sync ──────────────────────────────────────────────
 const SYNC_PREFIX = 'wealthlens_sync_'
 
 export async function pushExpensesSync(expenses, deviceId) {
-  const auth     = getAuthorizedClient()
-  const drive    = google.drive({ version: 'v3', auth })
-  const folderId = await ensureFolder(drive)
-  const fileName = `${SYNC_PREFIX}${deviceId}.json`
-  const body     = JSON.stringify({ device_id: deviceId, updated_at: new Date().toISOString(), expenses })
+  return driveApiCall(async () => {
+    const auth     = getAuthorizedClient()
+    const drive    = google.drive({ version: 'v3', auth })
+    const folderId = await ensureFolder(drive)
+    const fileName = `${SYNC_PREFIX}${deviceId}.json`
+    const body     = JSON.stringify({ device_id: deviceId, updated_at: new Date().toISOString(), expenses })
 
-  const existing = await drive.files.list({
-    q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
-    fields: 'files(id)',
-    spaces: 'drive',
+    const existing = await drive.files.list({
+      q: `name='${fileName}' and '${folderId}' in parents and trashed=false`,
+      fields: 'files(id)',
+      spaces: 'drive',
+    })
+
+    if (existing.data.files?.length) {
+      await drive.files.update({
+        fileId: existing.data.files[0].id,
+        media:  { mimeType: 'application/json', body },
+      })
+    } else {
+      await drive.files.create({
+        requestBody: { name: fileName, parents: [folderId] },
+        media:       { mimeType: 'application/json', body },
+        fields:      'id',
+      })
+    }
   })
-
-  if (existing.data.files?.length) {
-    await drive.files.update({
-      fileId: existing.data.files[0].id,
-      media:  { mimeType: 'application/json', body },
-    })
-  } else {
-    await drive.files.create({
-      requestBody: { name: fileName, parents: [folderId] },
-      media:       { mimeType: 'application/json', body },
-      fields:      'id',
-    })
-  }
 }
 
 export async function pullExpensesSync(deviceId) {
-  const auth     = getAuthorizedClient()
-  const drive    = google.drive({ version: 'v3', auth })
-  const folderId = await ensureFolder(drive)
+  return driveApiCall(async () => {
+    const auth     = getAuthorizedClient()
+    const drive    = google.drive({ version: 'v3', auth })
+    const folderId = await ensureFolder(drive)
 
-  const res = await drive.files.list({
-    q:      `name contains '${SYNC_PREFIX}' and '${folderId}' in parents and trashed=false`,
-    fields: 'files(id,name)',
-    spaces: 'drive',
+    const res = await drive.files.list({
+      q:      `name contains '${SYNC_PREFIX}' and '${folderId}' in parents and trashed=false`,
+      fields: 'files(id,name)',
+      spaces: 'drive',
+    })
+
+    const otherFiles = (res.data.files || []).filter(f => !f.name.includes(deviceId))
+    const allExpenses = []
+
+    for (const file of otherFiles) {
+      try {
+        const resp = await drive.files.get({ fileId: file.id, alt: 'media' }, { responseType: 'text' })
+        const data = JSON.parse(typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data))
+        if (Array.isArray(data.expenses)) allExpenses.push(...data.expenses)
+      } catch {}
+    }
+
+    return allExpenses
   })
-
-  const otherFiles = (res.data.files || []).filter(f => !f.name.includes(deviceId))
-  const allExpenses = []
-
-  for (const file of otherFiles) {
-    try {
-      const resp = await drive.files.get({ fileId: file.id, alt: 'media' }, { responseType: 'text' })
-      const data = JSON.parse(typeof resp.data === 'string' ? resp.data : JSON.stringify(resp.data))
-      if (Array.isArray(data.expenses)) allExpenses.push(...data.expenses)
-    } catch {}
-  }
-
-  return allExpenses
 }

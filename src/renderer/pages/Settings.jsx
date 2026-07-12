@@ -142,6 +142,7 @@ export default function Settings({ onSyncRefresh }) {
 
   // Drive
   const [driveStatus, setDriveStatus] = useState({ connected: false, email: null, lastBackup: null })
+  const [driveError, setDriveError]   = useState('')
   const [hasCreds, setHasCreds]       = useState(false)
   const [storedCreds, setStoredCreds] = useState(null)
   const [showCreds, setShowCreds]     = useState(false)
@@ -172,6 +173,16 @@ export default function Settings({ onSyncRefresh }) {
   const [trackerExpenseSummary, setTrackerExpenseSummary] = useState(null)
 
   useEffect(() => { loadAll() }, [])
+
+  // Main process pushes this when a Drive API call hits invalid_grant (expired
+  // or revoked refresh token) — tokens are already cleared by the time it fires.
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onDriveDisconnected?.((message) => {
+      setDriveStatus(s => ({ ...s, connected: false }))
+      setDriveError(message || 'Google Drive session expired. Please reconnect in Settings.')
+    })
+    return () => unsubscribe?.()
+  }, [])
 
   async function loadAll() {
     try {
@@ -267,12 +278,26 @@ export default function Settings({ onSyncRefresh }) {
 
   async function connectWithBrowser(browserApp) {
     setShowBrowserPicker(false)
+    const wasReconnect = Boolean(driveError)
     try {
       setDriveOp('connecting')
       const result = await window.electronAPI.connectDrive(browserApp)
       setDriveStatus({ connected: true, email: result.email, lastBackup: null })
+      setDriveError('')
       onSyncRefresh?.()
-      showToast(`Connected as ${result.email}`)
+
+      if (wasReconnect) {
+        // Step 5: reconnecting after an expired session immediately re-syncs
+        // so the user sees fresh data without a separate manual step.
+        const syncResult = await window.electronAPI.syncNow()
+        onSyncRefresh?.()
+        const log = await window.electronAPI.getSyncLog()
+        setSyncLog(log || [])
+        if (syncResult?.success) showToast('Google Drive reconnected and synced!')
+        else showToast(syncResult?.error || 'Reconnected, but sync failed', 'error')
+      } else {
+        showToast(`Connected as ${result.email}`)
+      }
     } catch (e) {
       showToast(e.message || 'Connection failed', 'error')
     } finally {
@@ -280,9 +305,17 @@ export default function Settings({ onSyncRefresh }) {
     }
   }
 
+  // "Reconnect Google Drive" (shown on the expired-session banner) — clears any
+  // stale tokens first, then runs the normal connect flow.
+  async function reconnectDrive() {
+    try { await window.electronAPI.disconnectDrive() } catch {}
+    await connect()
+  }
+
   async function disconnect() {
     await window.electronAPI.disconnectDrive()
     setDriveStatus({ connected: false, email: null, lastBackup: null })
+    setDriveError('')
     setBackups([])
     onSyncRefresh?.()
     showToast('Disconnected from Google Drive')
@@ -824,6 +857,26 @@ export default function Settings({ onSyncRefresh }) {
           )}
         </div>
 
+        {driveError && (
+          <div className="mx-6 mt-6 p-4 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-2.5">
+              <span className="text-lg leading-none">🔴</span>
+              <div>
+                <p className="text-sm font-semibold text-red-800">Google Drive disconnected — session expired</p>
+                <p className="text-xs text-red-600 mt-0.5">{driveError}</p>
+              </div>
+            </div>
+            <button
+              onClick={reconnectDrive}
+              disabled={driveOp === 'connecting'}
+              className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 shrink-0"
+              style={{ backgroundColor: '#EF4444' }}
+            >
+              {driveOp === 'connecting' ? '⏳ Reconnecting…' : '🔄 Reconnect Google Drive'}
+            </button>
+          </div>
+        )}
+
         <div className="p-6 space-y-5">
           {!driveStatus.connected ? (
             <>
@@ -1105,6 +1158,13 @@ export default function Settings({ onSyncRefresh }) {
               )}
             </>
           )}
+
+          <p className="text-[11px] text-gray-400 pt-2 border-t border-gray-100">
+            If Drive keeps disconnecting, your OAuth app is likely still in "Testing" mode, which makes Google
+            expire refresh tokens after 7 days. Fix it once: Google Cloud Console → OAuth consent screen →
+            change Publishing status from "Testing" to "In production" (no Google verification needed for a
+            personal app — it just won't be listed publicly).
+          </p>
         </div>
       </div>
 

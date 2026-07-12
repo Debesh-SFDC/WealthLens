@@ -92,6 +92,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   syncNow:            () => ipcRenderer.invoke('sync:now'),
   getSyncLog:         () => ipcRenderer.invoke('sync:getLog'),
   getDeviceId:        () => ipcRenderer.invoke('sync:getDeviceId'),
+  // Push notification from main when a Drive API call hits invalid_grant (expired/
+  // revoked refresh token) — main already cleared the stale tokens by the time this
+  // fires. Returns an unsubscribe function. contextIsolation-safe: we don't expose
+  // raw ipcRenderer, just this one listener.
+  onDriveDisconnected: (callback) => {
+    const listener = (_event, message) => callback(message)
+    ipcRenderer.on('drive:disconnected', listener)
+    return () => ipcRenderer.removeListener('drive:disconnected', listener)
+  },
   listDriveBackups: () => ipcRenderer.invoke('drive:listBackups'),
   driveRestore: (fileId) => ipcRenderer.invoke('drive:restore', fileId),
   getDriveAutoBackup: () => ipcRenderer.invoke('drive:getAutoBackup'),
