@@ -448,7 +448,9 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onCon
             ) : (
               <>
                 <p className="text-lg font-bold text-gray-900 leading-tight">{fmtCr(goal.current_amount || 0)}</p>
-                <p className="text-xs text-gray-400">of {fmtCr(target)}</p>
+                <p className="text-xs text-gray-400">
+                  of {fmtCr(target)} · {(linkedInvestments || []).length > 0 ? 'Auto' : 'Manual'}
+                </p>
               </>
             )}
           </div>
@@ -1185,6 +1187,9 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, syncing, onB
                 <div>
                   <p className="text-xs text-gray-400 mb-0.5">{isDebt ? 'Paid Off' : 'Saved'}</p>
                   <p className="text-2xl font-bold text-gray-900">{fmtCr(goal.current_amount || 0)}</p>
+                  <p className="text-[10px] font-medium mt-0.5" style={{ color: linkedInvestments.length > 0 ? '#6366F1' : '#9ca3af' }}>
+                    {linkedInvestments.length > 0 ? 'Auto-calculated from linked investments' : 'Manual'}
+                  </p>
                 </div>
                 <div className="text-right">
                   <p className="text-xs text-gray-400 mb-0.5">{isDebt ? 'Original Outstanding' : 'Target'}</p>
@@ -1297,7 +1302,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, syncing, onB
                       <p className="text-sm font-medium text-gray-800 truncate">{inv.name}</p>
                       <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500 shrink-0">{INV_TYPE_LABELS[inv.type] || inv.type}</span>
                     </div>
-                    {inv.type === 'mf_sip' && inv.monthly_sip_amount > 0 && (
+                    {['mf_sip', 'rd'].includes(inv.type) && inv.monthly_sip_amount > 0 && (
                       <p className="text-xs text-indigo-600 mt-0.5">Contributing {fmtCr(inv.monthly_sip_amount)}/mo to this goal</p>
                     )}
                   </div>
@@ -1353,6 +1358,12 @@ export default function Goals() {
   const [showWizard, setShowWizard] = useState(false)
   const [editGoal, setEditGoal] = useState(null)
   const [contribGoal, setContribGoal] = useState(null)
+  const [toast, setToast] = useState(null)
+
+  const showToast = (msg, type = 'ok') => {
+    setToast({ msg, type })
+    setTimeout(() => setToast(null), 3000)
+  }
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -1435,7 +1446,7 @@ export default function Goals() {
     if (!selectedGoal) return
     setSyncing(true)
     try {
-      await window.electronAPI.syncGoalInvestment(selectedGoal.id)
+      const result = await window.electronAPI.syncGoalInvestment(selectedGoal.id)
       const [fresh, c, inv] = await Promise.all([
         window.electronAPI.getAllGoals(),
         window.electronAPI.getGoalContributions(selectedGoal.id),
@@ -1445,6 +1456,11 @@ export default function Goals() {
       setSelectedGoal(fresh.find(g => g.id === selectedGoal.id) || null)
       setContributions(c || [])
       setDetailInvestments(inv || [])
+      if (result?.synced) {
+        showToast(`Synced! Current amount updated to ${fmtCr(result.newAmount)}`)
+      } else {
+        showToast('No linked investments to sync', 'warn')
+      }
     } finally {
       setSyncing(false)
     }
@@ -1518,6 +1534,12 @@ export default function Goals() {
         )}
         {contribGoal && (
           <AddContributionModal goal={contribGoal} onSave={handleAddContribution} onClose={closeContribution} />
+        )}
+        {toast && (
+          <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white animate-in"
+            style={{ backgroundColor: toast.type === 'error' ? '#EF4444' : toast.type === 'warn' ? '#F59E0B' : '#10B981' }}>
+            {toast.type === 'error' ? '✗' : '✓'} {toast.msg}
+          </div>
         )}
       </>
     )

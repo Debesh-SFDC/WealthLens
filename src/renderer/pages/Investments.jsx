@@ -2298,6 +2298,16 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const meta = TYPE_META[form.type] || {}
 
+  // Edit mode: goal_investments (junction table) is the source of truth for which
+  // goal(s) this investment is linked to — investments.goal_id can be stale on
+  // older records. Reconcile the dropdown's pre-selection against it on load.
+  useEffect(() => {
+    if (!initial?.id) return
+    window.electronAPI.getGoalsForInvestment?.(initial.id).then(goalIds => {
+      if (goalIds && goalIds.length > 0) set('goal_id', String(goalIds[0]))
+    }).catch(() => {})
+  }, [initial?.id])
+
   // Auto-compute current_value for FD
   useEffect(() => {
     if (form.type === 'fd' && form.invested_amount && form.interest_rate && form.start_date) {
