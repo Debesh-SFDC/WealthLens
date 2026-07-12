@@ -16,7 +16,7 @@ import {
   restoreFromDrive, getDriveStatus, getSyncStatus, getDbLastModified,
   getStoredCreds, saveCreds, getAppSettings, saveAppSettings,
   getOrCreateDeviceId, pushExpensesSync, pullExpensesSync,
-  pullSyncFile, pushSyncFile, markSyncSuccess,
+  pullSyncFile, pushSyncFile, markSyncSuccess, markSyncFailed,
 } from './googleDrive.js'
 
 let mainWindow
