@@ -8,6 +8,7 @@ import Investments from './pages/Investments'
 import Expenses from './pages/Expenses'
 import SalaryAllocator from './pages/SalaryAllocator'
 import NetWorth from './pages/NetWorth'
+import FirePlannerPage from './pages/FirePlannerPage'
 import Goals from './pages/Goals'
 import Settings from './pages/Settings'
 import TrackerApp from './components/TrackerApp'
@@ -18,6 +19,7 @@ const adminPages = {
   investments: Investments,
   expenses:    Expenses,
   networth:    NetWorth,
+  fire:        FirePlannerPage,
   goals:       Goals,
   salary:      SalaryAllocator,
   settings:    Settings,

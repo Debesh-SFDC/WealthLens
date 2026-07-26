@@ -404,7 +404,7 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
 }
 
 // ── Main component ─────────────────────────────────────────────────────────
-export default function FirePlanner({ investments = [], onNavigate }) {
+export default function FirePlanner({ investments = [], onNavigate, standalone = false }) {
   const [collapsed, setCollapsed] = useState(true)
   const [tab, setTab] = useState('inputs')
   const [loading, setLoading] = useState(true)
@@ -570,26 +570,38 @@ export default function FirePlanner({ investments = [], onNavigate }) {
 
   const goToInvestments = () => onNavigate?.('investments')
 
+  const isOpen = standalone || !collapsed
+
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
-      <button onClick={() => setCollapsed(v => !v)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
-        <div className="flex items-center gap-3">
-          <span className="text-base font-bold text-gray-800">🔥 FIRE Planner</span>
-          {results?.selectedScenario?.fireYear && (
+    <div className={standalone ? '' : 'bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden'}>
+      {standalone ? (
+        results?.selectedScenario?.fireYear && (
+          <div className="flex items-center gap-3 mb-4">
             <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-semibold">
               FIRE in {results.selectedScenario.fireYear}
             </span>
-          )}
-        </div>
-        <span className={`text-gray-400 transition-transform duration-200 ${!collapsed ? 'rotate-180' : ''}`}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
-        </span>
-      </button>
+          </div>
+        )
+      ) : (
+        <button onClick={() => setCollapsed(v => !v)} className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
+          <div className="flex items-center gap-3">
+            <span className="text-base font-bold text-gray-800">🔥 FIRE Planner</span>
+            {results?.selectedScenario?.fireYear && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-600 font-semibold">
+                FIRE in {results.selectedScenario.fireYear}
+              </span>
+            )}
+          </div>
+          <span className={`text-gray-400 transition-transform duration-200 ${!collapsed ? 'rotate-180' : ''}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </span>
+        </button>
+      )}
 
-      {!collapsed && (
-        <div className="px-5 pb-5 border-t border-gray-100 pt-4">
+      {isOpen && (
+        <div className={standalone ? '' : 'px-5 pb-5 border-t border-gray-100 pt-4'}>
           {loading ? (
             <div className="space-y-3">
               {[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />)}
