@@ -101,6 +101,30 @@ const FIRE_TYPES = [
 
 const inputCls = 'w-full px-2.5 py-1.5 rounded-lg border border-gray-200 text-xs focus:outline-none focus:ring-2 focus:ring-orange-100'
 
+// ── Loan types — dropdown options + sensible auto-fill defaults ──────────
+const LOAN_TYPES = [
+  { key: 'home', label: '🏠 Home Loan', annualEmi: 360000, tenureYears: 20 },
+  { key: 'car', label: '🚗 Car Loan', annualEmi: 120000, tenureYears: 5 },
+  { key: 'bike', label: '🏍️ Bike Loan', annualEmi: 60000, tenureYears: 3 },
+  { key: 'education', label: '🎓 Education Loan', annualEmi: 84000, tenureYears: 7 },
+  { key: 'personal', label: '💳 Personal Loan', annualEmi: 60000, tenureYears: 3 },
+  { key: 'other', label: 'Other', annualEmi: null, tenureYears: null },
+]
+const LOAN_TYPE_MAP = Object.fromEntries(LOAN_TYPES.map(t => [t.key, t]))
+
+function loanDisplayName(row) {
+  if (!row.loanType || row.loanType === 'other') return row.name || 'Loan'
+  return LOAN_TYPE_MAP[row.loanType]?.label || row.name || 'Loan'
+}
+
+// Seeded into the Loans section the first time it's opened with no loans yet —
+// gives the user a concrete, editable example instead of a blank form.
+const EXAMPLE_LOANS = [
+  { loanType: 'home', name: '', annualEmi: '360000', startYear: '2024', endYear: '2044', isExample: true },
+  { loanType: 'car', name: '', annualEmi: '120000', startYear: '2024', endYear: '2029', isExample: true },
+  { loanType: 'bike', name: '', annualEmi: '60000', startYear: '2024', endYear: '2027', isExample: true },
+]
+
 // ── Small building blocks ─────────────────────────────────────────────────
 function CollapsibleSection({ title, open, onToggle, children }) {
   return (
@@ -159,6 +183,109 @@ function RepeatableTable({ columns, rows, onUpdate, onRemove, onAdd, addLabel, e
         </div>
       ))}
       <button onClick={onAdd} className="text-xs font-semibold text-orange-600 hover:text-orange-700">{addLabel}</button>
+    </div>
+  )
+}
+
+function LoanRow({ row, currentYear, onUpdate, onRemove }) {
+  const isOther = !row.loanType || row.loanType === 'other'
+
+  function handleTypeChange(key) {
+    const def = LOAN_TYPE_MAP[key]
+    if (key && key !== 'other' && def) {
+      onUpdate(row._id, {
+        loanType: key,
+        annualEmi: String(def.annualEmi),
+        startYear: String(currentYear),
+        endYear: String(currentYear + def.tenureYears),
+        isExample: false,
+      })
+    } else {
+      onUpdate(row._id, { loanType: 'other', isExample: false })
+    }
+  }
+
+  const annualEmi = Number(row.annualEmi) || 0
+  const startYear = Number(row.startYear) || currentYear
+  const endYear = Number(row.endYear) || currentYear
+  const monthly = annualEmi / 12
+  const yearsRemaining = Math.max(0, endYear - currentYear)
+  const totalOutflow = annualEmi * Math.max(0, endYear - startYear)
+
+  return (
+    <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2.5 relative">
+      <button onClick={() => onRemove(row._id)}
+        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold px-1.5 leading-none">
+        × Remove
+      </button>
+
+      {/* Row 1 — type + custom name */}
+      <div className="flex items-center gap-2 flex-wrap pr-16">
+        <select value={row.loanType || ''} onChange={e => handleTypeChange(e.target.value)}
+          className={`${inputCls} w-auto min-w-[150px]`}>
+          <option value="" disabled>Select loan type</option>
+          {LOAN_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
+        {isOther && (
+          <input placeholder="Loan name" value={row.name || ''}
+            onChange={e => onUpdate(row._id, { name: e.target.value, isExample: false })}
+            className={`${inputCls} flex-1 min-w-[120px]`} />
+        )}
+      </div>
+
+      {/* Row 2 — EMI / start / end, with helper text */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <FieldRow label="Annual EMI ₹" hint="Total amount paid per year (monthly EMI × 12)">
+          <input type="number" value={row.annualEmi ?? ''}
+            onChange={e => onUpdate(row._id, { annualEmi: e.target.value, isExample: false })}
+            className={inputCls} />
+        </FieldRow>
+        <FieldRow label="Start Year" hint="Year you took or will take this loan">
+          <input type="number" value={row.startYear ?? ''}
+            onChange={e => onUpdate(row._id, { startYear: e.target.value, isExample: false })}
+            className={inputCls} />
+        </FieldRow>
+        <FieldRow label="End Year" hint="Year loan is fully paid off">
+          <input type="number" value={row.endYear ?? ''}
+            onChange={e => onUpdate(row._id, { endYear: e.target.value, isExample: false })}
+            className={inputCls} />
+        </FieldRow>
+      </div>
+
+      {/* Row 3 — auto-calculated summary */}
+      {annualEmi > 0 && (
+        <p className="text-[11px] text-gray-500 bg-white rounded-lg px-2.5 py-1.5 border border-gray-100">
+          {fmt(monthly)}/month • {yearsRemaining} year{yearsRemaining !== 1 ? 's' : ''} remaining • Total outflow: {fmtCr(totalOutflow)}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function LoansSection({ loans, currentYear, onUpdate, onRemove, onAdd, showExampleBanner }) {
+  const activeLoans = loans.filter(l => {
+    const s = Number(l.startYear), e = Number(l.endYear)
+    return s <= currentYear && currentYear < e && Number(l.annualEmi) > 0
+  })
+  const totalMonthly = activeLoans.reduce((sum, l) => sum + (Number(l.annualEmi) || 0) / 12, 0)
+
+  return (
+    <div className="space-y-3">
+      {showExampleBanner && (
+        <div className="px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-100">
+          <p className="text-xs text-blue-800">💡 These are examples — edit or remove what doesn't apply to you</p>
+        </div>
+      )}
+      {loans.length === 0 && <p className="text-xs text-gray-400 italic">No loans added — e.g. home loan, car loan</p>}
+      {loans.map(row => (
+        <LoanRow key={row._id} row={row} currentYear={currentYear} onUpdate={onUpdate} onRemove={onRemove} />
+      ))}
+      <button onClick={onAdd} className="text-xs font-semibold text-orange-600 hover:text-orange-700">+ Add Loan</button>
+      {loans.length > 0 && (
+        <p className="text-xs font-semibold text-gray-600 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100">
+          Total loan burden: {fmt(totalMonthly)}/month across {activeLoans.length} active loan{activeLoans.length !== 1 ? 's' : ''}
+        </p>
+      )}
     </div>
   )
 }
@@ -420,6 +547,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
     loans: false, futureExpenses: false, bonuses: false,
   })
   const toggleSection = key => setSectionsOpen(s => ({ ...s, [key]: !s[key] }))
+  const [loansAutoSeeded, setLoansAutoSeeded] = useState(false)
 
   const [form, setForm] = useState({
     fireType: 'regular',
@@ -468,6 +596,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
             futureExpenses: (savedRes.future_expenses_json || []).map(r => ({ ...r, _id: makeId() })),
             lumpSums: (savedRes.lump_sums_json || []).map(r => ({ ...r, _id: makeId() })),
           }))
+          if ((savedRes.loans_json || []).length > 0) setLoansAutoSeeded(true)
         }
       } catch (e) {
         console.error(e)
@@ -501,6 +630,16 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
   function updateRow(listKey, id, patch) { setForm(f => ({ ...f, [listKey]: f[listKey].map(r => r._id === id ? { ...r, ...patch } : r) })) }
   function removeRow(listKey, id) { setForm(f => ({ ...f, [listKey]: f[listKey].filter(r => r._id !== id) })) }
 
+  // Seeds 3 example loans the first time the section is opened with nothing in it yet,
+  // so a new user sees a working example instead of a blank form.
+  function openLoansSection() {
+    if (!sectionsOpen.loans && !loansAutoSeeded && form.loans.length === 0) {
+      setForm(f => ({ ...f, loans: EXAMPLE_LOANS.map(l => ({ ...l, _id: makeId() })) }))
+      setLoansAutoSeeded(true)
+    }
+    toggleSection('loans')
+  }
+
   function buildCalcInputs() {
     return {
       currentYear,
@@ -519,10 +658,14 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
       fireType: form.fireType,
       fireTypeMultiplierOverride: form.useCustomMultiple ? (Number(form.customMultiple) || null) : null,
       baristaAnnualIncome: form.fireType === 'barista' ? (Number(form.baristaAnnualIncome) || 0) : null,
-      loans: form.loans.filter(l => l.name).map(l => ({
-        name: l.name, annualEmi: Number(l.annualEmi) || 0,
-        startYear: Number(l.startYear), endYear: Number(l.endYear),
-      })),
+      loans: form.loans
+        .filter(l => (l.loanType && l.loanType !== 'other') || l.name)
+        .filter(l => Number(l.annualEmi) > 0 && Number(l.endYear) > Number(l.startYear))
+        .map(l => ({
+          name: loanDisplayName(l), loanType: l.loanType || 'other',
+          annualEmi: Number(l.annualEmi) || 0,
+          startYear: Number(l.startYear), endYear: Number(l.endYear),
+        })),
       futureExpenses: form.futureExpenses.filter(f2 => f2.name).map(f2 => ({
         name: f2.name, costToday: Number(f2.costToday) || 0, year: Number(f2.year),
         financedPct: Number(f2.financedPct) || 0,
@@ -771,20 +914,19 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                   </CollapsibleSection>
 
                   {/* Section E — Loans & EMIs */}
-                  <CollapsibleSection title="Loans & EMIs (optional)" open={sectionsOpen.loans} onToggle={() => toggleSection('loans')}>
-                    <RepeatableTable
-                      rows={form.loans}
-                      emptyHint="No loans added — e.g. home loan, car loan"
-                      addLabel="+ Add Loan"
-                      onAdd={() => addRow('loans', { name: '', annualEmi: '', startYear: String(currentYear), endYear: String(currentYear + 5) })}
+                  <CollapsibleSection title="Loans & EMIs (optional)" open={sectionsOpen.loans} onToggle={openLoansSection}>
+                    <LoansSection
+                      loans={form.loans}
+                      currentYear={currentYear}
+                      showExampleBanner={form.loans.some(l => l.isExample)}
+                      onAdd={() => addRow('loans', {
+                        loanType: 'home', name: '',
+                        annualEmi: String(LOAN_TYPE_MAP.home.annualEmi),
+                        startYear: String(currentYear),
+                        endYear: String(currentYear + LOAN_TYPE_MAP.home.tenureYears),
+                      })}
                       onUpdate={(id, patch) => updateRow('loans', id, patch)}
                       onRemove={id => removeRow('loans', id)}
-                      columns={[
-                        { key: 'name', placeholder: 'Loan name', flex: 2 },
-                        { key: 'annualEmi', type: 'number', placeholder: 'Annual EMI ₹', width: 110 },
-                        { key: 'startYear', type: 'number', placeholder: 'Start year', width: 90 },
-                        { key: 'endYear', type: 'number', placeholder: 'End year', width: 90 },
-                      ]}
                     />
                   </CollapsibleSection>
 
