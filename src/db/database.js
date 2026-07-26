@@ -33,6 +33,7 @@ export function initDatabase() {
   migrateGoalInvestmentsJunction()
   migrateSyncColumns()
   createSyncLogTable()
+  createFirePlannerTable()
   return db
 }
 
@@ -629,6 +630,31 @@ function createSyncLogTable() {
     );
   `)
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_sync_log_synced_at ON sync_log(synced_at DESC)') } catch {}
+}
+
+// FIRE Planner settings — single row per user (user_id NULL for the local single-user app)
+function createFirePlannerTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fire_planner_settings (
+      id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id            INTEGER,
+      fire_type          TEXT DEFAULT 'regular',
+      fi_multiple        REAL,
+      sip_step_up_pct    REAL DEFAULT 10,
+      expense_no_kids    REAL DEFAULT 0,
+      expense_one_kid    REAL DEFAULT 0,
+      expense_two_kids   REAL DEFAULT 0,
+      kids_planned       INTEGER DEFAULT 0,
+      kid1_year          INTEGER,
+      kid2_year          INTEGER,
+      inflation_pct      REAL DEFAULT 6,
+      barista_income     REAL,
+      loans_json         TEXT,
+      future_expenses_json TEXT,
+      lump_sums_json     TEXT,
+      updated_at         TEXT DEFAULT (datetime('now'))
+    );
+  `)
 }
 
 export function logSyncEvent(db, { deviceId, status, rowsUploaded = 0, rowsDownloaded = 0, errorMessage = null }) {

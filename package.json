@@ -5,16 +5,27 @@
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "dev:web": "concurrently \"vite --mode web\" \"APP_MODE=web node src/server/index.js\"",
     "build": "electron-vite build",
+    "build:web": "vite build --mode web --outDir dist-web",
     "preview": "electron-vite preview",
-    "postinstall": "electron-rebuild -w better-sqlite3",
+    "postinstall": "node scripts/postinstall.js",
+    "rebuild:node": "SKIP_ELECTRON_REBUILD=1 npm rebuild better-sqlite3",
     "build:mac": "electron-vite build && electron-builder --mac --publish never",
-    "build:win": "electron-vite build && electron-builder --win --publish never"
+    "build:win": "electron-vite build && electron-builder --win --publish never",
+    "start:server": "NODE_ENV=production node src/server/index.js",
+    "migrate": "node scripts/migrate-sqlite-to-postgres.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
-    "googleapis": "^173.0.0"
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "googleapis": "^173.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.13.1",
+    "recharts": "^3.10.1"
   },
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.1",
@@ -22,6 +33,7 @@
     "@electron/rebuild": "^3.6.0",
     "@vitejs/plugin-react": "^4.3.1",
     "autoprefixer": "^10.4.19",
+    "concurrently": "^9.1.0",
     "electron": "^31.6.0",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",

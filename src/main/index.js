@@ -933,6 +933,54 @@ function setupIpcHandlers() {
     return { success: true }
   })
 
+  // ── FIRE Planner ──────────────────────────────────────────────────────────
+  ipcMain.handle('fire:getSettings', () => {
+    const row = db.prepare('SELECT * FROM fire_planner_settings ORDER BY id DESC LIMIT 1').get()
+    if (!row) return null
+    return {
+      ...row,
+      loans_json: row.loans_json ? JSON.parse(row.loans_json) : [],
+      future_expenses_json: row.future_expenses_json ? JSON.parse(row.future_expenses_json) : [],
+      lump_sums_json: row.lump_sums_json ? JSON.parse(row.lump_sums_json) : [],
+    }
+  })
+
+  ipcMain.handle('fire:saveSettings', (_, d) => {
+    const existing = db.prepare('SELECT id FROM fire_planner_settings ORDER BY id DESC LIMIT 1').get()
+    const params = [
+      d.fire_type ?? 'regular', d.fi_multiple ?? null, d.sip_step_up_pct ?? 10,
+      d.expense_no_kids ?? 0, d.expense_one_kid ?? 0, d.expense_two_kids ?? 0,
+      d.kids_planned ?? 0, d.kid1_year ?? null, d.kid2_year ?? null,
+      d.inflation_pct ?? 6, d.barista_income ?? null,
+      JSON.stringify(d.loans_json ?? []),
+      JSON.stringify(d.future_expenses_json ?? []),
+      JSON.stringify(d.lump_sums_json ?? []),
+    ]
+    if (existing) {
+      db.prepare(`
+        UPDATE fire_planner_settings SET
+          fire_type = ?, fi_multiple = ?, sip_step_up_pct = ?,
+          expense_no_kids = ?, expense_one_kid = ?, expense_two_kids = ?,
+          kids_planned = ?, kid1_year = ?, kid2_year = ?,
+          inflation_pct = ?, barista_income = ?,
+          loans_json = ?, future_expenses_json = ?, lump_sums_json = ?,
+          updated_at = datetime('now')
+        WHERE id = ?
+      `).run(...params, existing.id)
+      return { id: existing.id }
+    }
+    const result = db.prepare(`
+      INSERT INTO fire_planner_settings (
+        fire_type, fi_multiple, sip_step_up_pct,
+        expense_no_kids, expense_one_kid, expense_two_kids,
+        kids_planned, kid1_year, kid2_year,
+        inflation_pct, barista_income,
+        loans_json, future_expenses_json, lump_sums_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(...params)
+    return { id: result.lastInsertRowid }
+  })
+
   // ── Expenses ──────────────────────────────────────────────────────────────
   ipcMain.handle('expenses:getAll', (_, filter = {}) => {
     let query = 'SELECT e.*, u.name as logged_by_name FROM expenses e LEFT JOIN users u ON e.logged_by_user_id = u.id WHERE e.deleted_at IS NULL'

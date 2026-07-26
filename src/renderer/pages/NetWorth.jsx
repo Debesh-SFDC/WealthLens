@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import FirePlanner from '../components/FirePlanner'
 
 // ── Formatters ────────────────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -485,7 +486,7 @@ function TypeBreakdownModal({ group, investments, rates, retirementYear, onClose
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────
-export default function NetWorth() {
+export default function NetWorth({ onNavigate }) {
   const [investments, setInvestments] = useState([])
   const [loading, setLoading] = useState(true)
   const [hoveredYear, setHoveredYear] = useState(null)
@@ -672,6 +673,9 @@ export default function NetWorth() {
               )}
             </div>
           </div>
+
+          {/* ── FIRE PLANNER ── */}
+          <FirePlanner investments={investments} onNavigate={onNavigate} />
 
           {/* ── PORTFOLIO BREAKDOWN ── */}
           {assetBreakdownGroups.length > 0 && (

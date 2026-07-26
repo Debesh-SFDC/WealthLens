@@ -57,6 +57,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createPlan: (data) => ipcRenderer.invoke('plans:create', data),
   updatePlanItems: (data) => ipcRenderer.invoke('plans:updateItems', data),
 
+  // FIRE Planner
+  getFireSettings: () => ipcRenderer.invoke('fire:getSettings'),
+  saveFireSettings: (data) => ipcRenderer.invoke('fire:saveSettings', data),
+
   // Expenses
   getAllExpenses: (filter) => ipcRenderer.invoke('expenses:getAll', filter),
   createExpense: (data) => ipcRenderer.invoke('expenses:create', data),

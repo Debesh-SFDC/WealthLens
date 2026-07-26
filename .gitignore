@@ -3,6 +3,10 @@ dist/
 out/
 .env
 .env.local
+.env.electron
+.env.web
+!.env.electron.example
+!.env.web.example
 *.db
 *.db-shm
 *.db-wal
