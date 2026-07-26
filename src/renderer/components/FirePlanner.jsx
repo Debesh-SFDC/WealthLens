@@ -39,6 +39,28 @@ const TYPE_RETURN_DEFAULTS = {
 const RATE_EDITABLE_TYPES = ['mf_sip', 'mf_lumpsum', 'stocks', 'fd', 'rd']
 const RECURRING_TYPES = ['mf_sip', 'epf', 'ppf', 'nps', 'rd']
 
+// Fund-specific return defaults, keyed by a substring match on the investment name —
+// checked before the generic per-type default so known funds (e.g. a midcap fund vs.
+// a large-cap index fund) don't all collapse to the same flat 12%.
+const NAMED_RETURN_DEFAULTS = [
+  { test: n => n.includes('nifty next 50'), rate: 13 },
+  { test: n => n.includes('nifty 50'), rate: 12 },
+  { test: n => n.includes('midcap'), rate: 14 },
+  { test: n => n.includes('small cap') || n.includes('smallcap'), rate: 15 },
+  { test: n => n.includes('smallcase'), rate: 15 },
+  { test: n => n.includes('baf') || n.includes('balanced advantage'), rate: 10 },
+  { test: n => n.includes('gold etf') || n.includes('gold fof'), rate: 8 },
+  { test: n => n.includes('conservative'), rate: 9 },
+  { test: n => n.includes('us opportunities'), rate: 12 },
+  { test: n => n.includes('asian equity'), rate: 11 },
+  { test: n => n.includes('greater china'), rate: 10 },
+]
+
+function resolveNamedReturnDefault(name) {
+  const n = (name || '').toLowerCase()
+  return NAMED_RETURN_DEFAULTS.find(d => d.test(n))?.rate ?? null
+}
+
 // Mirrors NetWorth.jsx's effectiveCurrentValue so RD/insurance balances agree app-wide.
 function effectiveBalance(inv) {
   const msPerMonth = 30.4375 * 24 * 60 * 60 * 1000
@@ -71,7 +93,9 @@ function buildInstruments(investments) {
   return investments.map(inv => {
     const stored = Number(inv.interest_rate) || 0
     const hasCustomRate = stored > 0
-    const annualReturnPct = hasCustomRate ? stored : (TYPE_RETURN_DEFAULTS[inv.type] ?? 8)
+    const annualReturnPct = hasCustomRate
+      ? stored
+      : (resolveNamedReturnDefault(inv.name) ?? TYPE_RETURN_DEFAULTS[inv.type] ?? 8)
     const monthlyContribution = RECURRING_TYPES.includes(inv.type) ? (Number(inv.monthly_sip_amount) || 0) : 0
     return {
       name: inv.name, type: inv.type,
@@ -548,6 +572,8 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
   })
   const toggleSection = key => setSectionsOpen(s => ({ ...s, [key]: !s[key] }))
   const [loansAutoSeeded, setLoansAutoSeeded] = useState(false)
+  const [showPrefillBanner, setShowPrefillBanner] = useState(false)
+  const [pendingAutoCalculate, setPendingAutoCalculate] = useState(false)
 
   const [form, setForm] = useState({
     fireType: 'regular',
@@ -597,6 +623,31 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
             lumpSums: (savedRes.lump_sums_json || []).map(r => ({ ...r, _id: makeId() })),
           }))
           if ((savedRes.loans_json || []).length > 0) setLoansAutoSeeded(true)
+        } else {
+          // Never saved before — seed with the user's known real-world numbers so
+          // Results are meaningful on first open instead of a blank calculator.
+          setForm(f => ({
+            ...f,
+            expenseNoKids: '1800000',
+            expenseOneKid: '2200000',
+            expenseTwoKids: '2600000',
+            kidsPlanned: 1,
+            kid1Year: '2028',
+            kid2Year: '',
+            loans: [
+              { _id: makeId(), loanType: 'home', name: '', annualEmi: '0', startYear: '2026', endYear: '2026' },
+              { _id: makeId(), loanType: 'car', name: '', annualEmi: '34200', startYear: '2026', endYear: '2029' },
+            ],
+            futureExpenses: [
+              { _id: makeId(), name: 'Next Car', costToday: '800000', year: '2027', financedPct: '60', loanInterestPct: '9', loanTenureYears: '3' },
+            ],
+            lumpSums: [
+              { _id: makeId(), name: 'Opportunity Fund deployment', amount: '900000', year: '2026' },
+            ],
+          }))
+          setLoansAutoSeeded(true) // real (pre-filled) loans already present — don't also seed generic examples
+          setShowPrefillBanner(true)
+          setPendingAutoCalculate(true)
         }
       } catch (e) {
         console.error(e)
@@ -606,6 +657,16 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
     })()
     return () => { cancelled = true }
   }, [])
+
+  // Runs once, right after the first-load prefill above lands — shows Results
+  // immediately instead of making a brand-new user click Calculate first.
+  useEffect(() => {
+    if (!loading && pendingAutoCalculate) {
+      setPendingAutoCalculate(false)
+      handleCalculate()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, pendingAutoCalculate])
 
   const age = profile?.date_of_birth ? computeAge(profile.date_of_birth) : null
   const retirementAge = profile?.retirement_age || 60
@@ -764,6 +825,17 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
 
               {tab === 'inputs' ? (
                 <div className="space-y-3">
+                  {showPrefillBanner && (
+                    <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-orange-50 border border-orange-200">
+                      <p className="text-xs text-orange-800">
+                        ✨ Pre-filled with your WealthLens data — review and adjust anything before recalculating
+                      </p>
+                      <button onClick={() => setShowPrefillBanner(false)}
+                        className="shrink-0 px-2.5 py-1 rounded-lg bg-white border border-orange-200 text-orange-700 text-xs font-semibold hover:bg-orange-100">
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
                   {/* Section A — Your Profile */}
                   <CollapsibleSection title="Your Profile" open={sectionsOpen.profile} onToggle={() => toggleSection('profile')}>
                     <div className="grid grid-cols-3 gap-3">
@@ -778,7 +850,10 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                         {FIRE_TYPES.map(t => {
                           const active = form.fireType === t.key
                           return (
-                            <button key={t.key} onClick={() => updateForm({ fireType: t.key })}
+                            <button key={t.key} onClick={() => updateForm({
+                              fireType: t.key,
+                              ...(t.key === 'barista' && !form.baristaAnnualIncome ? { baristaAnnualIncome: '600000' } : {}),
+                            })}
                               className={`p-3 rounded-xl border text-center transition-colors ${active ? 'border-orange-400 bg-orange-50' : 'border-gray-200 hover:border-orange-200'}`}>
                               <p className="text-lg leading-none">{t.emoji}</p>
                               <p className="text-xs font-bold text-gray-800 mt-1.5">{t.label}</p>
@@ -875,11 +950,11 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                     {suggestedAnnualExpense > 0 && (
                       <div className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-xl bg-blue-50 border border-blue-100">
                         <p className="text-xs text-blue-800">
-                          Based on your salary plan, your current expenses are ~{fmtCr(suggestedAnnualExpense)}/year. Use this?
+                          Based on your current salary plan ({fmt(suggestedAnnualExpense / 12)}/mo in needs+wants — ~{fmtCr(suggestedAnnualExpense)}/year). Increase this for lifestyle inflation if needed.
                         </p>
                         <button onClick={() => updateForm({ expenseNoKids: String(Math.round(suggestedAnnualExpense)) })}
                           className="shrink-0 px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">
-                          Yes
+                          Use this
                         </button>
                       </div>
                     )}
