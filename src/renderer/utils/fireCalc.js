@@ -141,10 +141,10 @@ function runScenario(inputs, resolved, scenarioKidsPlanned) {
   return { fireYear, ageAtFIRE, yearsToFIRE, yearlyData }
 }
 
-export function calculateFIRE(inputs) {
+function runFullCalc(instruments, inputs) {
   const {
     currentYear, currentAge, retirementAge,
-    instruments = [], sipStepUpPct = 0,
+    sipStepUpPct = 0,
     expenseNoKids = 0, expenseOneKid = 0, expenseTwoKids = 0,
     kidsPlanned = 0, kid1Year = null, kid2Year = null,
     inflationPct = 6, fiMultiple = 30, fireType = 'regular', fireTypeMultiplierOverride = null,
@@ -185,4 +185,27 @@ export function calculateFIRE(inputs) {
     selectedScenarioKey,
     selectedScenario: scenarios[selectedScenarioKey],
   }
+}
+
+// additionalInstruments: [{ name, monthlyAmount, annualReturnPct }] — hypothetical extra SIPs
+// from the "What If I Invest More?" simulator. When present, also runs the full projection
+// with them merged into the portfolio so the UI can show baseline vs. enhanced without a
+// second calculateFIRE() call.
+export function calculateFIRE(inputs) {
+  const { instruments = [], additionalInstruments = [] } = inputs
+  const baseline = runFullCalc(instruments, inputs)
+
+  if (!additionalInstruments.length) {
+    return { ...baseline, enhanced: null }
+  }
+
+  const extraInstruments = additionalInstruments.map(a => ({
+    name: a.name,
+    currentBalance: 0,
+    monthlyContribution: Number(a.monthlyAmount) || 0,
+    annualReturnPct: Number(a.annualReturnPct) || 0,
+  }))
+  const enhanced = runFullCalc([...instruments, ...extraInstruments], inputs)
+
+  return { ...baseline, enhanced }
 }

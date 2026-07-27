@@ -652,9 +652,11 @@ function createFirePlannerTable() {
       loans_json         TEXT,
       future_expenses_json TEXT,
       lump_sums_json     TEXT,
+      additional_instruments_json TEXT,
       updated_at         TEXT DEFAULT (datetime('now'))
     );
   `)
+  try { db.exec('ALTER TABLE fire_planner_settings ADD COLUMN additional_instruments_json TEXT') } catch {}
 }
 
 export function logSyncEvent(db, { deviceId, status, rowsUploaded = 0, rowsDownloaded = 0, errorMessage = null }) {

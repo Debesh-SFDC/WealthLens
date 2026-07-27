@@ -149,6 +149,70 @@ const EXAMPLE_LOANS = [
   { loanType: 'bike', name: '', annualEmi: '60000', startYear: '2024', endYear: '2027', isExample: true },
 ]
 
+// ── Additional Investment Simulator — types, defaults, gap-detection ─────
+const ADDITIONAL_INVESTMENT_TYPES = [
+  { key: 'large_cap_mf', label: '📈 Large Cap Mutual Fund', shortLabel: 'Large Cap MF', defaultReturn: 12 },
+  { key: 'mid_cap_mf', label: '📈 Mid Cap Mutual Fund', shortLabel: 'Mid Cap MF', defaultReturn: 14 },
+  { key: 'small_cap_mf', label: '📈 Small Cap Mutual Fund', shortLabel: 'Small Cap MF', defaultReturn: 15 },
+  { key: 'flexi_cap_mf', label: '📈 Flexi Cap Mutual Fund', shortLabel: 'Flexi Cap MF', defaultReturn: 13 },
+  { key: 'index_fund', label: '📈 Index Fund (Nifty 50)', shortLabel: 'Index Fund', defaultReturn: 12 },
+  { key: 'international_fund', label: '📈 International Fund', shortLabel: 'International Fund', defaultReturn: 11 },
+  { key: 'balanced_advantage', label: '📊 Balanced Advantage Fund', shortLabel: 'Balanced Advantage Fund', defaultReturn: 10 },
+  { key: 'fd', label: '🏦 Fixed Deposit (FD)', shortLabel: 'FD', defaultReturn: 7 },
+  { key: 'rd', label: '🏦 Recurring Deposit (RD)', shortLabel: 'RD', defaultReturn: 6.5 },
+  { key: 'gold', label: '🥇 Gold ETF/SGB', shortLabel: 'Gold ETF/SGB', defaultReturn: 8 },
+  { key: 'debt_mf', label: '📋 Debt Mutual Fund', shortLabel: 'Debt MF', defaultReturn: 7.5 },
+  { key: 'nps_equity', label: '🏛️ NPS (Equity)', shortLabel: 'NPS (Equity)', defaultReturn: 10 },
+  { key: 'ppf', label: '💰 PPF', shortLabel: 'PPF', defaultReturn: 7.1 },
+  { key: 'other', label: 'Other (custom name)', shortLabel: null, defaultReturn: 10 },
+]
+const ADDITIONAL_TYPE_MAP = Object.fromEntries(ADDITIONAL_INVESTMENT_TYPES.map(t => [t.key, t]))
+
+function additionalInvestmentName(row) {
+  if (row.type === 'other') return row.customName || 'Custom Investment'
+  return ADDITIONAL_TYPE_MAP[row.type]?.shortLabel || 'Investment'
+}
+
+// Future value of a flat ₹1,000/month SIP at a fixed annual return, over N years —
+// used for the illustrative "every ₹1,000 extra/month = ~₹X more at FIRE" chip.
+function estimateFVPerThousand(annualReturnPct, years) {
+  if (!years || years <= 0) return 0
+  const monthlyRate = (Number(annualReturnPct) || 0) / 1200
+  const n = years * 12
+  if (monthlyRate === 0) return 1000 * n
+  return 1000 * (Math.pow(1 + monthlyRate, n) - 1) / monthlyRate
+}
+
+// Portfolio-gap checks used to generate smart suggestion chips — matches against
+// existing investment names to find fund categories the user has no exposure to.
+const PORTFOLIO_GAP_CHECKS = [
+  { type: 'debt_mf', test: n => /debt/.test(n), monthlyAmount: 3000, message: 'You have no Debt MF — adding this would stabilize returns' },
+  { type: 'mid_cap_mf', test: n => /mid ?cap/.test(n), monthlyAmount: 5000, message: 'Mid Cap is underweight — adding this could speed up FIRE' },
+  { type: 'index_fund', test: n => /nifty ?50|index/.test(n), monthlyAmount: 10000, message: 'Adding an Index Fund could accelerate your FIRE date' },
+  { type: 'small_cap_mf', test: n => /small ?cap/.test(n), monthlyAmount: 5000, message: 'No Small Cap exposure — adding this could speed up FIRE' },
+  { type: 'international_fund', test: n => /international|global|nasdaq|s&p|us opportunities/.test(n), monthlyAmount: 5000, message: 'No International exposure — adding this improves diversification' },
+]
+
+function computeSmartSuggestions(investments, baselineInputs) {
+  const existingNames = investments.map(i => (i.name || '').toLowerCase()).join(' | ')
+  const missing = PORTFOLIO_GAP_CHECKS.filter(c => !c.test(existingNames))
+  const baseline = calculateFIRE(baselineInputs)
+  const baselineFireYear = baseline.selectedScenario.fireYear
+
+  const scored = missing.map(c => {
+    const def = ADDITIONAL_TYPE_MAP[c.type]
+    const res = calculateFIRE({
+      ...baselineInputs,
+      additionalInstruments: [{ name: def.shortLabel, monthlyAmount: c.monthlyAmount, annualReturnPct: def.defaultReturn }],
+    })
+    const afterFireYear = res.enhanced.scenarios[res.selectedScenarioKey].fireYear
+    const yearsCloser = (baselineFireYear != null && afterFireYear != null) ? baselineFireYear - afterFireYear : 0
+    return { type: c.type, monthlyAmount: c.monthlyAmount, message: c.message, yearsCloser }
+  })
+
+  return scored.sort((a, b) => b.yearsCloser - a.yearsCloser).slice(0, 3)
+}
+
 // ── Small building blocks ─────────────────────────────────────────────────
 function CollapsibleSection({ title, open, onToggle, children }) {
   return (
@@ -314,6 +378,210 @@ function LoansSection({ loans, currentYear, onUpdate, onRemove, onAdd, showExamp
   )
 }
 
+function summaryPalette(yearsSaved) {
+  if (yearsSaved == null || yearsSaved <= 0) return { bg: '#f9fafb', border: '#e5e7eb', text: '#4b5563' }
+  if (yearsSaved >= 3) return { bg: '#ecfdf5', border: '#a7f3d0', text: '#047857' }
+  return { bg: '#fffbeb', border: '#fde68a', text: '#b45309' }
+}
+
+function AdditionalInvestmentRow({ row, currentYear, impact, onUpdate, onRemove }) {
+  const def = ADDITIONAL_TYPE_MAP[row.type] || ADDITIONAL_TYPE_MAP.large_cap_mf
+  const isOther = row.type === 'other'
+  const amount = Number(row.monthlyAmount) || 0
+
+  function handleTypeChange(key) {
+    const d = ADDITIONAL_TYPE_MAP[key]
+    onUpdate(row._id, { type: key, annualReturnPct: String(d.defaultReturn) })
+  }
+
+  let impactText = null
+  if (amount > 0) {
+    if (impact?.yearsCloser > 0) {
+      impactText = `Adding ${fmt(amount)}/mo in ${additionalInvestmentName(row)} → FIRE moves from ${impact.before} to ${impact.after} (${impact.yearsCloser} year${impact.yearsCloser !== 1 ? 's' : ''} closer) 🔥`
+    } else if (impact) {
+      impactText = `Minimal impact on FIRE year — but adds ${fmtCr(impact.corpusDiff)} to your corpus by retirement`
+    }
+  }
+
+  return (
+    <div className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2.5 relative">
+      <button onClick={() => onRemove(row._id)}
+        className="absolute top-2 right-2 text-gray-400 hover:text-red-500 text-sm font-bold px-1.5 leading-none">
+        × Remove
+      </button>
+      <div className="flex items-center gap-2 flex-wrap pr-16">
+        <select value={row.type} onChange={e => handleTypeChange(e.target.value)}
+          className={`${inputCls} w-auto min-w-[190px]`}>
+          {ADDITIONAL_INVESTMENT_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+        </select>
+        {isOther && (
+          <input placeholder="Investment name" value={row.customName || ''}
+            onChange={e => onUpdate(row._id, { customName: e.target.value })}
+            className={`${inputCls} flex-1 min-w-[120px]`} />
+        )}
+        <input type="number" placeholder="Amount ₹/month" value={row.monthlyAmount ?? ''}
+          onChange={e => onUpdate(row._id, { monthlyAmount: e.target.value })}
+          className={`${inputCls} w-36`} />
+      </div>
+      <FieldRow label="Expected annual return %">
+        <input type="number" step="0.1" value={row.annualReturnPct ?? ''}
+          onChange={e => onUpdate(row._id, { annualReturnPct: e.target.value })}
+          className={`${inputCls} w-28`} />
+      </FieldRow>
+      {impactText && (
+        <p className="text-[11px] text-orange-700 bg-white rounded-lg px-2.5 py-1.5 border border-orange-100">
+          {impactText}
+        </p>
+      )}
+    </div>
+  )
+}
+
+function SimulatorTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null
+  const row = payload[0]?.payload
+  if (!row) return null
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-lg px-3.5 py-3 text-xs space-y-1 min-w-[170px]">
+      <p className="font-bold text-gray-800 mb-1">Year: {label}</p>
+      <p className="text-gray-500">Current plan: <span className="font-semibold" style={{ color: '#2563EB' }}>{fmtCr(row.currentCorpus)}</span></p>
+      <p className="text-gray-500">With extras: <span className="font-semibold" style={{ color: '#16A34A' }}>{fmtCr(row.withExtraCorpus)}</span></p>
+    </div>
+  )
+}
+
+function AdditionalInvestmentSimulator({ rows, currentYear, investments, calcInputsWithExtras, calcInputsBaseline, onAdd, onUpdate, onRemove, onAddSuggested }) {
+  const baselineResults = useMemo(() => calculateFIRE(calcInputsBaseline), [calcInputsBaseline])
+  const combinedResults = useMemo(() => calculateFIRE(calcInputsWithExtras), [calcInputsWithExtras])
+
+  const baselineSel = baselineResults.selectedScenario
+  const combinedSel = combinedResults.enhanced?.scenarios[combinedResults.selectedScenarioKey] ?? null
+
+  const perRowImpacts = useMemo(() => {
+    const map = {}
+    for (const row of rows) {
+      const amount = Number(row.monthlyAmount) || 0
+      if (amount <= 0) { map[row._id] = null; continue }
+      const res = calculateFIRE({
+        ...calcInputsBaseline,
+        additionalInstruments: [{ name: additionalInvestmentName(row), monthlyAmount: amount, annualReturnPct: Number(row.annualReturnPct) || 0 }],
+      })
+      const afterSel = res.enhanced.scenarios[res.selectedScenarioKey]
+      const before = baselineSel.fireYear
+      const after = afterSel.fireYear
+      const yearsCloser = (before != null && after != null) ? before - after : 0
+      const compareYear = before ?? currentYear + 40
+      const beforeCorpus = baselineSel.yearlyData.find(r => r.year === compareYear)?.corpus ?? 0
+      const afterCorpus = afterSel.yearlyData.find(r => r.year === compareYear)?.corpus ?? 0
+      map[row._id] = { before, after, yearsCloser, corpusDiff: afterCorpus - beforeCorpus }
+    }
+    return map
+  }, [rows, calcInputsBaseline, baselineSel, currentYear])
+
+  const extraMonthlyTotal = rows.reduce((s, r) => s + (Number(r.monthlyAmount) || 0), 0)
+  const blendedExtrasReturn = useMemo(() => {
+    const extras = rows
+      .filter(r => Number(r.monthlyAmount) > 0)
+      .map(r => ({ monthlyContribution: Number(r.monthlyAmount) || 0, annualReturnPct: Number(r.annualReturnPct) || 0, currentBalance: 0 }))
+    if (extras.length === 0) return 0
+    return computeBlended(extras).blendedAnnual
+  }, [rows])
+
+  const yearsSaved = (baselineSel.fireYear != null && combinedSel?.fireYear != null)
+    ? baselineSel.fireYear - combinedSel.fireYear : null
+
+  const compareYear = baselineSel.fireYear ?? currentYear + 40
+  const baselineCorpusAtCompare = baselineSel.yearlyData.find(r => r.year === compareYear)?.corpus ?? 0
+  const combinedCorpusAtCompare = combinedSel?.yearlyData.find(r => r.year === compareYear)?.corpus ?? 0
+  const corpusDiff = combinedCorpusAtCompare - baselineCorpusAtCompare
+
+  const sp = summaryPalette(yearsSaved)
+  const hasRows = rows.length > 0
+  const hasFundedRows = extraMonthlyTotal > 0
+
+  const suggestions = useMemo(() => computeSmartSuggestions(investments, calcInputsBaseline), [investments, calcInputsBaseline])
+
+  const chartEndYear = Math.min(currentYear + 40, (combinedSel?.fireYear ?? baselineSel.fireYear ?? currentYear + 35) + 5)
+  const chartData = useMemo(() => {
+    if (!combinedSel) return []
+    const out = []
+    for (let i = 0; i < baselineSel.yearlyData.length; i++) {
+      const r = baselineSel.yearlyData[i]
+      if (r.year > chartEndYear) break
+      out.push({ year: r.year, currentCorpus: r.corpus, withExtraCorpus: combinedSel.yearlyData[i]?.corpus })
+    }
+    return out
+  }, [baselineSel, combinedSel, chartEndYear])
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-bold text-gray-800">💡 What If I Invest More?</p>
+        <p className="text-xs text-gray-500 mt-0.5">See how additional monthly investments bring your FIRE date closer</p>
+      </div>
+
+      {!hasRows && <p className="text-xs text-gray-400 italic">No additional investments added yet</p>}
+      {rows.map(row => (
+        <AdditionalInvestmentRow key={row._id} row={row} currentYear={currentYear}
+          impact={perRowImpacts[row._id]} onUpdate={onUpdate} onRemove={onRemove} />
+      ))}
+      <button onClick={() => onAdd()} className="text-xs font-semibold text-orange-600 hover:text-orange-700">+ Add Investment</button>
+
+      {suggestions.length > 0 && (
+        <div className="space-y-1.5 pt-1">
+          {suggestions.map(s => (
+            <div key={s.type} className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-blue-50 border border-blue-100">
+              <p className="text-xs text-blue-800">
+                💡 {s.message} — {fmt(s.monthlyAmount)}/mo{s.yearsCloser > 0 ? ` could save ${s.yearsCloser} FIRE year${s.yearsCloser !== 1 ? 's' : ''}` : ''}
+              </p>
+              <button onClick={() => onAddSuggested(s.type, s.monthlyAmount)}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">
+                + Add This
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {hasFundedRows && (
+        <div className="rounded-xl p-4 border space-y-1.5" style={{ backgroundColor: sp.bg, borderColor: sp.border }}>
+          <p className="text-xs" style={{ color: sp.text }}>Extra monthly investment: <b>{fmt(extraMonthlyTotal)}/month</b></p>
+          <p className="text-xs" style={{ color: sp.text }}>Blended return on extras: <b>{blendedExtrasReturn.toFixed(1)}%</b></p>
+          <div className="h-px bg-current opacity-10 my-1" />
+          <p className="text-xs" style={{ color: sp.text }}>Current FIRE year: <b>{baselineSel.fireYear ?? '—'}{baselineSel.yearsToFIRE != null ? ` (${baselineSel.yearsToFIRE} years)` : ''}</b></p>
+          <p className="text-xs" style={{ color: sp.text }}>New FIRE year: <b>{combinedSel?.fireYear ?? '—'}{combinedSel?.yearsToFIRE != null ? ` (${combinedSel.yearsToFIRE} years)` : ''}</b> {yearsSaved > 0 ? '🔥' : ''}</p>
+          <p className="text-xs" style={{ color: sp.text }}>Years saved: <b>{yearsSaved != null ? yearsSaved : '—'}</b></p>
+          <p className="text-xs" style={{ color: sp.text }}>Corpus difference at FIRE: <b>{corpusDiff >= 0 ? '+' : ''}{fmtCr(corpusDiff)}</b></p>
+        </div>
+      )}
+
+      {hasFundedRows && chartData.length > 0 && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
+              <CartesianGrid stroke="#f3f4f6" vertical={false} />
+              <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
+              <YAxis tickFormatter={fmtCr} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={72} />
+              <Tooltip content={<SimulatorTooltip />} />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Line type="monotone" dataKey="currentCorpus" name="Current Plan" stroke="#2563EB" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="withExtraCorpus" name="With Additional Investments" stroke="#16A34A" strokeWidth={2.5} dot={false} />
+              {baselineSel.fireYear != null && (
+                <ReferenceLine x={baselineSel.fireYear} stroke="#2563EB" strokeDasharray="4 4" strokeWidth={1.5}
+                  label={{ value: 'Current FIRE', position: 'top', fill: '#2563EB', fontSize: 11, fontWeight: 700 }} />
+              )}
+              {combinedSel?.fireYear != null && combinedSel.fireYear !== baselineSel.fireYear && (
+                <ReferenceLine x={combinedSel.fireYear} stroke="#16A34A" strokeDasharray="4 4" strokeWidth={1.5}
+                  label={{ value: 'New FIRE', position: 'top', fill: '#16A34A', fontSize: 11, fontWeight: 700 }} />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function FireTooltip({ active, payload, label, targetKey }) {
   if (!active || !payload?.length) return null
   const row = payload[0]?.payload
@@ -358,10 +626,14 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
     (sel.fireYear ?? currentYear + 35) + 5
   )
 
+  const enhSel = results.enhanced?.scenarios[selectedScenarioKey] ?? null
+  const hasAdditionalInvestments = !!enhSel
+
   const chartData = useMemo(() => {
     const noKidsRows = results.scenarios.noKids.yearlyData
     const oneKidRows = results.scenarios.oneKid.yearlyData
     const twoKidsRows = results.scenarios.twoKids.yearlyData
+    const enhancedRows = results.enhanced?.scenarios.noKids.yearlyData
     const rows = []
     for (let i = 0; i < noKidsRows.length; i++) {
       if (noKidsRows[i].year > chartEndYear) break
@@ -372,11 +644,22 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
         fiTargetNoKids: noKidsRows[i].fiTarget,
         fiTargetOneKid: oneKidRows[i].fiTarget,
         fiTargetTwoKids: twoKidsRows[i].fiTarget,
+        corpusWithExtras: enhancedRows?.[i]?.corpus,
         kids: sel.yearlyData[i]?.kidsAtThisYear ?? 0,
       })
     }
     return rows
   }, [results, chartEndYear, sel])
+
+  // ── Additional-investments comparison (Part 7) ─────────────────────────
+  const extraMonthlyTotal = (results.lastInputs?.additionalInstruments || []).reduce((s, a) => s + (Number(a.monthlyAmount) || 0), 0)
+  const investmentYearsSaved = (sel.fireYear != null && enhSel?.fireYear != null) ? sel.fireYear - enhSel.fireYear : null
+  const extrasBlendedReturn = useMemo(() => {
+    const extras = results.lastInputs?.additionalInstruments || []
+    if (extras.length === 0) return 0
+    return computeBlended(extras.map(a => ({ monthlyContribution: a.monthlyAmount, annualReturnPct: a.annualReturnPct, currentBalance: 0 }))).blendedAnnual
+  }, [results])
+  const fvPerThousand = estimateFVPerThousand(extrasBlendedReturn, enhSel?.yearsToFIRE ?? sel.yearsToFIRE ?? 0)
 
   const tableRows = sel.yearlyData.filter(r => r.year <= chartEndYear)
   const visibleRows = showAllYears ? tableRows : tableRows.slice(0, 5)
@@ -447,6 +730,23 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
         </div>
       </div>
 
+      {/* Impact of Additional Investments */}
+      {hasAdditionalInvestments && (
+        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2">
+          <p className="text-sm font-bold text-gray-800">📊 Impact of Additional Investments</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-600">
+            <p>Without extras: <b className="text-gray-800">FIRE in {sel.fireYear ?? '—'}{sel.ageAtFIRE != null ? ` (age ${sel.ageAtFIRE})` : ''}</b></p>
+            <p>With extras: <b className="text-gray-800">FIRE in {enhSel.fireYear ?? '—'}{enhSel.ageAtFIRE != null ? ` (age ${enhSel.ageAtFIRE})` : ''}</b> {investmentYearsSaved > 0 ? '🔥' : ''}</p>
+          </div>
+          <p className="text-xs text-gray-600">You save: <b className="text-gray-800">{investmentYearsSaved != null ? `${investmentYearsSaved} year${investmentYearsSaved !== 1 ? 's' : ''}` : '—'}</b></p>
+          <div className="h-px bg-gray-100 my-1" />
+          <p className="text-xs text-gray-600">Extra commitment: <b className="text-gray-800">{fmt(extraMonthlyTotal)}/month</b></p>
+          <p className="text-xs text-gray-600">
+            Worth it? At {extrasBlendedReturn.toFixed(1)}% avg return, every ₹1,000 extra/month today = ~{fmtCr(fvPerThousand)} more at FIRE
+          </p>
+        </div>
+      )}
+
       {/* Scenario pills */}
       {form.kidsPlanned > 0 && (
         <div className="flex gap-2 flex-wrap">
@@ -479,6 +779,9 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
             )}
             {form.kidsPlanned === 2 && (
               <Line type="monotone" dataKey="fiTargetTwoKids" name="FI Target — 2 Kids" stroke={COLORS.targetTwoKids} strokeWidth={2} strokeDasharray="1 3" dot={false} />
+            )}
+            {hasAdditionalInvestments && (
+              <Line type="monotone" dataKey="corpusWithExtras" name="Corpus with Additional Investments" stroke="#16A34A" strokeWidth={2.5} strokeDasharray="5 3" dot={false} />
             )}
             {sel.fireYear != null && (
               <ReferenceLine x={sel.fireYear} stroke={COLORS.fire} strokeDasharray="4 4" strokeWidth={1.5}
@@ -568,7 +871,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
 
   const [sectionsOpen, setSectionsOpen] = useState({
     profile: true, portfolio: true, expenses: true, kids: true,
-    loans: false, futureExpenses: false, bonuses: false,
+    loans: false, futureExpenses: false, bonuses: false, additionalInvestments: false,
   })
   const toggleSection = key => setSectionsOpen(s => ({ ...s, [key]: !s[key] }))
   const [loansAutoSeeded, setLoansAutoSeeded] = useState(false)
@@ -588,6 +891,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
     loans: [],
     futureExpenses: [],
     lumpSums: [],
+    additionalInstruments: [],
   })
 
   useEffect(() => {
@@ -621,6 +925,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
             loans: (savedRes.loans_json || []).map(r => ({ ...r, _id: makeId() })),
             futureExpenses: (savedRes.future_expenses_json || []).map(r => ({ ...r, _id: makeId() })),
             lumpSums: (savedRes.lump_sums_json || []).map(r => ({ ...r, _id: makeId() })),
+            additionalInstruments: (savedRes.additional_instruments_json || []).map(r => ({ ...r, _id: makeId() })),
           }))
           if ((savedRes.loans_json || []).length > 0) setLoansAutoSeeded(true)
         } else {
@@ -736,7 +1041,24 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
       lumpSums: form.lumpSums.filter(l => l.name).map(l => ({
         name: l.name, amount: Number(l.amount) || 0, year: Number(l.year),
       })),
+      additionalInstruments: form.additionalInstruments
+        .filter(r => Number(r.monthlyAmount) > 0)
+        .map(r => ({
+          name: additionalInvestmentName(r),
+          monthlyAmount: Number(r.monthlyAmount) || 0,
+          annualReturnPct: Number(r.annualReturnPct) || 0,
+        })),
     }
+  }
+
+  function addAdditionalInvestmentRow(type = 'large_cap_mf', monthlyAmount = '') {
+    const def = ADDITIONAL_TYPE_MAP[type] || ADDITIONAL_TYPE_MAP.large_cap_mf
+    addRow('additionalInstruments', {
+      type, customName: '',
+      monthlyAmount: monthlyAmount ? String(monthlyAmount) : '',
+      annualReturnPct: String(def.defaultReturn),
+    })
+    if (!sectionsOpen.additionalInvestments) toggleSection('additionalInvestments')
   }
 
   async function handleCalculate() {
@@ -764,6 +1086,9 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
         loans_json: inputs.loans,
         future_expenses_json: inputs.futureExpenses,
         lump_sums_json: inputs.lumpSums,
+        additional_instruments_json: form.additionalInstruments
+          .filter(r => Number(r.monthlyAmount) > 0)
+          .map(r => ({ type: r.type, customName: r.customName || '', monthlyAmount: Number(r.monthlyAmount) || 0, annualReturnPct: Number(r.annualReturnPct) || 0 })),
       })
     } catch (e) {
       console.error(e)
@@ -1063,6 +1388,21 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                         { key: 'amount', type: 'number', placeholder: 'Amount ₹', width: 110 },
                         { key: 'year', type: 'number', placeholder: 'Year', width: 90 },
                       ]}
+                    />
+                  </CollapsibleSection>
+
+                  {/* Section H — Additional Investment Simulator */}
+                  <CollapsibleSection title="💡 Additional Investment Simulator — What if I invest more?" open={sectionsOpen.additionalInvestments} onToggle={() => toggleSection('additionalInvestments')}>
+                    <AdditionalInvestmentSimulator
+                      rows={form.additionalInstruments}
+                      currentYear={currentYear}
+                      investments={investments}
+                      calcInputsWithExtras={buildCalcInputs()}
+                      calcInputsBaseline={{ ...buildCalcInputs(), additionalInstruments: [] }}
+                      onAdd={() => addAdditionalInvestmentRow()}
+                      onUpdate={(id, patch) => updateRow('additionalInstruments', id, patch)}
+                      onRemove={id => removeRow('additionalInstruments', id)}
+                      onAddSuggested={(type, monthlyAmount) => addAdditionalInvestmentRow(type, monthlyAmount)}
                     />
                   </CollapsibleSection>
 
