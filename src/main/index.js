@@ -130,7 +130,9 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-// Credits elapsed SIP periods (monthly or weekly) to invested_amount and current_value.
+// Credits elapsed SIP periods (monthly or weekly) to invested_amount only.
+// current_value is left untouched — it reflects whatever the user last entered
+// manually (real market value), and should never be silently bumped by this job.
 // Called on every investments:getAll so amounts are always up to date when the user views them.
 function autoApplySIPs(db) {
   const sips = db.prepare(`
@@ -142,7 +144,6 @@ function autoApplySIPs(db) {
   const applyUpdate = db.prepare(`
     UPDATE investments
     SET invested_amount      = invested_amount + ?,
-        current_value        = current_value   + ?,
         sip_last_applied_at  = datetime('now'),
         last_updated_at      = datetime('now')
     WHERE id = ?
@@ -180,7 +181,7 @@ function autoApplySIPs(db) {
 
     if (periods > 0) {
       const addition = periods * inv.monthly_sip_amount
-      applyUpdate.run(addition, addition, inv.id)
+      applyUpdate.run(addition, inv.id)
     }
   }
 }
@@ -645,9 +646,9 @@ function setupIpcHandlers() {
       INSERT INTO investments (sync_id, name, type, provider, bank_or_amc, account_number,
         invested_amount, current_value, monthly_sip_amount, sip_frequency,
         start_date, maturity_date, goal_id, notes, units, purchase_price,
-        scheme_code, interest_rate, ticker_symbol, exchange, purity, sip_last_applied_at,
+        scheme_code, interest_rate, ticker_symbol, exchange, purity, deposited_so_far, nps_equity_pct, sip_last_applied_at,
         created_at, device_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), ?)
     `).run(
       randomUUID(), d.name, d.type, d.provider ?? null, d.bank_or_amc ?? null,
       d.account_number ?? null, d.invested_amount ?? 0, d.current_value ?? 0,
@@ -656,7 +657,10 @@ function setupIpcHandlers() {
       d.goal_id ?? null, d.notes ?? null,
       d.units ?? 0, d.purchase_price ?? 0, d.scheme_code ?? null,
       d.interest_rate ?? 0, d.ticker_symbol ?? null,
-      d.exchange ?? 'NSE', d.purity ?? '24K', deviceId
+      d.exchange ?? 'NSE', d.purity ?? '24K',
+      d.deposited_so_far === '' || d.deposited_so_far === undefined ? null : d.deposited_so_far,
+      d.type === 'nps' ? (d.nps_equity_pct === '' || d.nps_equity_pct == null ? 75 : d.nps_equity_pct) : null,
+      deviceId
     )
     const investmentId = result.lastInsertRowid
     const newGoalId = d.goal_id ?? null
@@ -678,7 +682,7 @@ function setupIpcHandlers() {
         account_number = ?, invested_amount = ?, current_value = ?, monthly_sip_amount = ?,
         sip_frequency = ?, start_date = ?, maturity_date = ?, goal_id = ?, notes = ?,
         units = ?, purchase_price = ?, scheme_code = ?, interest_rate = ?,
-        ticker_symbol = ?, exchange = ?, purity = ?,
+        ticker_symbol = ?, exchange = ?, purity = ?, deposited_so_far = ?, nps_equity_pct = ?,
         last_updated_at = datetime('now'), device_id = ?
       WHERE id = ?
     `).run(
@@ -689,7 +693,10 @@ function setupIpcHandlers() {
       newGoalId, d.notes ?? null,
       d.units ?? 0, d.purchase_price ?? 0, d.scheme_code ?? null,
       d.interest_rate ?? 0, d.ticker_symbol ?? null,
-      d.exchange ?? 'NSE', d.purity ?? '24K', deviceId, d.id
+      d.exchange ?? 'NSE', d.purity ?? '24K',
+      d.deposited_so_far === '' || d.deposited_so_far === undefined ? null : d.deposited_so_far,
+      d.type === 'nps' ? (d.nps_equity_pct === '' || d.nps_equity_pct == null ? 75 : d.nps_equity_pct) : null,
+      deviceId, d.id
     )
 
     syncInvestmentGoalLink(db, d.id, oldGoalId, newGoalId)

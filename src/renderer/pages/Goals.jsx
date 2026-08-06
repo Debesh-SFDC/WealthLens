@@ -42,10 +42,10 @@ function monthsRemaining(targetDate) {
   return monthsBetween(new Date().toISOString(), targetDate)
 }
 
-function countdownLabel(targetDate) {
+function countdownLabel(targetDate, fullyFunded = false) {
   const days = daysRemaining(targetDate)
   if (days === null) return 'No deadline set'
-  if (days < 0) return `${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''} overdue`
+  if (days < 0) return fullyFunded ? 'Target reached' : `${Math.abs(days)} day${Math.abs(days) !== 1 ? 's' : ''} overdue`
   if (days === 0) return 'Due today'
   if (days < 60) return `${days} day${days !== 1 ? 's' : ''} left`
   const months = Math.round(days / 30.44)
@@ -457,8 +457,8 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onCon
         </div>
 
         <div className="flex items-center justify-between pt-3 border-t border-gray-50">
-          <span className={`text-xs font-medium ${isOverdue(goal.target_date) ? 'text-red-500' : 'text-gray-400'}`}>
-            {countdownLabel(goal.target_date)}
+          <span className={`text-xs font-medium ${!achieved && pct < 100 && isOverdue(goal.target_date) ? 'text-red-500' : 'text-gray-400'}`}>
+            {countdownLabel(goal.target_date, achieved || pct >= 100)}
           </span>
           {!achieved && needed > 0 && (
             <span className="px-2 py-1 rounded-lg text-xs font-bold" style={{ backgroundColor: accent + '12', color: accent }}>
@@ -519,7 +519,7 @@ function GoalListRow({ goal, linkedInvestments, onView, onEdit, onDelete, onCont
           <span className="text-xs font-semibold text-green-600">✅ Achieved</span>
         ) : (
           <>
-            <p className={`text-xs font-medium ${isOverdue(goal.target_date) ? 'text-red-500' : 'text-gray-500'}`}>{countdownLabel(goal.target_date)}</p>
+            <p className={`text-xs font-medium ${pct < 100 && isOverdue(goal.target_date) ? 'text-red-500' : 'text-gray-500'}`}>{countdownLabel(goal.target_date, pct >= 100)}</p>
             {needed > 0 && <p className="text-xs font-bold mt-0.5" style={{ color: accent }}>{fmtCr(needed)}/mo</p>}
           </>
         )}
@@ -1169,7 +1169,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, syncing, onB
               <p className="text-sm text-gray-500">
                 {goal.bank_or_provider && <>{goal.bank_or_provider} · </>}
                 Target: {fmtDate(goal.target_date)} ·{' '}
-                <span className={isOverdue(goal.target_date) ? 'text-red-500 font-medium' : 'text-gray-500'}>{countdownLabel(goal.target_date)}</span>
+                <span className={!achieved && pct < 100 && isOverdue(goal.target_date) ? 'text-red-500 font-medium' : 'text-gray-500'}>{countdownLabel(goal.target_date, achieved || pct >= 100)}</span>
               </p>
             </div>
           </div>

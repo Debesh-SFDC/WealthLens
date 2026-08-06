@@ -31,7 +31,7 @@ const makeId = () => `r${++rowIdSeq}`
 // ── Investment → FIRE instrument mapping ─────────────────────────────────
 const TYPE_RETURN_DEFAULTS = {
   mf_sip: 12, mf_lumpsum: 12, stocks: 12,
-  epf: 8.25, ppf: 7.1, nps: 10,
+  epf: 8.25, ppf: 7.1, nps: 12,
   fd: 6.5, rd: 6.5, gold: 8, insurance: 6,
 }
 // Types where the user is expected to have set their own rate (interest_rate column) —
@@ -162,7 +162,7 @@ const ADDITIONAL_INVESTMENT_TYPES = [
   { key: 'rd', label: '🏦 Recurring Deposit (RD)', shortLabel: 'RD', defaultReturn: 6.5 },
   { key: 'gold', label: '🥇 Gold ETF/SGB', shortLabel: 'Gold ETF/SGB', defaultReturn: 8 },
   { key: 'debt_mf', label: '📋 Debt Mutual Fund', shortLabel: 'Debt MF', defaultReturn: 7.5 },
-  { key: 'nps_equity', label: '🏛️ NPS (Equity)', shortLabel: 'NPS (Equity)', defaultReturn: 10 },
+  { key: 'nps_equity', label: '🏛️ NPS (Equity)', shortLabel: 'NPS (Equity)', defaultReturn: 12 },
   { key: 'ppf', label: '💰 PPF', shortLabel: 'PPF', defaultReturn: 7.1 },
   { key: 'other', label: 'Other (custom name)', shortLabel: null, defaultReturn: 10 },
 ]

@@ -78,6 +78,7 @@ function calcRDMaturity(monthly, annualRatePct, tenureMonths) {
 // RD: deposited-so-far until maturity, then switches to maturity amount.
 // Fields reused: monthly_sip_amount=monthly deposit, units=tenure in months,
 //                purchase_price=maturity amount, start_date, maturity_date
+// deposited_so_far, if set, overrides the elapsed-time estimate (manual correction).
 function calcRDDisplayValue(inv) {
   const monthly      = Number(inv.monthly_sip_amount) || 0
   const tenureMonths = Number(inv.units) || 0
@@ -85,8 +86,12 @@ function calcRDDisplayValue(inv) {
   const start        = inv.start_date ? new Date(inv.start_date).getTime() : null
   const maturityTs   = inv.maturity_date ? new Date(inv.maturity_date).getTime() : null
 
-  if (!start || !monthly) return 0
   if (maturityTs && Date.now() >= maturityTs) return maturityAmt
+  if (inv.deposited_so_far !== '' && inv.deposited_so_far !== null && inv.deposited_so_far !== undefined) {
+    return Number(inv.deposited_so_far) || 0
+  }
+
+  if (!start || !monthly) return 0
 
   const msPerMonth    = 30.4375 * 24 * 60 * 60 * 1000
   const monthsElapsed = Math.floor((Date.now() - start) / msPerMonth)
@@ -163,10 +168,18 @@ function isStockBroker(inv) {
   return STOCK_BROKERS.some(b => p.includes(b))
 }
 
+// NPS classification depends on the scheme the user picked (equity vs. debt/gilt vs.
+// corporate bonds within their NPS Tier I), so it's not hard-safe like EPF/PPF —
+// nps_equity_pct (default 75, the standard active-choice cap) carries the actual split.
+function npsEquityFraction(inv) {
+  return (Number(inv.nps_equity_pct ?? 75) || 0) / 100
+}
+
 function isEquityType(inv) {
   if (inv.type === 'stocks') return true
-  // Hard-safe: EPF/PPF/FD/RD/NPS are never equity regardless of platform
-  if (['epf', 'ppf', 'fd', 'rd', 'nps'].includes(inv.type)) return false
+  if (inv.type === 'nps') return npsEquityFraction(inv) >= 0.5
+  // Hard-safe: EPF/PPF/FD/RD are never equity regardless of platform
+  if (['epf', 'ppf', 'fd', 'rd'].includes(inv.type)) return false
   // Gold: conservative (safe) by default
   if (inv.type === 'gold') return false
   // Insurance: Kite/Zerodha don't offer insurance products — if provider is a
@@ -188,6 +201,7 @@ const BLANK_FORM = {
   goal_id: '', notes: '',
   units: '', purchase_price: '', scheme_code: '',
   interest_rate: '', ticker_symbol: '', exchange: 'NSE', purity: '24K',
+  deposited_so_far: '', nps_equity_pct: 75,
 }
 
 
@@ -1410,10 +1424,15 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
   const idealEquityPct = Math.max(20, Math.min(90, 110 - age))
   const idealSafePct   = 100 - idealEquityPct
 
-  const equityInvs  = investments.filter(isEquityType)
-  const safeInvs    = investments.filter(i => !isEquityType(i))
+  // NPS is split proportionally by nps_equity_pct rather than bucketed all-or-nothing —
+  // a mixed-allocation NPS scheme contributes to both the equity and safe totals.
+  const npsInvs     = investments.filter(i => i.type === 'nps')
+  const equityInvs  = investments.filter(i => i.type !== 'nps' && isEquityType(i))
+  const safeInvs    = investments.filter(i => i.type !== 'nps' && !isEquityType(i))
   const equityValue = equityInvs.reduce((s, i) => s + effectiveCurrentValue(i), 0)
+    + npsInvs.reduce((s, i) => s + effectiveCurrentValue(i) * npsEquityFraction(i), 0)
   const safeValue   = safeInvs.reduce((s, i) => s + effectiveCurrentValue(i), 0)
+    + npsInvs.reduce((s, i) => s + effectiveCurrentValue(i) * (1 - npsEquityFraction(i)), 0)
   const totalValue  = equityValue + safeValue
 
   const actualEquityPct = totalValue > 0 ? (equityValue / totalValue) * 100 : 0
@@ -1464,7 +1483,11 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
     const stocksPct   = equityValue > 0 ? (stocksValue / equityValue) * 100 : 0
     if (stocksPct > 25) suggestions.push({ type: 'caution', text: `Direct stock exposure is ${stocksPct.toFixed(0)}% of equity bucket — typical recommendation is under 20% unless you actively manage individual stocks.` })
   }
-  if (!hasNPS && suggestions.length < 4) suggestions.push({ type: 'tip', text: 'NPS not in portfolio — offers an extra ₹50,000 tax deduction under 80CCD(1B) with good long-term returns.' })
+  if (hasNPS) {
+    suggestions.push({ type: 'tip', text: 'NPS bucket classification depends on your chosen scheme. If you have equity NPS (like HDFC Equity Advantage Fund), it counts as equity.' })
+  } else if (suggestions.length < 4) {
+    suggestions.push({ type: 'tip', text: 'NPS not in portfolio — offers an extra ₹50,000 tax deduction under 80CCD(1B) with good long-term returns.' })
+  }
 
   // ── Glide path chart data ──────────────────────────────────────────────
   const chartStartAge = Math.max(18, age - 3)
@@ -2382,6 +2405,10 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
   const rdRate           = Number(form.interest_rate) || 0
   const rdTotalDeposited = rdMonthly * rdTenureMonths
   const rdMaturity       = form.type === 'rd' ? calcRDMaturity(rdMonthly, rdRate, rdTenureMonths) : 0
+  const rdAutoDeposited  = calcRDDisplayValue({
+    monthly_sip_amount: rdMonthly, units: rdTenureMonths, purchase_price: rdMaturity,
+    start_date: form.start_date, maturity_date: form.maturity_date, deposited_so_far: '',
+  })
 
   const liveRet = calcReturn(Number(form.invested_amount) || 0, Number(form.current_value) || 0)
 
@@ -2432,6 +2459,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
           monthly_sip_amount: monthly,
           interest_rate: rate,
           units: tenureMonths,
+          deposited_so_far: form.deposited_so_far === '' ? '' : Number(form.deposited_so_far) || 0,
           goal_id: form.goal_id || null,
         })
       } else {
@@ -2646,6 +2674,13 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                     <input type="number" step="0.01" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-100"
                       placeholder="e.g. 6.75" value={form.interest_rate} onChange={e => set('interest_rate', e.target.value)} />
                   </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 mb-1">Deposited So Far (₹)</label>
+                    <input type="number" className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-100"
+                      placeholder={`Auto: ${fmt(rdAutoDeposited)} (from Start Date)`}
+                      value={form.deposited_so_far} onChange={e => set('deposited_so_far', e.target.value)} />
+                    <p className="text-xs text-gray-400 mt-1">Leave blank to auto-calculate from Start Date × months elapsed. Set a value to override (e.g. missed/irregular deposits).</p>
+                  </div>
                   {(rdTotalDeposited > 0 || rdMaturity > 0) && (
                     <div className="grid grid-cols-2 gap-2">
                       <div className="bg-white rounded-xl px-3 py-2 flex flex-col">
@@ -2736,6 +2771,25 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                       placeholder={form.type === 'epf' ? 'e.g. 4800' : 'e.g. 12500'}
                       value={form.monthly_sip_amount} onChange={e => set('monthly_sip_amount', e.target.value)} />
                   </div>
+
+                  {form.type === 'nps' && (
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs text-gray-500">Equity allocation in your NPS scheme</label>
+                        <span className="text-xs font-semibold text-green-700">{form.nps_equity_pct ?? 75}%</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] text-gray-400">0%</span>
+                        <input type="range" min="0" max="100" step="5" className="w-full accent-green-600"
+                          value={form.nps_equity_pct ?? 75} onChange={e => set('nps_equity_pct', Number(e.target.value))} />
+                        <span className="text-[10px] text-gray-400">100%</span>
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Check your NPS portal → Scheme Preference to see your equity %. Default 75% is the standard active-choice cap,
+                        but some funds (e.g. HDFC Equity Advantage Fund) allow up to 100% equity.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

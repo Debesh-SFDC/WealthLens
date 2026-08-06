@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS investments (
   ticker_symbol        TEXT,
   exchange             TEXT DEFAULT 'NSE',
   purity               TEXT DEFAULT '24K',
+  deposited_so_far     REAL,
+  nps_equity_pct       INTEGER DEFAULT 75,
   sip_last_applied_at  TEXT,
   created_at           TEXT,
   deleted_at           TEXT,

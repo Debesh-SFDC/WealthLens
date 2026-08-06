@@ -52,7 +52,7 @@ export function getSyncSnapshot(db) {
            i.invested_amount, i.current_value, i.monthly_sip_amount, i.sip_frequency,
            i.start_date, i.maturity_date, g.sync_id as goal_id, i.notes, i.units,
            i.purchase_price, i.scheme_code, i.interest_rate, i.ticker_symbol, i.exchange,
-           i.purity, i.sip_last_applied_at, i.created_at, i.last_updated_at as updated_at,
+           i.purity, i.deposited_so_far, i.nps_equity_pct, i.sip_last_applied_at, i.created_at, i.last_updated_at as updated_at,
            i.deleted_at, i.device_id
     FROM investments i LEFT JOIN goals g ON g.id = i.goal_id
     WHERE i.sync_id IS NOT NULL
@@ -143,11 +143,11 @@ export function applySyncMerge(db, remoteData, deviceId) {
         INSERT INTO investments (sync_id, name, type, provider, bank_or_amc, account_number,
           invested_amount, current_value, monthly_sip_amount, sip_frequency, start_date, maturity_date,
           goal_id, notes, units, purchase_price, scheme_code, interest_rate, ticker_symbol, exchange,
-          purity, sip_last_applied_at, created_at, last_updated_at, deleted_at, device_id)
+          purity, deposited_so_far, nps_equity_pct, sip_last_applied_at, created_at, last_updated_at, deleted_at, device_id)
         VALUES (@id, @name, @type, @provider, @bank_or_amc, @account_number,
           @invested_amount, @current_value, @monthly_sip_amount, @sip_frequency, @start_date, @maturity_date,
           @goal_id_local, @notes, @units, @purchase_price, @scheme_code, @interest_rate, @ticker_symbol, @exchange,
-          @purity, @sip_last_applied_at, @created_at, @updated_at, @deleted_at, @device_id)
+          @purity, @deposited_so_far, @nps_equity_pct, @sip_last_applied_at, @created_at, @updated_at, @deleted_at, @device_id)
       `)
       const update = db.prepare(`
         UPDATE investments SET name=@name, type=@type, provider=@provider, bank_or_amc=@bank_or_amc,
@@ -155,8 +155,8 @@ export function applySyncMerge(db, remoteData, deviceId) {
           monthly_sip_amount=@monthly_sip_amount, sip_frequency=@sip_frequency, start_date=@start_date,
           maturity_date=@maturity_date, goal_id=@goal_id_local, notes=@notes, units=@units,
           purchase_price=@purchase_price, scheme_code=@scheme_code, interest_rate=@interest_rate,
-          ticker_symbol=@ticker_symbol, exchange=@exchange, purity=@purity,
-          sip_last_applied_at=@sip_last_applied_at, last_updated_at=@updated_at,
+          ticker_symbol=@ticker_symbol, exchange=@exchange, purity=@purity, deposited_so_far=@deposited_so_far,
+          nps_equity_pct=@nps_equity_pct, sip_last_applied_at=@sip_last_applied_at, last_updated_at=@updated_at,
           deleted_at=@deleted_at, device_id=@device_id
         WHERE sync_id=@id
       `)
@@ -165,7 +165,7 @@ export function applySyncMerge(db, remoteData, deviceId) {
           invested_amount: 0, current_value: 0, monthly_sip_amount: 0, sip_frequency: 'monthly',
           start_date: null, maturity_date: null, goal_id: null, notes: null, units: 0, purchase_price: 0,
           scheme_code: null, interest_rate: 0, ticker_symbol: null, exchange: 'NSE', purity: '24K',
-          sip_last_applied_at: null, deleted_at: null, device_id: null })
+          deposited_so_far: null, nps_equity_pct: 75, sip_last_applied_at: null, deleted_at: null, device_id: null })
         r.goal_id_local = r.goal_id ? (findGoal.get(r.goal_id)?.id ?? null) : null
         const local = findLocal.get(r.id)
         if (!local) { insert.run(r); downloaded++ }

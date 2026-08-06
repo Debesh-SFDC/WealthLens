@@ -15,6 +15,8 @@ export function initDatabase() {
   migrateInvestments()
   migrateInvestmentsV2()
   migrateInvestmentsV3()
+  migrateInvestmentsV4()
+  migrateInvestmentsV5()
   seedDefaultCategories()
   migrateCategories()
   createSalaryPlanTables()
@@ -190,6 +192,20 @@ function migrateInvestmentsV3() {
   try { db.exec('ALTER TABLE investments ADD COLUMN sip_last_applied_at TEXT') } catch {}
   // Initialise existing rows to NOW so we never retroactively credit historical SIPs
   db.exec("UPDATE investments SET sip_last_applied_at = datetime('now') WHERE sip_last_applied_at IS NULL")
+}
+
+// Adds deposited_so_far so RD "Deposited So Far" can be manually overridden
+// instead of always being derived from start_date + elapsed months.
+function migrateInvestmentsV4() {
+  try { db.exec('ALTER TABLE investments ADD COLUMN deposited_so_far REAL') } catch {}
+}
+
+// Adds nps_equity_pct — % of an NPS record that's in an equity scheme (default 75,
+// the standard active-choice cap; funds like HDFC Equity Advantage allow up to 100).
+// Used to split NPS proportionally between the equity and safe allocation buckets.
+function migrateInvestmentsV5() {
+  try { db.exec('ALTER TABLE investments ADD COLUMN nps_equity_pct INTEGER DEFAULT 75') } catch {}
+  db.exec("UPDATE investments SET nps_equity_pct = 75 WHERE type = 'nps' AND nps_equity_pct IS NULL")
 }
 
 function seedDefaultCategories() {
