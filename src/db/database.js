@@ -415,6 +415,7 @@ function migrateRebalancingActions() {
 function migrateWeightTracking() {
   try { db.exec('ALTER TABLE users ADD COLUMN height_cm REAL DEFAULT 0') } catch {}
   try { db.exec('ALTER TABLE users ADD COLUMN date_of_birth TEXT') } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN target_weight_kg REAL') } catch {}
   db.exec(`
     CREATE TABLE IF NOT EXISTS weight_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -715,7 +716,9 @@ export function getSyncLog(db, limit = 20) {
 // ── Exported DB functions ──────────────────────────────────────────────────
 
 export function getAllUsers(db) {
-  return db.prepare('SELECT id, name, role, mobile_number, avatar_color, last_login_at FROM users ORDER BY role DESC').all()
+  return db.prepare(
+    'SELECT id, name, role, mobile_number, avatar_color, last_login_at, created_at, date_of_birth, height_cm, target_weight_kg FROM users ORDER BY role DESC'
+  ).all()
 }
 
 export function getUserById(db, id) {
@@ -726,14 +729,23 @@ export function getUserByMobile(db, mobileNumber) {
   return db.prepare('SELECT * FROM users WHERE mobile_number = ?').get(mobileNumber)
 }
 
-export function updateUserAuth(db, { id, name, mobile_number, password_hash }) {
-  if (password_hash) {
-    db.prepare('UPDATE users SET name = ?, mobile_number = ?, password_hash = ? WHERE id = ?')
-      .run(name, mobile_number, password_hash, id)
-  } else {
-    db.prepare('UPDATE users SET name = ?, mobile_number = ? WHERE id = ?')
-      .run(name, mobile_number, id)
-  }
+export function updateUserAuth(db, { id, name, mobile_number, password_hash, date_of_birth, height_cm, target_weight_kg }) {
+  const setParts = ['name = ?', 'mobile_number = ?']
+  const params = [name, mobile_number]
+  if (password_hash)             { setParts.push('password_hash = ?');    params.push(password_hash) }
+  if (date_of_birth !== undefined) { setParts.push('date_of_birth = ?');    params.push(date_of_birth) }
+  if (height_cm !== undefined)     { setParts.push('height_cm = ?');        params.push(height_cm) }
+  if (target_weight_kg !== undefined) { setParts.push('target_weight_kg = ?'); params.push(target_weight_kg) }
+  params.push(id)
+  db.prepare(`UPDATE users SET ${setParts.join(', ')} WHERE id = ?`).run(...params)
+}
+
+// Cascades expenses + weight_logs (weight_logs also has ON DELETE CASCADE at
+// the schema level, but deleted explicitly here too for clarity).
+export function deleteUser(db, id) {
+  db.prepare('DELETE FROM expenses WHERE logged_by_user_id = ?').run(id)
+  db.prepare('DELETE FROM weight_logs WHERE user_id = ?').run(id)
+  db.prepare('DELETE FROM users WHERE id = ?').run(id)
 }
 
 export function createUser(db, { name, role, mobile_number, password_hash, avatar_color }) {

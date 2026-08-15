@@ -125,6 +125,9 @@ const bridge = {
   createUser: (data) => IS_ELECTRON
     ? window.electronAPI.createUser(data)
     : webCall('POST', '/users', data),
+  deleteUser: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteUser(id)
+    : webCall('DELETE', `/users/${id}`),
 
   // Dashboard
   getDashboardStats: () => IS_ELECTRON

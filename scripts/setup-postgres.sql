@@ -28,6 +28,9 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number TEXT;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile_number);
 
+-- Per-user weight-profile field for the Dashboard/Settings weight trend card.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS target_weight_kg REAL;
+
 -- Default admin/tracker accounts. Passwords below are bcrypt hashes of
 -- 'Admin@1234' / 'Tracker@1234' — change them in Settings immediately after
 -- first login (the app shows a one-time banner reminding you to).

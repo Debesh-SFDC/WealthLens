@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import bcrypt from 'bcryptjs'
 import {
   initDatabase, getDb,
-  getAllUsers, getUserByMobile, updateUserAuth, createUser, updateUserLastLogin,
+  getAllUsers, getUserByMobile, updateUserAuth, createUser, deleteUser, updateUserLastLogin,
   generateExpenseSyncId, getAllExpensesForSync, mergeExpensesFromSync,
   logSyncEvent, getSyncLog,
 } from '../db/database.js'
@@ -431,19 +431,36 @@ function setupIpcHandlers() {
   // ── Users ─────────────────────────────────────────────────────────────────
   ipcMain.handle('users:getAll', () => getAllUsers(db))
 
-  // { id, name, mobile_number, password? } — password omitted keeps the existing hash.
-  ipcMain.handle('users:update', (_, { id, name, mobile_number, password }) => {
+  // { id, name, mobile_number, password?, date_of_birth?, height_cm?, target_weight_kg? }
+  // password omitted keeps the existing hash.
+  ipcMain.handle('users:update', (_, { id, name, mobile_number, password, date_of_birth, height_cm, target_weight_kg }) => {
+    const existing = getUserByMobile(db, mobile_number)
+    if (existing && existing.id !== id) {
+      return { success: false, error: 'Mobile number already registered' }
+    }
     const password_hash = password ? bcrypt.hashSync(password, 10) : null
-    updateUserAuth(db, { id, name, mobile_number, password_hash })
+    updateUserAuth(db, { id, name, mobile_number, password_hash, date_of_birth, height_cm, target_weight_kg })
     return { success: true }
   })
 
   // Admin-created additional accounts (e.g. the optional tracker in the
-  // first-launch wizard's step 2). Renderer only exposes this while signed in
-  // as admin — see App.jsx / AccountSetup.jsx.
+  // first-launch wizard's step 2, or a family member from Settings). Renderer
+  // only exposes this while signed in as admin — see App.jsx / AccountSetup.jsx.
   ipcMain.handle('users:create', (_, { name, role, mobile_number, password }) => {
+    if (getUserByMobile(db, mobile_number)) {
+      return { success: false, error: 'Mobile number already registered' }
+    }
     const user = createUser(db, { name, role, mobile_number, password_hash: bcrypt.hashSync(password, 10) })
     return { success: true, user: { id: user.id, name: user.name, role: user.role, avatar_color: user.avatar_color } }
+  })
+
+  // Cannot delete your own account. Cascades expenses + weight_logs (see deleteUser in database.js).
+  ipcMain.handle('users:delete', (_, id) => {
+    if (currentUserSession?.id === id) {
+      return { success: false, error: 'Cannot delete your own account' }
+    }
+    deleteUser(db, id)
+    return { success: true }
   })
 
   // ── Mobile + password auth (replaces per-user PIN login) ───────────────────

@@ -7,6 +7,20 @@ const fmtBytes = (b) =>
   b ? (Number(b) > 1024 * 1024 ? `${(Number(b) / 1024 / 1024).toFixed(1)} MB` : `${(Number(b) / 1024).toFixed(0)} KB`) : ''
 const fmt = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0)
 
+function daysAgo(dateStr) {
+  if (!dateStr) return 'Never'
+  const then = new Date(dateStr)
+  if (isNaN(then.getTime())) return 'Never'
+  const days = Math.floor((Date.now() - then.getTime()) / 86_400_000)
+  if (days <= 0) return 'Today'
+  if (days === 1) return '1 day ago'
+  return `${days} days ago`
+}
+function getInitials(name) {
+  if (!name) return '?'
+  return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
+}
+
 function ImportPhoneButton() {
   const [result, setResult] = useState(null)
   const [importing, setImporting] = useState(false)
@@ -83,9 +97,12 @@ function ImportPhoneButton() {
   )
 }
 
-export default function Settings({ onSyncRefresh }) {
-  // Profile
-  const [profileForm, setProfileForm] = useState({ name: '', monthly_salary: '', date_of_birth: '', retirement_age: '60' })
+export default function Settings({ onSyncRefresh, currentUser }) {
+  // My Profile (identity + financial + health, consolidated)
+  const [profileForm, setProfileForm] = useState({
+    name: '', mobile_number: '', monthly_salary: '', date_of_birth: '',
+    retirement_age: '60', height_cm: '', target_weight_kg: '',
+  })
   const [profileSaved, setProfileSaved] = useState(false)
 
   // Security
@@ -164,13 +181,23 @@ export default function Settings({ onSyncRefresh }) {
   const [showBrowserPicker, setShowBrowserPicker] = useState(false)
   const [browserList, setBrowserList]             = useState([])
 
-  // Users
+  // User Management — family members (edit modal)
   const [users, setUsers]           = useState([])
   const [editingUser, setEditingUser] = useState(null) // user object or null
   const [editForm, setEditForm]     = useState({ name: '', mobile_number: '', password: '', confirmPassword: '' })
   const [editError, setEditError]   = useState('')
   const [trackerBudget, setTrackerBudget] = useState('')
   const [trackerExpenseSummary, setTrackerExpenseSummary] = useState(null)
+
+  // User Management — my own account (inline edit)
+  const [editingMyDetails, setEditingMyDetails] = useState(false)
+  const [myDetailsForm, setMyDetailsForm] = useState({ name: '', mobile_number: '', password: '', confirmPassword: '' })
+  const [myDetailsError, setMyDetailsError] = useState('')
+
+  // User Management — add family member (modal)
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [addMemberForm, setAddMemberForm] = useState({ name: '', mobile_number: '', password: '', confirmPassword: '' })
+  const [addMemberError, setAddMemberError] = useState('')
 
   useEffect(() => { loadAll() }, [])
 
@@ -196,7 +223,17 @@ export default function Settings({ onSyncRefresh }) {
         window.electronAPI.getDeviceId(),
         window.electronAPI.getSyncLog(),
       ])
-      if (profile) setProfileForm({ name: profile.name || '', monthly_salary: profile.monthly_salary || '', date_of_birth: profile.date_of_birth || '', retirement_age: String(profile.retirement_age || 60) })
+      const me = currentUser && (loadedUsers || []).find(u => u.id === currentUser.id)
+      setProfileForm({
+        name: profile?.name || me?.name || '',
+        mobile_number: me?.mobile_number || '',
+        monthly_salary: profile?.monthly_salary || '',
+        date_of_birth: profile?.date_of_birth || me?.date_of_birth || '',
+        retirement_age: String(profile?.retirement_age || 60),
+        height_cm: me?.height_cm || '',
+        target_weight_kg: me?.target_weight_kg || '',
+      })
+      if (me) setMyDetailsForm({ name: me.name, mobile_number: me.mobile_number || '', password: '', confirmPassword: '' })
       setDriveStatus(status || { connected: false, email: null, lastBackup: null })
       setHasCreds(Boolean(hasCr))
       setStoredCreds(creds || null)
@@ -234,15 +271,31 @@ export default function Settings({ onSyncRefresh }) {
   }
 
   async function saveProfile() {
-    await bridge.saveProfile({
-      name: profileForm.name,
-      monthly_salary: parseFloat(profileForm.monthly_salary) || 0,
-      date_of_birth: profileForm.date_of_birth || null,
-      retirement_age: parseInt(profileForm.retirement_age) || 60,
-    })
-    setProfileSaved(true)
-    setTimeout(() => setProfileSaved(false), 2000)
-    showToast('Profile saved successfully')
+    try {
+      await bridge.saveProfile({
+        name: profileForm.name,
+        monthly_salary: parseFloat(profileForm.monthly_salary) || 0,
+        date_of_birth: profileForm.date_of_birth || null,
+        retirement_age: parseInt(profileForm.retirement_age) || 60,
+      })
+      if (currentUser) {
+        const result = await bridge.updateUser({
+          id: currentUser.id,
+          name: profileForm.name,
+          mobile_number: profileForm.mobile_number,
+          date_of_birth: profileForm.date_of_birth || null,
+          height_cm: parseFloat(profileForm.height_cm) || 0,
+          target_weight_kg: profileForm.target_weight_kg ? parseFloat(profileForm.target_weight_kg) : null,
+        })
+        if (result?.success === false) { showToast(result.error || 'Could not save profile', 'error'); return }
+      }
+      setProfileSaved(true)
+      setTimeout(() => setProfileSaved(false), 2000)
+      showToast('Profile saved successfully')
+      loadAll()
+    } catch (e) {
+      showToast(e.message || 'Could not save profile', 'error')
+    }
   }
 
   async function saveCreds() {
@@ -404,21 +457,90 @@ export default function Settings({ onSyncRefresh }) {
     if (!editForm.name.trim()) { setEditError('Name cannot be empty'); return }
     if (!/^\d{10}$/.test(editForm.mobile_number)) { setEditError('Mobile number must be 10 digits'); return }
     if (editForm.password || editForm.confirmPassword) {
-      if (editForm.password.length < 6) { setEditError('Password must be at least 6 characters'); return }
+      if (editForm.password.length < 8) { setEditError('Password must be at least 8 characters'); return }
       if (editForm.password !== editForm.confirmPassword) { setEditError('Passwords do not match'); return }
     }
     try {
-      await bridge.updateUser({
+      const result = await bridge.updateUser({
         id: editingUser.id,
         name: editForm.name.trim(),
         mobile_number: editForm.mobile_number,
         password: editForm.password || undefined,
       })
+      if (result?.success === false) { setEditError(result.error || 'Could not save changes'); return }
       showToast(`${editingUser.role === 'admin' ? 'Admin' : 'Tracker'} account updated`)
       setEditingUser(null)
       loadAll()
     } catch (e) {
       setEditError(e.message || 'Could not save changes')
+    }
+  }
+
+  function openEditMyDetails() {
+    setMyDetailsForm({ name: currentUser?.name || profileForm.name, mobile_number: profileForm.mobile_number, password: '', confirmPassword: '' })
+    setMyDetailsError('')
+    setEditingMyDetails(true)
+  }
+
+  async function saveMyDetails() {
+    if (!myDetailsForm.name.trim()) { setMyDetailsError('Name cannot be empty'); return }
+    if (!/^\d{10}$/.test(myDetailsForm.mobile_number)) { setMyDetailsError('Mobile number must be 10 digits'); return }
+    if (myDetailsForm.password || myDetailsForm.confirmPassword) {
+      if (myDetailsForm.password.length < 8) { setMyDetailsError('Password must be at least 8 characters'); return }
+      if (myDetailsForm.password !== myDetailsForm.confirmPassword) { setMyDetailsError('Passwords do not match'); return }
+    }
+    try {
+      const result = await bridge.updateUser({
+        id: currentUser.id,
+        name: myDetailsForm.name.trim(),
+        mobile_number: myDetailsForm.mobile_number,
+        password: myDetailsForm.password || undefined,
+      })
+      if (result?.success === false) { setMyDetailsError(result.error || 'Could not save changes'); return }
+      showToast('Your details were updated')
+      setEditingMyDetails(false)
+      loadAll()
+    } catch (e) {
+      setMyDetailsError(e.message || 'Could not save changes')
+    }
+  }
+
+  function openAddMember() {
+    setAddMemberForm({ name: '', mobile_number: '', password: '', confirmPassword: '' })
+    setAddMemberError('')
+    setShowAddMember(true)
+  }
+
+  async function createFamilyMember() {
+    if (!addMemberForm.name.trim()) { setAddMemberError('Name cannot be empty'); return }
+    if (!/^\d{10}$/.test(addMemberForm.mobile_number)) { setAddMemberError('Mobile number must be 10 digits'); return }
+    if (addMemberForm.password.length < 8) { setAddMemberError('Password must be at least 8 characters'); return }
+    if (addMemberForm.password !== addMemberForm.confirmPassword) { setAddMemberError('Passwords do not match'); return }
+    try {
+      const result = await bridge.createUser({
+        name: addMemberForm.name.trim(),
+        mobile_number: addMemberForm.mobile_number,
+        password: addMemberForm.password,
+        role: 'tracker',
+      })
+      if (result?.success === false) { setAddMemberError(result.error || 'Could not create account'); return }
+      showToast('Family member added')
+      setShowAddMember(false)
+      loadAll()
+    } catch (e) {
+      setAddMemberError(e.message || 'Could not create account')
+    }
+  }
+
+  async function deleteFamilyMember(user) {
+    if (!confirm(`Delete ${user.name}? Their expense and weight data will also be deleted.`)) return
+    try {
+      const result = await bridge.deleteUser(user.id)
+      if (result?.success === false) { showToast(result.error || 'Could not delete', 'error'); return }
+      showToast(`${user.name} deleted`)
+      loadAll()
+    } catch (e) {
+      showToast(e.message || 'Could not delete', 'error')
     }
   }
 
@@ -494,22 +616,42 @@ export default function Settings({ onSyncRefresh }) {
         <p className="mt-1 text-sm text-gray-500">Manage your profile and app preferences</p>
       </div>
 
-      {/* ── Profile ─────────────────────────────────────────────────────── */}
+      {/* ── My Profile ──────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-800">Profile</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Your name and income details</p>
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
+          <div
+            className="w-11 h-11 rounded-full flex items-center justify-center text-base font-bold text-white shrink-0"
+            style={{ backgroundColor: currentUser?.avatar_color || '#6C63FF' }}
+          >
+            {getInitials(profileForm.name || currentUser?.name)}
+          </div>
+          <div>
+            <h3 className="text-base font-semibold text-gray-800">My Profile</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Identity, income, and health details used across the app</p>
+          </div>
         </div>
         <div className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Name</label>
-            <input
-              type="text" placeholder="Your name"
-              value={profileForm.name}
-              onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Name</label>
+              <input
+                type="text" placeholder="Your name"
+                value={profileForm.name}
+                onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Mobile Number</label>
+              <input
+                type="tel" inputMode="numeric" placeholder="9000000001"
+                value={profileForm.mobile_number}
+                onChange={e => setProfileForm(f => ({ ...f, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              />
+            </div>
           </div>
+
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Monthly Take-Home Salary (₹)</label>
             <input
@@ -519,6 +661,7 @@ export default function Settings({ onSyncRefresh }) {
               className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
             />
           </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Date of Birth</label>
@@ -541,6 +684,30 @@ export default function Settings({ onSyncRefresh }) {
               <p className="text-xs text-gray-400 mt-1">Used in glide path chart</p>
             </div>
           </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Height (cm)</label>
+              <input
+                type="number" min="50" max="250" step="0.1" placeholder="e.g. 175"
+                value={profileForm.height_cm}
+                onChange={e => setProfileForm(f => ({ ...f, height_cm: e.target.value }))}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              />
+              <p className="text-xs text-gray-400 mt-1">Used to calculate BMI</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Target Weight (kg)</label>
+              <input
+                type="number" min="20" max="300" step="0.1" placeholder="e.g. 70"
+                value={profileForm.target_weight_kg}
+                onChange={e => setProfileForm(f => ({ ...f, target_weight_kg: e.target.value }))}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              />
+              <p className="text-xs text-gray-400 mt-1">Shown on the Weight Trend card</p>
+            </div>
+          </div>
+
           <button
             onClick={saveProfile}
             className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
@@ -630,51 +797,146 @@ export default function Settings({ onSyncRefresh }) {
         </div>
       </div>
 
-      {/* ── Manage Users ──────────────────────────────────────────────────── */}
+      {/* ── User Management ─────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
-          <h3 className="text-base font-semibold text-gray-800">Manage Users</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Edit name, mobile number, and password</p>
+          <h3 className="text-base font-semibold text-gray-800">👥 User Management</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Your account, plus family members who can log expenses and weight</p>
         </div>
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
-              <th className="px-6 py-3">Name</th>
-              <th className="px-6 py-3">Mobile Number</th>
-              <th className="px-6 py-3">Role</th>
-              <th className="px-6 py-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id} className="border-b border-gray-50 last:border-0">
-                <td className="px-6 py-3 font-medium text-gray-800">
+
+        {/* My account */}
+        <div className="p-6 border-b border-gray-100">
+          {!editingMyDetails ? (
+            <div className="flex items-center gap-3 flex-wrap">
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
+                style={{ backgroundColor: currentUser?.avatar_color || '#6C63FF' }}
+              >
+                {getInitials(myDetailsForm.name)}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-gray-900">{myDetailsForm.name || '—'}</p>
+                <p className="text-xs text-gray-400">{myDetailsForm.mobile_number || '—'}</p>
+              </div>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">Admin</span>
+              <button
+                onClick={openEditMyDetails}
+                className="ml-auto px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Edit My Details
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Name</label>
+                  <input
+                    type="text"
+                    value={myDetailsForm.name}
+                    onChange={e => setMyDetailsForm(f => ({ ...f, name: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Mobile Number</label>
+                  <input
+                    type="tel" inputMode="numeric"
+                    value={myDetailsForm.mobile_number}
+                    onChange={e => setMyDetailsForm(f => ({ ...f, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">New Password</label>
+                  <input
+                    type="password" placeholder="Leave blank to keep"
+                    value={myDetailsForm.password}
+                    onChange={e => setMyDetailsForm(f => ({ ...f, password: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Confirm</label>
+                  <input
+                    type="password" placeholder="Repeat password"
+                    value={myDetailsForm.confirmPassword}
+                    onChange={e => setMyDetailsForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                  />
+                </div>
+              </div>
+              {myDetailsError && <p className="text-xs font-medium text-red-500">{myDetailsError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setEditingMyDetails(false)}
+                  className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveMyDetails}
+                  className="flex-1 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                  style={{ backgroundColor: '#6C63FF' }}
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Family members */}
+        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+          <p className="text-sm font-semibold text-gray-800">Family Members</p>
+          <button
+            onClick={openAddMember}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+            style={{ backgroundColor: '#6C63FF' }}
+          >
+            + Add Family Member
+          </button>
+        </div>
+
+        {users.filter(u => u.role !== 'admin').length === 0 ? (
+          <p className="px-6 py-8 text-sm text-gray-400 text-center">No family members yet</p>
+        ) : (
+          <div className="divide-y divide-gray-50">
+            {users.filter(u => u.role !== 'admin').map(u => (
+              <div key={u.id} className="px-6 py-3 flex items-center gap-3 flex-wrap">
+                <div
+                  className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                  style={{ backgroundColor: u.avatar_color || '#EC4899' }}
+                >
+                  {getInitials(u.name)}
+                </div>
+                <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white"
-                      style={{ backgroundColor: u.avatar_color || '#6C63FF' }}>
-                      {u.name.charAt(0).toUpperCase()}
-                    </div>
-                    {u.name}
+                    <p className="text-sm font-medium text-gray-800">{u.name}</p>
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 font-semibold">Tracker</span>
                   </div>
-                </td>
-                <td className="px-6 py-3 text-gray-600">{u.mobile_number || '—'}</td>
-                <td className="px-6 py-3">
-                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${u.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-pink-100 text-pink-700'}`}>
-                    {u.role === 'admin' ? 'Admin' : 'Tracker'}
-                  </span>
-                </td>
-                <td className="px-6 py-3 text-right">
+                  <p className="text-xs text-gray-400">{u.mobile_number || '—'} · Last login: {daysAgo(u.last_login_at)}</p>
+                </div>
+                <div className="ml-auto flex gap-2 shrink-0">
                   <button
                     onClick={() => openEditUser(u)}
                     className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
                   >
                     Edit
                   </button>
-                </td>
-              </tr>
+                  <button
+                    onClick={() => deleteFamilyMember(u)}
+                    className="px-3 py-1.5 rounded-lg border border-red-200 text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        )}
 
         {trackerUser && (
           <div className="p-6 space-y-4 border-t border-gray-100">
@@ -720,15 +982,13 @@ export default function Settings({ onSyncRefresh }) {
         )}
       </div>
 
-      {/* ── Edit user modal ─────────────────────────────────────────────── */}
+      {/* ── Edit family member modal ────────────────────────────────────── */}
       {editingUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-sm">
             <div className="flex items-center gap-2 mb-4">
               <h3 className="text-base font-bold text-gray-900">Edit User</h3>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${editingUser.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-pink-100 text-pink-700'}`}>
-                {editingUser.role === 'admin' ? 'Admin' : 'Tracker'}
-              </span>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 font-semibold">Tracker</span>
             </div>
 
             <div className="space-y-3">
@@ -786,6 +1046,77 @@ export default function Settings({ onSyncRefresh }) {
                   style={{ backgroundColor: '#6C63FF' }}
                 >
                   Save
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Add family member modal ─────────────────────────────────────── */}
+      {showAddMember && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <h3 className="text-base font-bold text-gray-900">Add Family Member</h3>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 font-semibold">Tracker</span>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Name</label>
+                <input
+                  autoFocus type="text" placeholder="e.g. Spouse"
+                  value={addMemberForm.name}
+                  onChange={e => setAddMemberForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Mobile Number</label>
+                <input
+                  type="tel" inputMode="numeric" placeholder="9000000002"
+                  value={addMemberForm.mobile_number}
+                  onChange={e => setAddMemberForm(f => ({ ...f, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Password</label>
+                  <input
+                    type="password" placeholder="8+ characters"
+                    value={addMemberForm.password}
+                    onChange={e => setAddMemberForm(f => ({ ...f, password: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Confirm Password</label>
+                  <input
+                    type="password" placeholder="Repeat password"
+                    value={addMemberForm.confirmPassword}
+                    onChange={e => setAddMemberForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                  />
+                </div>
+              </div>
+
+              {addMemberError && <p className="text-xs font-medium text-red-500">{addMemberError}</p>}
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  onClick={() => setShowAddMember(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={createFamilyMember}
+                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+                  style={{ backgroundColor: '#6C63FF' }}
+                >
+                  Create Account
                 </button>
               </div>
             </div>

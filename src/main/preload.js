@@ -14,6 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getUsers:           ()              => ipcRenderer.invoke('users:getAll'),
   updateUser:         (data)          => ipcRenderer.invoke('users:update', data),
   createUser:         (data)          => ipcRenderer.invoke('users:create', data),
+  deleteUser:         (id)            => ipcRenderer.invoke('users:delete', id),
   refreshActivity:    ()              => ipcRenderer.invoke('users:refreshActivity'),
   getTrackerBudget:   ()              => ipcRenderer.invoke('users:getTrackerBudget'),
   setTrackerBudget:   (amount)        => ipcRenderer.invoke('users:setTrackerBudget', amount),
