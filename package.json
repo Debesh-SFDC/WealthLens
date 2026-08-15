@@ -14,9 +14,14 @@
     "build:mac": "electron-vite build && electron-builder --mac --publish never",
     "build:win": "electron-vite build && electron-builder --win --publish never",
     "start:server": "NODE_ENV=production node src/server/index.js",
-    "migrate": "node scripts/migrate-sqlite-to-postgres.js"
+    "migrate": "node scripts/migrate-sqlite-to-postgres.js",
+    "build:apk": "npx cap sync android && cd android && ./gradlew assembleDebug",
+    "open:android": "npx cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",

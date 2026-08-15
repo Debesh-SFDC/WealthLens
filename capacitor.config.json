@@ -1,0 +1,12 @@
+{
+  "appId": "com.wealthlens.app",
+  "appName": "WealthLens",
+  "webDir": "dist-web",
+  "server": {
+    "url": "https://wealthlens.arogyahms.in",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
