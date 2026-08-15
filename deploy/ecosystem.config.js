@@ -5,7 +5,7 @@ module.exports = {
     env_production: {
       NODE_ENV: 'production',
       APP_MODE: 'web',
-      PORT: 3001
+      PORT: 3003
     }
   }]
 }
