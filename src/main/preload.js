@@ -12,15 +12,18 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // Users & session
   getUsers:           ()              => ipcRenderer.invoke('users:getAll'),
-  verifyUserPin:      (data)          => ipcRenderer.invoke('users:verifyPin', data),
-  verifyAnyPin:       (pin)           => ipcRenderer.invoke('users:verifyPinAny', pin),
-  updateUserProfile:  (data)          => ipcRenderer.invoke('users:updateProfile', data),
-  updateUserPin:      (data)          => ipcRenderer.invoke('users:updatePin', data),
-  getCurrentSession:  ()              => ipcRenderer.invoke('users:getCurrentSession'),
-  signOut:            ()              => ipcRenderer.invoke('users:signOut'),
+  updateUser:         (data)          => ipcRenderer.invoke('users:update', data),
+  createUser:         (data)          => ipcRenderer.invoke('users:create', data),
   refreshActivity:    ()              => ipcRenderer.invoke('users:refreshActivity'),
   getTrackerBudget:   ()              => ipcRenderer.invoke('users:getTrackerBudget'),
   setTrackerBudget:   (amount)        => ipcRenderer.invoke('users:setTrackerBudget', amount),
+
+  // Mobile + password auth (replaces per-user PIN login)
+  login:              (data)          => ipcRenderer.invoke('auth:login', data),
+  bootstrap:          (data)          => ipcRenderer.invoke('auth:bootstrap', data),
+  hasAnyUser:         ()              => ipcRenderer.invoke('auth:hasAnyUser'),
+  getSession:         ()              => ipcRenderer.invoke('auth:getSession'),
+  logout:             ()              => ipcRenderer.invoke('auth:logout'),
 
   // Profile
   getProfile: () => ipcRenderer.invoke('profile:get'),

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import bridge from '../lib/bridge'
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const fmt = v => INR.format(v || 0)
@@ -383,7 +384,7 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
   async function handleCreate() {
     setSaving(true)
     try {
-      await window.electronAPI.createPlan({
+      await bridge.createPlan({
         label: meta.label.trim(),
         monthly_salary: parseFloat(meta.monthly_salary),
         effective_from: meta.effective_from,
@@ -569,7 +570,7 @@ function EditPlanModal({ plan, onUpdated, onClose }) {
   async function handleSave() {
     setSaving(true)
     try {
-      await window.electronAPI.updatePlanItems({
+      await bridge.updatePlanItems({
         planId: plan.id,
         label: label.trim() || undefined,
         monthly_salary: parseFloat(salary) || undefined,
@@ -1096,9 +1097,9 @@ export default function SalaryAllocator() {
     setLoading(true)
     try {
       const [plan, plans, inv] = await Promise.all([
-        window.electronAPI.getActivePlan(),
-        window.electronAPI.getAllPlans(),
-        window.electronAPI.getAllInvestments(),
+        bridge.getActivePlan(),
+        bridge.getAllPlans(),
+        bridge.getAllInvestments(),
       ])
       setActivePlan(plan || null)
       setAllPlans(plans || [])
@@ -1113,15 +1114,15 @@ export default function SalaryAllocator() {
   useEffect(() => { loadData() }, [])
 
   async function handleViewPlan(id) {
-    const plan = await window.electronAPI.getPlanById(id)
+    const plan = await bridge.getPlanById(id)
     setViewingPlan(plan)
     setView('viewPlan')
   }
 
   async function handleCompare(ids) {
     const [p1, p2] = await Promise.all([
-      window.electronAPI.getPlanById(ids[0]),
-      window.electronAPI.getPlanById(ids[1]),
+      bridge.getPlanById(ids[0]),
+      bridge.getPlanById(ids[1]),
     ])
     setComparePlans([p1, p2])
     setView('compare')

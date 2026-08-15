@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import bridge from '../lib/bridge'
 
 const CATEGORIES = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
@@ -253,7 +254,7 @@ export default function TrackerDashboard({ user }) {
         window.electronAPI.getWeightProfile(user.id).catch(() => ({ height_cm: 0 })),
         ...Array.from({ length: 13 }, (_, i) => {
           const m = offsetMonth(-12 + i)
-          return window.electronAPI.getAllExpenses({ month: m }).then(data => [m, data])
+          return bridge.getAllExpenses({ month: m }).then(data => [m, data])
         }),
       ])
       setBudget(b || 0)

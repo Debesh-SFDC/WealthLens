@@ -21,6 +21,26 @@ CREATE TABLE IF NOT EXISTS users (
   date_of_birth  TEXT
 );
 
+-- Unified mobile+password auth (replaces per-user PIN login). pin_hash stays
+-- in place — nothing reads it anymore, kept only so the column isn't NULL.
+-- ADD COLUMN IF NOT EXISTS makes this safe to re-run against an already-live DB.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS mobile_number TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile_number);
+
+-- Default admin/tracker accounts. Passwords below are bcrypt hashes of
+-- 'Admin@1234' / 'Tracker@1234' — change them in Settings immediately after
+-- first login (the app shows a one-time banner reminding you to).
+INSERT INTO users (name, role, pin_hash, mobile_number, password_hash)
+VALUES ('Debesh', 'admin', '$2a$10$1d1Myr3UrFthN52yq9vN9OgyJCT0r7CMLCCMVHRZyQDUBsA4KfUda',
+        '9000000001', '$2a$10$1d1Myr3UrFthN52yq9vN9OgyJCT0r7CMLCCMVHRZyQDUBsA4KfUda')
+ON CONFLICT (mobile_number) DO NOTHING;
+
+INSERT INTO users (name, role, pin_hash, mobile_number, password_hash)
+VALUES ('Spouse', 'tracker', '$2a$10$WRanmCFqtiGZOMA3ofmfduA6oH13umJS2gDYsPsoaUDYxM0RIuQSi',
+        '9000000002', '$2a$10$WRanmCFqtiGZOMA3ofmfduA6oH13umJS2gDYsPsoaUDYxM0RIuQSi')
+ON CONFLICT (mobile_number) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS profile (
   id                     SERIAL PRIMARY KEY,
   sync_id                TEXT UNIQUE,

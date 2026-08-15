@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import bridge from '../lib/bridge'
 
 const STEPS = ['Your Profile', 'Your First Goal', 'Salary Split']
 const GOAL_EMOJIS = ['🎯', '🏠', '🚗', '✈️', '👶', '📚', '💍', '🏖️']
@@ -23,13 +24,13 @@ export default function Onboarding({ onComplete }) {
 
   async function handleStep0() {
     if (!name.trim() || !salary) return
-    await window.electronAPI.saveProfile({ name: name.trim(), monthly_salary: parseFloat(salary) || 0 })
+    await bridge.saveProfile({ name: name.trim(), monthly_salary: parseFloat(salary) || 0 })
     setStep(1)
   }
 
   async function handleStep1(save) {
     if (save && goalTitle.trim() && goalAmount) {
-      await window.electronAPI.createGoal({
+      await bridge.createGoal({
         title: goalTitle.trim(),
         type: 'life_goal',
         category: 'need',
@@ -48,7 +49,7 @@ export default function Onboarding({ onComplete }) {
     if (save) {
       const sal = parseFloat(salary) || 0
       const today = new Date().toISOString().slice(0, 10)
-      await window.electronAPI.createPlan({
+      await bridge.createPlan({
         label: 'Initial Plan',
         monthly_salary: sal,
         effective_from: today,

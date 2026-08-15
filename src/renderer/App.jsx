@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
+import bridge from './lib/bridge'
 import Sidebar from './components/Sidebar'
 import TopBar from './components/TopBar'
 import Onboarding from './components/Onboarding'
-import ProfileSelector from './components/ProfileSelector'
+import AccountSetup from './components/AccountSetup'
+import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Investments from './pages/Investments'
 import Expenses from './pages/Expenses'
@@ -26,22 +28,49 @@ const adminPages = {
   health:      AdminWeight,
 }
 
+const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
+const TOKEN_KEY = 'wealthlens_token'
+
+function decodeWebSession() {
+  const token = localStorage.getItem(TOKEN_KEY)
+  if (!token) return null
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    if (payload.exp && payload.exp * 1000 < Date.now()) {
+      localStorage.removeItem(TOKEN_KEY)
+      return null
+    }
+    return { id: payload.id, name: payload.name, role: payload.role }
+  } catch {
+    localStorage.removeItem(TOKEN_KEY)
+    return null
+  }
+}
+
 export default function App() {
   const [currentUser, setCurrentUser]       = useState(null)  // null = not logged in
   const [authChecked, setAuthChecked]       = useState(false) // waiting for session check
+  const [hasUsers, setHasUsers]             = useState(null)  // null = still checking, false = first launch
   const [activePage, setActivePage]         = useState('dashboard')
   const [profileName, setProfileName]       = useState(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [appReady, setAppReady]             = useState(false)
   const [syncStatus, setSyncStatus]         = useState(null)
 
-  // ── Session bootstrap ───────────────────────────────────────────────────
+  // ── First-launch + session bootstrap ────────────────────────────────────
   useEffect(() => {
     async function checkSession() {
       try {
-        const session = await window.electronAPI.getCurrentSession()
-        if (session) {
-          setCurrentUser(session)
+        const any = await bridge.hasAnyUser()
+        setHasUsers(any)
+        if (!any) { setAuthChecked(true); return }
+
+        if (IS_ELECTRON) {
+          const session = await window.electronAPI.getSession()
+          if (session) setCurrentUser(session)
+        } else {
+          const session = decodeWebSession()
+          if (session) setCurrentUser(session)
         }
       } catch {}
       setAuthChecked(true)
@@ -52,7 +81,7 @@ export default function App() {
   // ── Load profile / onboarding (Admin only) ───────────────────────────────
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'admin') return
-    window.electronAPI.getProfile()
+    bridge.getProfile()
       .then(profile => {
         if (!profile || !profile.name) setShowOnboarding(true)
         else setProfileName(profile.name)
@@ -86,12 +115,17 @@ export default function App() {
   }, [currentUser])
 
   function handleSignIn(user) {
+    setHasUsers(true)
     setCurrentUser(user)
     setAppReady(false)
   }
 
   async function handleSignOut() {
-    await window.electronAPI.signOut()
+    if (IS_ELECTRON) {
+      await window.electronAPI.logout()
+    } else {
+      localStorage.removeItem(TOKEN_KEY)
+    }
     setCurrentUser(null)
     setAppReady(false)
     setShowOnboarding(false)
@@ -100,7 +134,7 @@ export default function App() {
 
   function handleOnboardingComplete() {
     setShowOnboarding(false)
-    window.electronAPI.getProfile().then(p => {
+    bridge.getProfile().then(p => {
       if (p?.name) setProfileName(p.name)
     })
   }
@@ -108,9 +142,14 @@ export default function App() {
   // Still checking session
   if (!authChecked) return null
 
-  // Not logged in → show profile selector
+  // No users in the DB yet → first-launch account setup wizard
+  if (!hasUsers) {
+    return <AccountSetup onComplete={handleSignIn} />
+  }
+
+  // Not logged in → show login screen
   if (!currentUser) {
-    return <ProfileSelector onSignIn={handleSignIn} />
+    return <Login onSignIn={handleSignIn} />
   }
 
   // Tracker role

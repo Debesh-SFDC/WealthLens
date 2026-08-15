@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import bridge from '../lib/bridge'
 
 function fmtCr(v) {
   const n = v || 0
@@ -1369,8 +1370,8 @@ export default function Goals() {
     setLoading(true)
     try {
       const [g, inv, links] = await Promise.all([
-        window.electronAPI.getAllGoals(),
-        window.electronAPI.getAllInvestments(),
+        bridge.getAllGoals(),
+        bridge.getAllInvestments(),
         window.electronAPI.getAllGoalInvestmentLinks(),
       ])
       setGoals(g || [])
@@ -1397,7 +1398,7 @@ export default function Goals() {
     try {
       const res = await window.electronAPI.syncGoalInvestment(goal.id)
       if (res?.synced) {
-        const fresh = await window.electronAPI.getAllGoals()
+        const fresh = await bridge.getAllGoals()
         setGoals(fresh || [])
         const updated = (fresh || []).find(x => x.id === goal.id)
         if (updated) setSelectedGoal(updated)
@@ -1423,10 +1424,10 @@ export default function Goals() {
     const { linkedInvestmentIds, ...goalData } = payload
     let goalId
     if (editGoal) {
-      await window.electronAPI.updateGoal({ ...goalData, id: editGoal.id, is_achieved: editGoal.is_achieved, achieved_at: editGoal.achieved_at })
+      await bridge.updateGoal({ ...goalData, id: editGoal.id, is_achieved: editGoal.is_achieved, achieved_at: editGoal.achieved_at })
       goalId = editGoal.id
     } else {
-      const { id } = await window.electronAPI.createGoal(goalData)
+      const { id } = await bridge.createGoal(goalData)
       goalId = id
     }
     await window.electronAPI.setGoalInvestments(goalId, linkedInvestmentIds || [])
@@ -1434,7 +1435,7 @@ export default function Goals() {
     await load()
     if (selectedGoal && goalId === selectedGoal.id) {
       const [fresh, inv] = await Promise.all([
-        window.electronAPI.getAllGoals(),
+        bridge.getAllGoals(),
         window.electronAPI.getGoalInvestments(goalId),
       ])
       setSelectedGoal(fresh.find(g => g.id === goalId) || null)
@@ -1448,7 +1449,7 @@ export default function Goals() {
     try {
       const result = await window.electronAPI.syncGoalInvestment(selectedGoal.id)
       const [fresh, c, inv] = await Promise.all([
-        window.electronAPI.getAllGoals(),
+        bridge.getAllGoals(),
         window.electronAPI.getGoalContributions(selectedGoal.id),
         window.electronAPI.getGoalInvestments(selectedGoal.id),
       ])
@@ -1468,13 +1469,13 @@ export default function Goals() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this goal? This also removes its contribution history.')) return
-    await window.electronAPI.deleteGoal(id)
+    await bridge.deleteGoal(id)
     if (selectedGoal?.id === id) closeDetail()
     await load()
   }
 
   const handleAchieve = async (goal) => {
-    await window.electronAPI.updateGoal({ ...goal, is_achieved: true })
+    await bridge.updateGoal({ ...goal, is_achieved: true })
     await load()
     setSelectedGoal(prev => (prev ? { ...prev, is_achieved: 1, achieved_at: new Date().toISOString() } : prev))
   }
@@ -1485,7 +1486,7 @@ export default function Goals() {
     await load()
     if (selectedGoal?.id === payload.goal_id) {
       const [fresh, c] = await Promise.all([
-        window.electronAPI.getAllGoals(),
+        bridge.getAllGoals(),
         window.electronAPI.getGoalContributions(payload.goal_id),
       ])
       setSelectedGoal(fresh.find(g => g.id === payload.goal_id) || null)

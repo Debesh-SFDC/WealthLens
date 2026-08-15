@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import bridge from '../lib/bridge'
 
 const CATEGORIES = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
@@ -103,8 +104,8 @@ export default function TrackerInsights({ user }) {
       setLoading(true)
       try {
         const [t, l] = await Promise.all([
-          window.electronAPI.getAllExpenses({ month: thisMonth }),
-          window.electronAPI.getAllExpenses({ month: lastMonth }),
+          bridge.getAllExpenses({ month: thisMonth }),
+          bridge.getAllExpenses({ month: lastMonth }),
         ])
         setThisExpenses(t)
         setLastExpenses(l)

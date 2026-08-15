@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
+import bridge from '../lib/bridge'
 
 const fmtDate = (s) =>
   s ? new Date(s).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtBytes = (b) =>
   b ? (Number(b) > 1024 * 1024 ? `${(Number(b) / 1024 / 1024).toFixed(1)} MB` : `${(Number(b) / 1024).toFixed(0)} KB`) : ''
 const fmt = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0)
-
-const AVATAR_COLORS = ['#6C63FF', '#EC4899', '#10B981', '#F59E0B', '#EF4444', '#3B82F6']
 
 function ImportPhoneButton() {
   const [result, setResult] = useState(null)
@@ -166,9 +165,10 @@ export default function Settings({ onSyncRefresh }) {
   const [browserList, setBrowserList]             = useState([])
 
   // Users
-  const [users, setUsers]         = useState([])
-  const [userForms, setUserForms] = useState({}) // { [id]: { name, avatar_color } }
-  const [pinForms, setPinForms]   = useState({}) // { [id]: { newPin, confirmPin } }
+  const [users, setUsers]           = useState([])
+  const [editingUser, setEditingUser] = useState(null) // user object or null
+  const [editForm, setEditForm]     = useState({ name: '', mobile_number: '', password: '', confirmPassword: '' })
+  const [editError, setEditError]   = useState('')
   const [trackerBudget, setTrackerBudget] = useState('')
   const [trackerExpenseSummary, setTrackerExpenseSummary] = useState(null)
 
@@ -187,12 +187,12 @@ export default function Settings({ onSyncRefresh }) {
   async function loadAll() {
     try {
       const [profile, status, hasCr, creds, ab, loadedUsers, devId, log] = await Promise.all([
-        window.electronAPI.getProfile(),
+        bridge.getProfile(),
         window.electronAPI.getDriveStatus(),
         window.electronAPI.hasDriveCreds(),
         window.electronAPI.getDriveCredentials(),
         window.electronAPI.getDriveAutoBackup(),
-        window.electronAPI.getUsers(),
+        bridge.getUsers(),
         window.electronAPI.getDeviceId(),
         window.electronAPI.getSyncLog(),
       ])
@@ -204,17 +204,7 @@ export default function Settings({ onSyncRefresh }) {
       setDeviceId(devId || '')
       setSyncLog(log || [])
 
-      if (loadedUsers) {
-        setUsers(loadedUsers)
-        const forms = {}
-        const pins = {}
-        for (const u of loadedUsers) {
-          forms[u.id] = { name: u.name, avatar_color: u.avatar_color || '#6C63FF' }
-          pins[u.id]  = { newPin: '', confirmPin: '' }
-        }
-        setUserForms(forms)
-        setPinForms(pins)
-      }
+      if (loadedUsers) setUsers(loadedUsers)
     } catch (e) {
       // silent
     }
@@ -226,12 +216,12 @@ export default function Settings({ onSyncRefresh }) {
 
     // Load tracker expense summary for this month — use loadedUsers from the same call above
     try {
-      const latestUsers = await window.electronAPI.getUsers()
+      const latestUsers = await bridge.getUsers()
       const now = new Date()
       const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
       const trackerUser = (latestUsers || []).find(u => u.role === 'tracker')
       if (trackerUser) {
-        const exps = await window.electronAPI.getAllExpenses({ month: ym, logged_by: trackerUser.id })
+        const exps = await bridge.getAllExpenses({ month: ym, logged_by: trackerUser.id })
         const total = exps.reduce((s, e) => s + e.amount, 0)
         setTrackerExpenseSummary({ total, count: exps.length })
       }
@@ -244,7 +234,7 @@ export default function Settings({ onSyncRefresh }) {
   }
 
   async function saveProfile() {
-    await window.electronAPI.saveProfile({
+    await bridge.saveProfile({
       name: profileForm.name,
       monthly_salary: parseFloat(profileForm.monthly_salary) || 0,
       date_of_birth: profileForm.date_of_birth || null,
@@ -289,7 +279,7 @@ export default function Settings({ onSyncRefresh }) {
       if (wasReconnect) {
         // Step 5: reconnecting after an expired session immediately re-syncs
         // so the user sees fresh data without a separate manual step.
-        const syncResult = await window.electronAPI.syncNow()
+        const syncResult = await bridge.syncNow()
         onSyncRefresh?.()
         const log = await window.electronAPI.getSyncLog()
         setSyncLog(log || [])
@@ -339,7 +329,7 @@ export default function Settings({ onSyncRefresh }) {
   async function syncNow() {
     try {
       setSyncing(true)
-      const result = await window.electronAPI.syncNow()
+      const result = await bridge.syncNow()
       setLastSyncResult(result)
       onSyncRefresh?.()
       const log = await window.electronAPI.getSyncLog()
@@ -404,30 +394,32 @@ export default function Settings({ onSyncRefresh }) {
 
   // ── User management helpers ───────────────────────────────────────────────
 
-  function setUserField(id, key, val) {
-    setUserForms(f => ({ ...f, [id]: { ...f[id], [key]: val } }))
+  function openEditUser(user) {
+    setEditingUser(user)
+    setEditForm({ name: user.name, mobile_number: user.mobile_number || '', password: '', confirmPassword: '' })
+    setEditError('')
   }
 
-  function setPinField(id, key, val) {
-    setPinForms(f => ({ ...f, [id]: { ...f[id], [key]: val } }))
-  }
-
-  async function saveUserProfile(user) {
-    const form = userForms[user.id]
-    if (!form?.name?.trim()) { showToast('Name cannot be empty', 'error'); return }
-    await window.electronAPI.updateUserProfile({ id: user.id, name: form.name.trim(), avatar_color: form.avatar_color })
-    showToast(`${user.role === 'admin' ? 'Admin' : 'Tracker'} profile saved`)
-    loadAll()
-  }
-
-  async function saveUserPin(user) {
-    const form = pinForms[user.id]
-    if (!form?.newPin || form.newPin.length < 6) { showToast('PIN must be at least 6 digits', 'error'); return }
-    if (!/^\d+$/.test(form.newPin)) { showToast('PIN must contain only digits', 'error'); return }
-    if (form.newPin !== form.confirmPin) { showToast('PINs do not match', 'error'); return }
-    await window.electronAPI.updateUserPin({ id: user.id, newPin: form.newPin })
-    setPinForms(f => ({ ...f, [user.id]: { newPin: '', confirmPin: '' } }))
-    showToast(`${user.role === 'admin' ? 'Admin' : 'Tracker'} PIN updated`)
+  async function saveUser() {
+    if (!editForm.name.trim()) { setEditError('Name cannot be empty'); return }
+    if (!/^\d{10}$/.test(editForm.mobile_number)) { setEditError('Mobile number must be 10 digits'); return }
+    if (editForm.password || editForm.confirmPassword) {
+      if (editForm.password.length < 6) { setEditError('Password must be at least 6 characters'); return }
+      if (editForm.password !== editForm.confirmPassword) { setEditError('Passwords do not match'); return }
+    }
+    try {
+      await bridge.updateUser({
+        id: editingUser.id,
+        name: editForm.name.trim(),
+        mobile_number: editForm.mobile_number,
+        password: editForm.password || undefined,
+      })
+      showToast(`${editingUser.role === 'admin' ? 'Admin' : 'Tracker'} account updated`)
+      setEditingUser(null)
+      loadAll()
+    } catch (e) {
+      setEditError(e.message || 'Could not save changes')
+    }
   }
 
   async function saveTrackerBudget() {
@@ -436,7 +428,6 @@ export default function Settings({ onSyncRefresh }) {
     showToast('Tracker budget saved')
   }
 
-  const adminUser   = users.find(u => u.role === 'admin')
   const trackerUser = users.find(u => u.role === 'tracker')
 
   return (
@@ -643,190 +634,164 @@ export default function Settings({ onSyncRefresh }) {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">Manage Users</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Edit user profiles, PINs, and tracker settings</p>
+          <p className="text-xs text-gray-400 mt-0.5">Edit name, mobile number, and password</p>
         </div>
-        <div className="p-6 space-y-6">
-          {/* Admin user */}
-          {adminUser && userForms[adminUser.id] && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white"
-                  style={{ backgroundColor: userForms[adminUser.id].avatar_color }}>
-                  {userForms[adminUser.id].name.charAt(0).toUpperCase()}
-                </div>
-                <p className="text-sm font-bold text-gray-800">Admin User</p>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">Admin</span>
-              </div>
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs font-semibold text-gray-400 uppercase tracking-wide border-b border-gray-100">
+              <th className="px-6 py-3">Name</th>
+              <th className="px-6 py-3">Mobile Number</th>
+              <th className="px-6 py-3">Role</th>
+              <th className="px-6 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {users.map(u => (
+              <tr key={u.id} className="border-b border-gray-50 last:border-0">
+                <td className="px-6 py-3 font-medium text-gray-800">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold text-white"
+                      style={{ backgroundColor: u.avatar_color || '#6C63FF' }}>
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    {u.name}
+                  </div>
+                </td>
+                <td className="px-6 py-3 text-gray-600">{u.mobile_number || '—'}</td>
+                <td className="px-6 py-3">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${u.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-pink-100 text-pink-700'}`}>
+                    {u.role === 'admin' ? 'Admin' : 'Tracker'}
+                  </span>
+                </td>
+                <td className="px-6 py-3 text-right">
+                  <button
+                    onClick={() => openEditUser(u)}
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Edit
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
 
-              <div className="space-y-3 pl-10">
+        {trackerUser && (
+          <div className="p-6 space-y-4 border-t border-gray-100">
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tracker Monthly Expense Budget</p>
+              <div className="flex gap-2 items-center">
+                <span className="text-gray-400 font-semibold">₹</span>
+                <input
+                  type="number" min="0" step="100" placeholder="0"
+                  value={trackerBudget}
+                  onChange={e => setTrackerBudget(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                />
+                <button
+                  onClick={saveTrackerBudget}
+                  className="px-4 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+                  style={{ backgroundColor: '#10B981' }}
+                >
+                  Save
+                </button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Tracker sees a warning when they exceed this budget</p>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">This Month's Activity</p>
+              {trackerExpenseSummary !== null ? (
+                <div className="flex gap-4">
+                  <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
+                    <p className="text-xs text-gray-400 mb-0.5">Total Spent</p>
+                    <p className="text-base font-bold text-gray-900">{fmt(trackerExpenseSummary.total)}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
+                    <p className="text-xs text-gray-400 mb-0.5">Expenses</p>
+                    <p className="text-base font-bold text-gray-900">{trackerExpenseSummary.count}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">No data yet</p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Edit user modal ─────────────────────────────────────────────── */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <h3 className="text-base font-bold text-gray-900">Edit User</h3>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${editingUser.role === 'admin' ? 'bg-indigo-100 text-indigo-700' : 'bg-pink-100 text-pink-700'}`}>
+                {editingUser.role === 'admin' ? 'Admin' : 'Tracker'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Name</label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Mobile Number</label>
+                <input
+                  type="tel" inputMode="numeric"
+                  value={editForm.mobile_number}
+                  onChange={e => setEditForm(f => ({ ...f, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Display Name</label>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">New Password</label>
                   <input
-                    type="text"
-                    value={userForms[adminUser.id].name}
-                    onChange={e => setUserField(adminUser.id, 'name', e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    type="password" placeholder="Leave blank to keep"
+                    value={editForm.password}
+                    onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
                   />
                 </div>
+                <div>
+                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Confirm</label>
+                  <input
+                    type="password" placeholder="Repeat password"
+                    value={editForm.confirmPassword}
+                    onChange={e => setEditForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                  />
+                </div>
+              </div>
+
+              {editError && <p className="text-xs font-medium text-red-500">{editError}</p>}
+
+              <div className="flex gap-2 pt-2">
                 <button
-                  onClick={() => saveUserProfile(adminUser)}
-                  className="px-4 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+                  onClick={() => setEditingUser(null)}
+                  className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={saveUser}
+                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
                   style={{ backgroundColor: '#6C63FF' }}
                 >
-                  Save Name
+                  Save
                 </button>
-
-                <div className="pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Change PIN</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="password" placeholder="New PIN (6+ digits)"
-                      value={pinForms[adminUser.id]?.newPin || ''}
-                      onChange={e => setPinField(adminUser.id, 'newPin', e.target.value)}
-                      inputMode="numeric"
-                      className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
-                    />
-                    <input
-                      type="password" placeholder="Confirm PIN"
-                      value={pinForms[adminUser.id]?.confirmPin || ''}
-                      onChange={e => setPinField(adminUser.id, 'confirmPin', e.target.value)}
-                      inputMode="numeric"
-                      className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
-                    />
-                  </div>
-                  <button
-                    onClick={() => saveUserPin(adminUser)}
-                    className="mt-2 px-4 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Update PIN
-                  </button>
-                </div>
               </div>
             </div>
-          )}
-
-          <div className="border-t border-gray-100" />
-
-          {/* Tracker user */}
-          {trackerUser && userForms[trackerUser.id] && (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-xl flex items-center justify-center text-sm font-bold text-white"
-                  style={{ backgroundColor: userForms[trackerUser.id].avatar_color }}>
-                  {userForms[trackerUser.id].name.charAt(0).toUpperCase()}
-                </div>
-                <p className="text-sm font-bold text-gray-800">Tracker User</p>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 font-semibold">Tracker</span>
-              </div>
-
-              <div className="space-y-3 pl-10">
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Display Name</label>
-                  <input
-                    type="text"
-                    value={userForms[trackerUser.id].name}
-                    onChange={e => setUserField(trackerUser.id, 'name', e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 block">Avatar Color</label>
-                  <div className="flex gap-2">
-                    {AVATAR_COLORS.map(color => (
-                      <button
-                        key={color}
-                        onClick={() => setUserField(trackerUser.id, 'avatar_color', color)}
-                        className="w-8 h-8 rounded-lg transition-all duration-150"
-                        style={{
-                          backgroundColor: color,
-                          outline: userForms[trackerUser.id].avatar_color === color ? `3px solid ${color}` : 'none',
-                          outlineOffset: '2px',
-                          transform: userForms[trackerUser.id].avatar_color === color ? 'scale(1.15)' : 'scale(1)',
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => saveUserProfile(trackerUser)}
-                  className="px-4 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: '#EC4899' }}
-                >
-                  Save Profile
-                </button>
-
-                <div className="pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Change PIN</p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="password" placeholder="New PIN (6+ digits)"
-                      value={pinForms[trackerUser.id]?.newPin || ''}
-                      onChange={e => setPinField(trackerUser.id, 'newPin', e.target.value)}
-                      inputMode="numeric"
-                      className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
-                    />
-                    <input
-                      type="password" placeholder="Confirm PIN"
-                      value={pinForms[trackerUser.id]?.confirmPin || ''}
-                      onChange={e => setPinField(trackerUser.id, 'confirmPin', e.target.value)}
-                      inputMode="numeric"
-                      className="px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
-                    />
-                  </div>
-                  <button
-                    onClick={() => saveUserPin(trackerUser)}
-                    className="mt-2 px-4 py-2 rounded-xl border border-gray-200 text-xs font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-                  >
-                    Update PIN
-                  </button>
-                </div>
-
-                <div className="pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Monthly Expense Budget</p>
-                  <div className="flex gap-2 items-center">
-                    <span className="text-gray-400 font-semibold">₹</span>
-                    <input
-                      type="number" min="0" step="100" placeholder="0"
-                      value={trackerBudget}
-                      onChange={e => setTrackerBudget(e.target.value)}
-                      className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
-                    />
-                    <button
-                      onClick={saveTrackerBudget}
-                      className="px-4 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity"
-                      style={{ backgroundColor: '#10B981' }}
-                    >
-                      Save
-                    </button>
-                  </div>
-                  <p className="text-xs text-gray-400 mt-1">Tracker sees a warning when they exceed this budget</p>
-                </div>
-
-                {/* Tracker this-month summary */}
-                <div className="pt-2 border-t border-gray-100">
-                  <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">This Month's Activity</p>
-                  {trackerExpenseSummary !== null ? (
-                    <div className="flex gap-4">
-                      <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
-                        <p className="text-xs text-gray-400 mb-0.5">Total Spent</p>
-                        <p className="text-base font-bold text-gray-900">{fmt(trackerExpenseSummary.total)}</p>
-                      </div>
-                      <div className="bg-gray-50 rounded-xl px-4 py-2.5 text-center">
-                        <p className="text-xs text-gray-400 mb-0.5">Expenses</p>
-                        <p className="text-base font-bold text-gray-900">{trackerExpenseSummary.count}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-gray-400">No data yet</p>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* ── Import from Phone ───────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">

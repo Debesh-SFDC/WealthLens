@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import bridge from '../lib/bridge'
 
 // ── Utilities ─────────────────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -3109,7 +3110,7 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
         const newVal = Number(values[inv.id]) || 0
         const oldVal = Number(inv.current_value) || 0
         if (Math.abs(newVal - oldVal) > 0.01) {
-          await window.electronAPI.updateInvestment({ ...inv, current_value: newVal })
+          await bridge.updateInvestment({ ...inv, current_value: newVal })
           changed++
         }
       }
@@ -3340,9 +3341,9 @@ export default function Investments() {
     setLoading(true)
     try {
       const [inv, g, prof] = await Promise.all([
-        window.electronAPI.getAllInvestments(),
-        window.electronAPI.getAllGoals(),
-        window.electronAPI.getProfile(),
+        bridge.getAllInvestments(),
+        bridge.getAllGoals(),
+        bridge.getProfile(),
       ])
       setInvestments(inv || [])
       setGoals(g || [])
@@ -3358,9 +3359,9 @@ export default function Investments() {
 
   const handleSave = async (data) => {
     if (editInv) {
-      await window.electronAPI.updateInvestment({ ...data, id: editInv.id })
+      await bridge.updateInvestment({ ...data, id: editInv.id })
     } else {
-      await window.electronAPI.createInvestment(data)
+      await bridge.createInvestment(data)
     }
     setShowForm(false)
     setEditInv(null)
@@ -3371,7 +3372,7 @@ export default function Investments() {
   const handleQuickUpdate = async (id, currentValue, units) => {
     const inv = investments.find(i => i.id === id)
     if (!inv) return
-    await window.electronAPI.updateInvestment({ ...inv, current_value: currentValue, units })
+    await bridge.updateInvestment({ ...inv, current_value: currentValue, units })
     setQuickInv(null)
     await load()
     showToast('Value updated')
@@ -3379,7 +3380,7 @@ export default function Investments() {
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this investment?')) return
-    await window.electronAPI.deleteInvestment(id)
+    await bridge.deleteInvestment(id)
     await load()
   }
 
@@ -3403,7 +3404,7 @@ export default function Investments() {
         return
       }
 
-      await window.electronAPI.updateInvestment({ ...inv, current_value: newValue })
+      await bridge.updateInvestment({ ...inv, current_value: newValue })
       await load()
     } catch (e) {
       showToast(`Fetch failed: ${e.message}`, 'error')

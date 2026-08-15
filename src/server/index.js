@@ -14,6 +14,7 @@ const salaryRouter = require('./routes/salary')
 const syncRouter = require('./routes/sync')
 const profileRouter = require('./routes/profile')
 const trackerRouter = require('./routes/tracker')
+const usersRouter = require('./routes/users')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -52,6 +53,9 @@ app.use('/api/profile', requireAuth, requireAdmin, profileRouter)
 
 // Tracker summary — tracker-accessible, read-only aggregate view
 app.use('/api/tracker', requireAuth, trackerRouter)
+
+// User management — admin only
+app.use('/api/users', requireAuth, requireAdmin, usersRouter)
 
 if (IS_WEB) {
   const distPath = path.join(__dirname, '..', '..', 'dist-web')

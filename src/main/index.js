@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, existsSync } from 'fs'
 import bcrypt from 'bcryptjs'
 import {
   initDatabase, getDb,
-  getAllUsers, getAllUsersWithHash, getUserById, updateUser, updateUserPin, updateUserLastLogin,
+  getAllUsers, getUserByMobile, updateUserAuth, createUser, updateUserLastLogin,
   generateExpenseSyncId, getAllExpensesForSync, mergeExpensesFromSync,
   logSyncEvent, getSyncLog,
 } from '../db/database.js'
@@ -58,6 +58,7 @@ function createWindow() {
 
 const dbPath      = join(app.getPath('userData'), 'wealthlens.db')
 const authFilePath = join(app.getPath('userData'), 'auth.enc')
+const sessionFilePath = join(app.getPath('userData'), 'session.enc')
 
 // ── Auth session state (in-memory; resets every app restart) ─────────────
 let sessionUnlocked   = false
@@ -65,7 +66,31 @@ let authFailedAttempts = 0
 let authLockoutUntil   = 0
 
 // ── User session (replaces single-password lock for role-based access) ────
+// In-memory copy, hydrated from sessionFilePath on first auth:getSession call
+// after a restart so login survives quitting the app (mobile+password auth).
 let currentUserSession = null // { id, name, role, lastActivity }
+
+function loadPersistedSession() {
+  try {
+    if (!existsSync(sessionFilePath)) return null
+    const buf = readFileSync(sessionFilePath)
+    const json = safeStorage.isEncryptionAvailable() ? safeStorage.decryptString(buf) : buf.toString('utf8')
+    return JSON.parse(json)
+  } catch { return null }
+}
+
+function savePersistedSession(session) {
+  const json = JSON.stringify(session)
+  if (safeStorage.isEncryptionAvailable()) {
+    writeFileSync(sessionFilePath, safeStorage.encryptString(json))
+  } else {
+    writeFileSync(sessionFilePath, json, 'utf8')
+  }
+}
+
+function clearPersistedSession() {
+  try { if (existsSync(sessionFilePath)) writeFileSync(sessionFilePath, '') } catch {}
+}
 
 function authHash(password, salt) {
   return pbkdf2Sync(password, salt, 600_000, 32, 'sha256').toString('hex')
@@ -406,54 +431,67 @@ function setupIpcHandlers() {
   // ── Users ─────────────────────────────────────────────────────────────────
   ipcMain.handle('users:getAll', () => getAllUsers(db))
 
-  ipcMain.handle('users:verifyPin', (_, { userId, pin }) => {
-    const user = getUserById(db, userId)
-    if (!user) return { success: false, error: 'User not found' }
-    const match = bcrypt.compareSync(pin, user.pin_hash)
-    if (!match) return { success: false }
-    updateUserLastLogin(db, userId)
-    currentUserSession = { id: user.id, name: user.name, role: user.role, lastActivity: Date.now() }
+  // { id, name, mobile_number, password? } — password omitted keeps the existing hash.
+  ipcMain.handle('users:update', (_, { id, name, mobile_number, password }) => {
+    const password_hash = password ? bcrypt.hashSync(password, 10) : null
+    updateUserAuth(db, { id, name, mobile_number, password_hash })
+    return { success: true }
+  })
+
+  // Admin-created additional accounts (e.g. the optional tracker in the
+  // first-launch wizard's step 2). Renderer only exposes this while signed in
+  // as admin — see App.jsx / AccountSetup.jsx.
+  ipcMain.handle('users:create', (_, { name, role, mobile_number, password }) => {
+    const user = createUser(db, { name, role, mobile_number, password_hash: bcrypt.hashSync(password, 10) })
     return { success: true, user: { id: user.id, name: user.name, role: user.role, avatar_color: user.avatar_color } }
   })
 
-  ipcMain.handle('users:verifyPinAny', (_, pin) => {
-    const users = getAllUsersWithHash(db)
-    for (const user of users) {
-      if (bcrypt.compareSync(pin, user.pin_hash)) {
-        updateUserLastLogin(db, user.id)
-        currentUserSession = { id: user.id, name: user.name, role: user.role, lastActivity: Date.now() }
-        return { success: true, user: { id: user.id, name: user.name, role: user.role, avatar_color: user.avatar_color } }
-      }
+  // ── Mobile + password auth (replaces per-user PIN login) ───────────────────
+  ipcMain.handle('auth:hasAnyUser', () => getAllUsers(db).length > 0)
+
+  ipcMain.handle('auth:login', (_, { mobile_number, password }) => {
+    const user = getUserByMobile(db, mobile_number)
+    if (!user || !user.password_hash || !bcrypt.compareSync(String(password), user.password_hash)) {
+      return { success: false, error: 'Invalid mobile number or password' }
     }
-    return { success: false }
+    updateUserLastLogin(db, user.id)
+    const session = { id: user.id, name: user.name, role: user.role, lastActivity: Date.now(), loggedInAt: new Date().toISOString() }
+    currentUserSession = session
+    savePersistedSession(session)
+    return { success: true, user: { id: user.id, name: user.name, role: user.role, avatar_color: user.avatar_color } }
   })
 
-  ipcMain.handle('users:updateProfile', (_, { id, name, avatar_color }) => {
-    updateUser(db, { id, name, avatar_color })
-    return { success: true }
+  // First-launch only — guarded server-side (not just in the UI) so it can
+  // never be used to mint an extra admin account after setup is done.
+  ipcMain.handle('auth:bootstrap', (_, { name, mobile_number, password }) => {
+    if (getAllUsers(db).some(u => u.role === 'admin')) {
+      return { success: false, error: 'Setup already completed' }
+    }
+    const user = createUser(db, { name, role: 'admin', mobile_number, password_hash: bcrypt.hashSync(password, 10) })
+    const session = { id: user.id, name: user.name, role: user.role, lastActivity: Date.now(), loggedInAt: new Date().toISOString() }
+    currentUserSession = session
+    savePersistedSession(session)
+    return { success: true, user: { id: user.id, name: user.name, role: user.role, avatar_color: user.avatar_color } }
   })
 
-  ipcMain.handle('users:updatePin', (_, { id, newPin }) => {
-    const hash = bcrypt.hashSync(newPin, 10)
-    updateUserPin(db, id, hash)
-    return { success: true }
-  })
-
-  ipcMain.handle('users:getCurrentSession', () => {
+  ipcMain.handle('auth:getSession', () => {
+    if (!currentUserSession) currentUserSession = loadPersistedSession()
     if (!currentUserSession) return null
     // Auto-logout tracker after 30 min inactivity
     if (currentUserSession.role === 'tracker') {
       const inactivMs = Date.now() - currentUserSession.lastActivity
       if (inactivMs > 30 * 60 * 1000) {
         currentUserSession = null
+        clearPersistedSession()
         return null
       }
     }
     return currentUserSession
   })
 
-  ipcMain.handle('users:signOut', () => {
+  ipcMain.handle('auth:logout', () => {
     currentUserSession = null
+    clearPersistedSession()
     return { success: true }
   })
 

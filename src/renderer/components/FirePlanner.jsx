@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import bridge from '../lib/bridge'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Legend,
 } from 'recharts'
@@ -900,8 +901,8 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
       setLoading(true)
       try {
         const [profileRes, planRes, savedRes] = await Promise.all([
-          window.electronAPI.getProfile(),
-          window.electronAPI.getActivePlan(),
+          bridge.getProfile(),
+          bridge.getActivePlan(),
           window.electronAPI.getFireSettings(),
         ])
         if (cancelled) return

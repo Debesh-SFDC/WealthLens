@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import bridge from '../lib/bridge'
 import FirePlanner from '../components/FirePlanner'
 
 export default function FirePlannerPage({ onNavigate }) {
@@ -8,7 +9,7 @@ export default function FirePlannerPage({ onNavigate }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const inv = await window.electronAPI.getAllInvestments()
+      const inv = await bridge.getAllInvestments()
       setInvestments(inv || [])
     } catch (e) {
       console.error(e)

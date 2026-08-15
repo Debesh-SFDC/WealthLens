@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import bridge from '../lib/bridge'
 
 // ── Formatters ────────────────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -502,7 +503,7 @@ export default function NetWorth() {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      const inv = await window.electronAPI.getAllInvestments()
+      const inv = await bridge.getAllInvestments()
       setInvestments(inv || [])
     } catch (e) {
       console.error(e)

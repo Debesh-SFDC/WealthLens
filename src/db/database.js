@@ -26,6 +26,7 @@ export function initDatabase() {
   migrateExpensesAddSyncId()
   seedUsers()
   migrateUserPinsToSixDigit()
+  migrateUserMobileAuth()
   seedTrackerBudget()
   migrateProfileV2()
   migrateWeightTracking()
@@ -346,11 +347,13 @@ function seedUsers() {
   const { count } = db.prepare('SELECT COUNT(*) as count FROM users').get()
   if (count > 0) return
 
+  // pin_hash is kept filled (NOT NULL) but unused — mobile_number/password_hash
+  // (added by migrateUserMobileAuth below) are what auth actually checks now.
   const insert = db.prepare(
-    'INSERT INTO users (name, role, pin_hash, avatar_color) VALUES (?, ?, ?, ?)'
+    'INSERT INTO users (name, role, pin_hash, mobile_number, password_hash, avatar_color) VALUES (?, ?, ?, ?, ?, ?)'
   )
-  insert.run('Debesh', 'admin', bcrypt.hashSync('123456', 10), '#6C63FF')
-  insert.run('Spouse', 'tracker', bcrypt.hashSync('000000', 10), '#EC4899')
+  insert.run('Debesh', 'admin', bcrypt.hashSync('123456', 10), '9000000001', bcrypt.hashSync('Admin@1234', 10), '#6C63FF')
+  insert.run('Spouse', 'tracker', bcrypt.hashSync('000000', 10), '9000000002', bcrypt.hashSync('Tracker@1234', 10), '#EC4899')
 }
 
 function migrateUserPinsToSixDigit() {
@@ -361,6 +364,29 @@ function migrateUserPinsToSixDigit() {
   for (const user of users) {
     const defaultPin = user.role === 'admin' ? '123456' : '000000'
     update.run(bcrypt.hashSync(defaultPin, 10), user.id)
+  }
+}
+
+// Unified mobile+password auth (replaces per-user PIN login). pin_hash column
+// is left in place untouched — nothing reads it anymore after this migration.
+function migrateUserMobileAuth() {
+  try { db.exec('ALTER TABLE users ADD COLUMN mobile_number TEXT') } catch {}
+  try { db.exec('ALTER TABLE users ADD COLUMN password_hash TEXT') } catch {}
+  try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_mobile ON users(mobile_number)') } catch {}
+
+  // Backfill existing installs (pre-dating this migration) with the same
+  // defaults seedUsers() would have used, so old accounts stay loginable.
+  // Falls back to an id-suffixed number for any role beyond the first, so the
+  // unique index above can never collide even if an install has extra users.
+  const stale = db.prepare('SELECT id, role FROM users WHERE mobile_number IS NULL OR password_hash IS NULL').all()
+  const update = db.prepare('UPDATE users SET mobile_number = ?, password_hash = ? WHERE id = ?')
+  const seenRole = {}
+  for (const user of stale) {
+    const isFirstOfRole = !seenRole[user.role]
+    seenRole[user.role] = true
+    const base = user.role === 'admin' ? ['9000000001', 'Admin@1234'] : ['9000000002', 'Tracker@1234']
+    const mobile = isFirstOfRole ? base[0] : `9${String(user.id).padStart(9, '0')}`
+    update.run(mobile, bcrypt.hashSync(base[1], 10), user.id)
   }
 }
 
@@ -689,23 +715,33 @@ export function getSyncLog(db, limit = 20) {
 // ── Exported DB functions ──────────────────────────────────────────────────
 
 export function getAllUsers(db) {
-  return db.prepare('SELECT id, name, role, avatar_color, last_login_at FROM users ORDER BY role DESC').all()
-}
-
-export function getAllUsersWithHash(db) {
-  return db.prepare('SELECT id, name, role, avatar_color, pin_hash FROM users').all()
+  return db.prepare('SELECT id, name, role, mobile_number, avatar_color, last_login_at FROM users ORDER BY role DESC').all()
 }
 
 export function getUserById(db, id) {
   return db.prepare('SELECT * FROM users WHERE id = ?').get(id)
 }
 
-export function updateUser(db, { id, name, avatar_color }) {
-  db.prepare('UPDATE users SET name = ?, avatar_color = ? WHERE id = ?').run(name, avatar_color, id)
+export function getUserByMobile(db, mobileNumber) {
+  return db.prepare('SELECT * FROM users WHERE mobile_number = ?').get(mobileNumber)
 }
 
-export function updateUserPin(db, id, pinHash) {
-  db.prepare('UPDATE users SET pin_hash = ? WHERE id = ?').run(pinHash, id)
+export function updateUserAuth(db, { id, name, mobile_number, password_hash }) {
+  if (password_hash) {
+    db.prepare('UPDATE users SET name = ?, mobile_number = ?, password_hash = ? WHERE id = ?')
+      .run(name, mobile_number, password_hash, id)
+  } else {
+    db.prepare('UPDATE users SET name = ?, mobile_number = ? WHERE id = ?')
+      .run(name, mobile_number, id)
+  }
+}
+
+export function createUser(db, { name, role, mobile_number, password_hash, avatar_color }) {
+  // pin_hash stays NOT NULL but unused — fill with an unusable placeholder hash.
+  const info = db.prepare(
+    'INSERT INTO users (name, role, pin_hash, mobile_number, password_hash, avatar_color) VALUES (?, ?, ?, ?, ?, ?)'
+  ).run(name, role, bcrypt.hashSync(randomUUID(), 10), mobile_number, password_hash, avatar_color || '#6C63FF')
+  return getUserById(db, info.lastInsertRowid)
 }
 
 export function updateUserLastLogin(db, id) {

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import bridge from '../lib/bridge'
 
 function AdminSyncButton({ onAfterSync }) {
   const [state, setState]   = useState('idle')
@@ -135,7 +136,7 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.amount || !form.category) return
-    await window.electronAPI.createExpense({ ...form, amount: parseFloat(form.amount) })
+    await bridge.createExpense({ ...form, amount: parseFloat(form.amount) })
     onAdded()
   }
 
@@ -529,12 +530,12 @@ export default function Dashboard({ onLockApp }) {
 
       const [s, plan, profile, g, exStats, cats, session] = await Promise.all([
         window.electronAPI.getDashboardStats(),
-        window.electronAPI.getActivePlan(),
-        window.electronAPI.getProfile(),
-        window.electronAPI.getAllGoals(),
+        bridge.getActivePlan(),
+        bridge.getProfile(),
+        bridge.getAllGoals(),
         window.electronAPI.getExpenseMonthlyStats({ month, year }),
         window.electronAPI.getExpenseCategories(),
-        window.electronAPI.getCurrentSession(),
+        window.electronAPI.getSession(),
       ])
 
       setStats(s || {})

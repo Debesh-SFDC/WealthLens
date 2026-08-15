@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import bridge from '../lib/bridge'
 
 const TRACKER_CATEGORIES = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B' },
@@ -27,7 +28,7 @@ export default function TrackerMonth({ user }) {
   const [budget, setBudget] = useState(0)
 
   useEffect(() => {
-    window.electronAPI.getAllExpenses({ month, logged_by: user.id }).then(setExpenses).catch(() => {})
+    bridge.getAllExpenses({ month, logged_by: user.id }).then(setExpenses).catch(() => {})
     window.electronAPI.getTrackerBudget().then(setBudget).catch(() => {})
   }, [month, user.id])
 

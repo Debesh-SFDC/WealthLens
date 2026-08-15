@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import bridge from '../lib/bridge'
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const fmt = (v) => INR.format(v || 0)
@@ -34,8 +35,8 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
       amount: parseFloat(form.amount),
       logged_by_user_id: currentUser?.id ?? null,
     }
-    if (isEdit) await window.electronAPI.updateExpense(data)
-    else await window.electronAPI.createExpense(data)
+    if (isEdit) await bridge.updateExpense(data)
+    else await bridge.createExpense(data)
     onSave()
   }
 
@@ -180,11 +181,11 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
       if (userFilter !== 'all') expFilter.logged_by = Number(userFilter)
 
       const [exps, cats, stats, allocs, profile, users] = await Promise.all([
-        window.electronAPI.getAllExpenses(expFilter),
+        bridge.getAllExpenses(expFilter),
         window.electronAPI.getExpenseCategories(),
         window.electronAPI.getExpenseMonthlyStats({ month, year }),
         window.electronAPI.getSalaryAllocations(),
-        window.electronAPI.getProfile(),
+        bridge.getProfile(),
         window.electronAPI.getUsers(),
       ])
       setExpenses(exps || [])
@@ -216,7 +217,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
 
   async function handleDelete(id) {
     if (!confirm('Delete this expense?')) return
-    await window.electronAPI.deleteExpense(id)
+    await bridge.deleteExpense(id)
     loadData()
   }
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import bridge from '../lib/bridge'
 
 const DEFAULT_CATS = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
@@ -95,7 +96,7 @@ export default function TrackerHome({ user }) {
   const load = useCallback(async () => {
     try {
       const [data, b] = await Promise.all([
-        window.electronAPI.getAllExpenses({ month: currentMonth }),
+        bridge.getAllExpenses({ month: currentMonth }),
         window.electronAPI.getTrackerBudget().catch(() => 0),
       ])
       setExpenses(data)
@@ -140,7 +141,7 @@ export default function TrackerHome({ user }) {
     if (!amt || amt <= 0 || saving) return
     setSaving(true)
     try {
-      await window.electronAPI.createExpense({
+      await bridge.createExpense({
         amount: amt, category, note: note.trim() || null,
         date: selectedDate, logged_by_user_id: user.id,
       })
@@ -153,7 +154,7 @@ export default function TrackerHome({ user }) {
   }
 
   async function doDelete(id) {
-    await window.electronAPI.deleteExpense(id)
+    await bridge.deleteExpense(id)
     setDeleteId(null)
     await load()
   }
