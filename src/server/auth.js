@@ -55,4 +55,11 @@ router.get('/me', requireAuth, async (req, res) => {
   res.json(rows[0])
 })
 
-module.exports = { router, requireAuth }
+function requireAdmin(req, res, next) {
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Access denied. Admin only.' })
+  }
+  next()
+}
+
+module.exports = { router, requireAuth, requireAdmin }

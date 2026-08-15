@@ -6,13 +6,14 @@ require('dotenv').config({ path: path.join(__dirname, '..', '..', `.env.${MODE}`
 
 const express = require('express')
 const cors = require('cors')
-const { router: authRouter, requireAuth } = require('./auth')
+const { router: authRouter, requireAuth, requireAdmin } = require('./auth')
 const goalsRouter = require('./routes/goals')
 const investmentsRouter = require('./routes/investments')
 const expensesRouter = require('./routes/expenses')
 const salaryRouter = require('./routes/salary')
 const syncRouter = require('./routes/sync')
 const profileRouter = require('./routes/profile')
+const trackerRouter = require('./routes/tracker')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -30,12 +31,27 @@ app.get('/api/health', (req, res) => {
 })
 
 app.use('/api/auth', authRouter)
-app.use('/api/goals', requireAuth, goalsRouter)
-app.use('/api/investments', requireAuth, investmentsRouter)
+
+// Goals — admin only (tracker has no business here)
+app.use('/api/goals', requireAuth, requireAdmin, goalsRouter)
+
+// Investments — admin only
+app.use('/api/investments', requireAuth, requireAdmin, investmentsRouter)
+
+// Expenses — keep as-is (already has tracker scoping inside)
 app.use('/api/expenses', requireAuth, expensesRouter)
-app.use('/api/salary-plans', requireAuth, salaryRouter)
-app.use('/api/sync', requireAuth, syncRouter)
-app.use('/api/profile', requireAuth, profileRouter)
+
+// Salary plans — admin only
+app.use('/api/salary-plans', requireAuth, requireAdmin, salaryRouter)
+
+// Sync — admin only (tracker syncs via Google Drive, not this endpoint)
+app.use('/api/sync', requireAuth, requireAdmin, syncRouter)
+
+// Profile — admin only
+app.use('/api/profile', requireAuth, requireAdmin, profileRouter)
+
+// Tracker summary — tracker-accessible, read-only aggregate view
+app.use('/api/tracker', requireAuth, trackerRouter)
 
 if (IS_WEB) {
   const distPath = path.join(__dirname, '..', '..', 'dist-web')
