@@ -79,15 +79,17 @@ export default function App() {
   }, [])
 
   // ── Load profile / onboarding (Admin only) ───────────────────────────────
+  // Onboarding.jsx (profile/goal/salary wizard) is Electron-only — web mode
+  // goes straight to the Dashboard after AccountSetup, blank profile or not.
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'admin') return
     bridge.getProfile()
       .then(profile => {
-        if (!profile || !profile.name) setShowOnboarding(true)
-        else setProfileName(profile.name)
+        if (IS_ELECTRON && (!profile || !profile.name)) setShowOnboarding(true)
+        else setProfileName(profile?.name || '')
         setAppReady(true)
       })
-      .catch(() => { setShowOnboarding(true); setAppReady(true) })
+      .catch(() => { if (IS_ELECTRON) setShowOnboarding(true); setAppReady(true) })
   }, [currentUser])
 
   // ── Sync status polling (Admin only) ─────────────────────────────────────

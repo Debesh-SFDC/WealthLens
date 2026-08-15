@@ -128,14 +128,22 @@ export default function Onboarding({ onComplete }) {
                 </div>
               </div>
 
-              <button
-                onClick={handleStep0}
-                disabled={!name.trim() || !salary}
-                className="w-full py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                style={{ backgroundColor: '#6C63FF' }}
-              >
-                Continue →
-              </button>
+              <div className="flex gap-3">
+                <button
+                  onClick={onComplete}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Skip →
+                </button>
+                <button
+                  onClick={handleStep0}
+                  disabled={!name.trim() || !salary}
+                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                  style={{ backgroundColor: '#6C63FF' }}
+                >
+                  Continue →
+                </button>
+              </div>
             </>
           )}
 
