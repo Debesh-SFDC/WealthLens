@@ -23,7 +23,7 @@ const PORT = process.env.PORT || 3001
 const IS_WEB = MODE === 'web'
 
 const allowedOrigins = IS_WEB
-  ? [process.env.CORS_ORIGIN || 'https://wealthlens.dsconsulting.in']
+  ? [process.env.CORS_ORIGIN || 'https://wealthlens.arogyahms.in']
   : ['http://localhost:5173', 'http://127.0.0.1:5173']
 
 app.use(cors({ origin: allowedOrigins, credentials: true }))

@@ -12,7 +12,7 @@
 - [ ] Copy deploy/nginx.conf to /etc/nginx/sites-available/wealthlens
 - [ ] ln -s /etc/nginx/sites-available/wealthlens /etc/nginx/sites-enabled/
 - [ ] nginx -t && systemctl reload nginx
-- [ ] certbot --nginx -d wealthlens.dsconsulting.in
+- [ ] certbot --nginx -d wealthlens.arogyahms.in
 - [ ] Copy deploy/ecosystem.config.js to server (/var/www/wealthlens/deploy/ecosystem.config.js)
 - [ ] Copy .env.web to /var/www/wealthlens/.env.web with real DATABASE_URL, JWT_SECRET, VITE_GOOGLE_CLIENT_ID
 - [ ] pm2 start deploy/ecosystem.config.js --env production
@@ -21,7 +21,7 @@
 ## Each deploy after that:
 - [ ] git push from local
 - [ ] SSH into KVM1: bash deploy/deploy.sh
-- [ ] Verify https://wealthlens.dsconsulting.in/api/health
+- [ ] Verify https://wealthlens.arogyahms.in/api/health
 
 ## Notes
 - The Express server (src/server/) reads `.env.web` in production (NODE_ENV=production or APP_MODE=web)
