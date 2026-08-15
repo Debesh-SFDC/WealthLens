@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
 
+const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
+
 const fmtDate = (s) =>
   s ? new Date(s).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'
 const fmtBytes = (b) =>
@@ -28,7 +30,7 @@ function ImportPhoneButton() {
   const [targetUserId, setTargetUserId] = useState('')
 
   useEffect(() => {
-    window.electronAPI.getUsers().then(us => {
+    bridge.getUsers().then(us => {
       if (us?.length) {
         setUsers(us)
         const tracker = us.find(u => u.role === 'tracker') || us[0]
@@ -203,7 +205,9 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
   // Main process pushes this when a Drive API call hits invalid_grant (expired
   // or revoked refresh token) — tokens are already cleared by the time it fires.
+  // Drive sync is Electron-only — window.electronAPI doesn't exist in web mode.
   useEffect(() => {
+    if (!IS_ELECTRON) return
     const unsubscribe = window.electronAPI.onDriveDisconnected?.((message) => {
       setDriveStatus(s => ({ ...s, connected: false }))
       setDriveError(message || 'Google Drive session expired. Please reconnect in Settings.')
@@ -212,16 +216,11 @@ export default function Settings({ onSyncRefresh, currentUser }) {
   }, [])
 
   async function loadAll() {
+    // Cross-platform (bridge) — works in both Electron and web mode.
     try {
-      const [profile, status, hasCr, creds, ab, loadedUsers, devId, log] = await Promise.all([
+      const [profile, loadedUsers] = await Promise.all([
         bridge.getProfile(),
-        window.electronAPI.getDriveStatus(),
-        window.electronAPI.hasDriveCreds(),
-        window.electronAPI.getDriveCredentials(),
-        window.electronAPI.getDriveAutoBackup(),
         bridge.getUsers(),
-        window.electronAPI.getDeviceId(),
-        window.electronAPI.getSyncLog(),
       ])
       const me = currentUser && (loadedUsers || []).find(u => u.id === currentUser.id)
       setProfileForm({
@@ -234,22 +233,38 @@ export default function Settings({ onSyncRefresh, currentUser }) {
         target_weight_kg: me?.target_weight_kg || '',
       })
       if (me) setMyDetailsForm({ name: me.name, mobile_number: me.mobile_number || '', password: '', confirmPassword: '' })
-      setDriveStatus(status || { connected: false, email: null, lastBackup: null })
-      setHasCreds(Boolean(hasCr))
-      setStoredCreds(creds || null)
-      setAutoBackup(Boolean(ab))
-      setDeviceId(devId || '')
-      setSyncLog(log || [])
-
       if (loadedUsers) setUsers(loadedUsers)
     } catch (e) {
       // silent
     }
 
-    try {
-      const budget = await window.electronAPI.getTrackerBudget()
-      setTrackerBudget(budget ? String(budget) : '')
-    } catch {}
+    // Electron-only — Drive backup, device sync log, tracker budget IPC have
+    // no web REST equivalent yet.
+    if (IS_ELECTRON) {
+      try {
+        const [status, hasCr, creds, ab, devId, log] = await Promise.all([
+          window.electronAPI.getDriveStatus(),
+          window.electronAPI.hasDriveCreds(),
+          window.electronAPI.getDriveCredentials(),
+          window.electronAPI.getDriveAutoBackup(),
+          window.electronAPI.getDeviceId(),
+          window.electronAPI.getSyncLog(),
+        ])
+        setDriveStatus(status || { connected: false, email: null, lastBackup: null })
+        setHasCreds(Boolean(hasCr))
+        setStoredCreds(creds || null)
+        setAutoBackup(Boolean(ab))
+        setDeviceId(devId || '')
+        setSyncLog(log || [])
+      } catch (e) {
+        // silent
+      }
+
+      try {
+        const budget = await window.electronAPI.getTrackerBudget()
+        setTrackerBudget(budget ? String(budget) : '')
+      } catch {}
+    }
 
     // Load tracker expense summary for this month — use loadedUsers from the same call above
     try {
@@ -718,7 +733,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
         </div>
       </div>
 
-      {/* ── Security ────────────────────────────────────────────────────── */}
+      {/* ── Security — Electron-only app-lock password (separate from user login) ── */}
+      {IS_ELECTRON && (
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">Security</h3>
@@ -796,6 +812,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
           </button>
         </div>
       </div>
+      )}
 
       {/* ── User Management ─────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
@@ -940,26 +957,28 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
         {trackerUser && (
           <div className="p-6 space-y-4 border-t border-gray-100">
-            <div>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tracker Monthly Expense Budget</p>
-              <div className="flex gap-2 items-center">
-                <span className="text-gray-400 font-semibold">₹</span>
-                <input
-                  type="number" min="0" step="100" placeholder="0"
-                  value={trackerBudget}
-                  onChange={e => setTrackerBudget(e.target.value)}
-                  className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
-                />
-                <button
-                  onClick={saveTrackerBudget}
-                  className="px-4 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: '#10B981' }}
-                >
-                  Save
-                </button>
+            {IS_ELECTRON && (
+              <div>
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tracker Monthly Expense Budget</p>
+                <div className="flex gap-2 items-center">
+                  <span className="text-gray-400 font-semibold">₹</span>
+                  <input
+                    type="number" min="0" step="100" placeholder="0"
+                    value={trackerBudget}
+                    onChange={e => setTrackerBudget(e.target.value)}
+                    className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                  />
+                  <button
+                    onClick={saveTrackerBudget}
+                    className="px-4 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity"
+                    style={{ backgroundColor: '#10B981' }}
+                  >
+                    Save
+                  </button>
+                </div>
+                <p className="text-xs text-gray-400 mt-1">Tracker sees a warning when they exceed this budget</p>
               </div>
-              <p className="text-xs text-gray-400 mt-1">Tracker sees a warning when they exceed this budget</p>
-            </div>
+            )}
 
             <div>
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">This Month's Activity</p>
@@ -1124,7 +1143,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
         </div>
       )}
 
-      {/* ── Import from Phone ───────────────────────────────────────────── */}
+      {/* ── Import from Phone — Electron-only (uses local file paths) ──────── */}
+      {IS_ELECTRON && (
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">Import from Phone</h3>
@@ -1137,8 +1157,20 @@ export default function Settings({ onSyncRefresh, currentUser }) {
           <ImportPhoneButton />
         </div>
       </div>
+      )}
 
-      {/* ── Google Drive Backup ─────────────────────────────────────────── */}
+      {/* ── Google Drive Backup — Electron-only OAuth flow ──────────────── */}
+      {!IS_ELECTRON ? (
+        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h3 className="text-base font-semibold text-gray-800">Google Drive Backup</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Securely back up and restore your financial data</p>
+          </div>
+          <div className="p-6">
+            <p className="text-sm text-gray-500">Google Drive sync is available in the desktop app</p>
+          </div>
+        </div>
+      ) : (
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
@@ -1463,6 +1495,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
           </p>
         </div>
       </div>
+      )}
 
       {/* ── About ────────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
