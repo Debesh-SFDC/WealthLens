@@ -104,7 +104,7 @@ const bottomNavItems = [
 export default function Sidebar({ activePage, onNavigate }) {
   return (
     <aside
-      className="flex flex-col w-60 shrink-0 h-screen"
+      className="hidden md:flex flex-col w-60 shrink-0 h-screen"
       style={{ backgroundColor: '#1a1a2e' }}
     >
       {/* Logo */}

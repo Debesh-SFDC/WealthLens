@@ -29,14 +29,14 @@ export default function TopBar({ activePage, profileName, syncStatus, onSignOut 
   const syncMeta = syncStatus ? SYNC_META[syncStatus.status] : null
 
   return (
-    <header className="flex items-center justify-between px-8 py-4 bg-white border-b border-gray-100 shrink-0">
+    <header className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4 bg-white border-b border-gray-100 shrink-0">
       <div>
-        <h1 className="text-xl font-bold text-gray-900">{PAGE_TITLES[activePage]}</h1>
+        <h1 className="text-lg sm:text-xl font-bold text-gray-900">{PAGE_TITLES[activePage]}</h1>
       </div>
 
-      <div className="flex items-center gap-4">
-        {/* Month/Year badge */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200">
+      <div className="flex items-center gap-2 sm:gap-4">
+        {/* Month/Year badge — hidden on mobile, Dashboard's own header already shows the date compactly */}
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200">
           <svg
             viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"
@@ -78,7 +78,7 @@ export default function TopBar({ activePage, profileName, syncStatus, onSignOut 
         {/* Avatar */}
         <div className="flex items-center gap-2">
           {profileName && (
-            <span className="text-sm font-medium text-gray-600">{profileName}</span>
+            <span className="hidden sm:inline text-sm font-medium text-gray-600">{profileName}</span>
           )}
           <div
             className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-bold shrink-0"

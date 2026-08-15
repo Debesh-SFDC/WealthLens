@@ -8,6 +8,7 @@ const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== unde
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const fmt = (v) => INR.format(v || 0)
+const fmtCompact = (v) => (v || 0) >= 100000 ? `₹${((v || 0) / 100000).toFixed(1)}L` : fmt(v)
 
 function getGreeting(name) {
   const hour = new Date().getHours()
@@ -15,8 +16,8 @@ function getGreeting(name) {
   return name ? `Good ${time}, ${name.split(' ')[0]} 👋` : `Good ${time} 👋`
 }
 
-function todayLong() {
-  return new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+function todayShort() {
+  return new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 // ── BMI helpers (mirrors src/renderer/pages/TrackerWeight.jsx) ─────────────
@@ -31,11 +32,6 @@ function bmiMeta(bmi) {
   if (bmi < 25)   return { label: 'Normal',      color: '#10B981', bg: '#ECFDF5' }
   if (bmi < 30)   return { label: 'Overweight',  color: '#F59E0B', bg: '#FFFBEB' }
   return              { label: 'Obese',           color: '#EF4444', bg: '#FEF2F2' }
-}
-function idealRange(heightCm) {
-  if (!heightCm || heightCm < 50) return null
-  const h = heightCm / 100
-  return { target: (22 * h * h).toFixed(1) }
 }
 
 const DEFAULT_CATS = [
@@ -147,51 +143,53 @@ function QuickLogWeight({ userId, onSaved, onClose }) {
   )
 }
 
-// ── 3. This Month Spending card ─────────────────────────────────────────────
-function SpendingCard({ spend, budget }) {
+// ── 3. Two stat cards side by side ──────────────────────────────────────────
+function MonthSpendCard({ spend, budget }) {
   const pct = budget > 0 ? Math.min(100, (spend / budget) * 100) : 0
   const color = budget <= 0 ? '#9CA3AF' : pct < 50 ? '#10B981' : pct <= 80 ? '#F59E0B' : '#EF4444'
 
   return (
-    <div className="bg-white rounded-2xl p-5 sm:p-6 border border-gray-100 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-800 mb-4">This Month's Spending</h3>
-      <div className="flex items-end justify-between mb-3 flex-wrap gap-2">
-        <p className="text-3xl sm:text-4xl font-bold text-gray-900">{fmt(spend)}</p>
-        {budget > 0 && <p className="text-sm text-gray-400">of {fmt(budget)} budget</p>}
-      </div>
-      {budget > 0 ? (
-        <>
-          <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
-          </div>
-          <p className="text-xs font-semibold mt-1.5" style={{ color }}>
-            {pct.toFixed(0)}% of budget used
-          </p>
-        </>
-      ) : (
-        <p className="text-xs text-gray-400">Set an active salary plan to see a budget here</p>
+    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm min-w-0">
+      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">This Month</p>
+      <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">
+        {fmtCompact(spend)}{budget > 0 && <span className="text-xs font-medium text-gray-400"> / {fmtCompact(budget)}</span>}
+      </p>
+      {budget > 0 && (
+        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden mt-2">
+          <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
+        </div>
       )}
     </div>
   )
 }
 
-// ── 4. Daily spending chart ──────────────────────────────────────────────────
+function TodaySpendCard({ spend, count }) {
+  return (
+    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm min-w-0">
+      <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Today</p>
+      <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">{fmtCompact(spend)}</p>
+      <p className="text-xs text-gray-400 mt-2">{count} expense{count !== 1 ? 's' : ''} logged</p>
+    </div>
+  )
+}
+
+// ── 4. Charts ────────────────────────────────────────────────────────────────
 function DailySpendingChart({ dailySpend, dailyBudget }) {
   const today = new Date().toISOString().slice(0, 10)
   const data = dailySpend.map(d => ({ ...d, day: Number(d.date.slice(-2)) }))
 
   return (
-    <div className="bg-white rounded-2xl p-5 sm:p-6 border border-gray-100 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-800 mb-4">Spending This Month</h3>
-      <div className="w-full" style={{ height: 200 }}>
+    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm min-w-0">
+      <h3 className="text-sm font-semibold text-gray-800 mb-2">Spending This Month</h3>
+      <div className="w-full h-[160px] md:h-[180px]">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+          <BarChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
-            <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#9CA3AF' }} interval={2} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
-            <YAxis tick={{ fontSize: 10, fill: '#9CA3AF' }} tickLine={false} axisLine={false} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+            <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#9CA3AF' }} interval={4} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
+            <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} tickLine={false} axisLine={false} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
             <Tooltip formatter={v => fmt(v)} labelFormatter={l => `Day ${l}`} contentStyle={{ borderRadius: 12, border: '1px solid #E5E7EB', fontSize: 12 }} />
             {dailyBudget > 0 && <ReferenceLine y={dailyBudget} stroke="#EF4444" strokeDasharray="4 4" strokeWidth={1.5} />}
-            <Bar dataKey="amount" radius={[4, 4, 0, 0]}>
+            <Bar dataKey="amount" radius={[3, 3, 0, 0]}>
               {data.map(d => <Cell key={d.date} fill={d.date === today ? '#6C63FF' : '#C7D2FE'} />)}
             </Bar>
           </BarChart>
@@ -201,87 +199,69 @@ function DailySpendingChart({ dailySpend, dailyBudget }) {
   )
 }
 
-// ── 5. Weight trend card ─────────────────────────────────────────────────────
-function WeightTrendCard({ latestWeight, weightLogs, heightCm }) {
+function WeightTrendChart({ latestWeight, weightLogs, heightCm }) {
   const bmi = calcBMI(latestWeight, heightCm)
   const meta = bmiMeta(bmi)
-  const ideal = idealRange(heightCm)
   const data = weightLogs.map(w => ({ ...w, day: Number(w.date.slice(-2)) }))
 
   return (
-    <div className="bg-white rounded-2xl p-5 sm:p-6 border border-gray-100 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-800 mb-4">Weight Trend</h3>
-      <div className="flex items-center gap-4 mb-4 flex-wrap">
-        <div>
-          <p className="text-3xl font-bold text-gray-900">{latestWeight ? `${latestWeight} kg` : '—'}</p>
-          <p className="text-xs text-gray-400">Latest weight</p>
-        </div>
-        {meta && (
-          <div className="px-3 py-1.5 rounded-xl" style={{ backgroundColor: meta.bg }}>
-            <p className="text-sm font-bold" style={{ color: meta.color }}>BMI {bmi.toFixed(1)}</p>
-            <p className="text-xs font-semibold" style={{ color: meta.color }}>{meta.label}</p>
-          </div>
-        )}
-        {ideal && (
-          <div className="ml-auto text-right">
-            <p className="text-sm font-semibold text-gray-700">{ideal.target} kg</p>
-            <p className="text-xs text-gray-400">Target weight</p>
-          </div>
+    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm min-w-0">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+        <h3 className="text-sm font-semibold text-gray-800">Weight Trend</h3>
+        {latestWeight && (
+          <p className="text-xs font-medium text-gray-500">
+            {latestWeight} kg
+            {meta && <span className="ml-1.5 font-semibold" style={{ color: meta.color }}>· BMI {bmi.toFixed(1)} {meta.label}</span>}
+          </p>
         )}
       </div>
       {data.length > 1 ? (
-        <div className="w-full" style={{ height: 200 }}>
+        <div className="w-full h-[160px] md:h-[180px]">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+            <LineChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
-              <XAxis dataKey="day" tick={{ fontSize: 10, fill: '#9CA3AF' }} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
-              <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fontSize: 10, fill: '#9CA3AF' }} tickLine={false} axisLine={false} />
+              <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#9CA3AF' }} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
+              <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fontSize: 9, fill: '#9CA3AF' }} tickLine={false} axisLine={false} />
               <Tooltip formatter={v => `${v} kg`} labelFormatter={l => `Day ${l}`} contentStyle={{ borderRadius: 12, border: '1px solid #E5E7EB', fontSize: 12 }} />
               <Line type="monotone" dataKey="weight_kg" stroke="#14B8A6" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
       ) : (
-        <div className="flex items-center justify-center h-24 rounded-xl bg-gray-50 border border-dashed border-gray-200">
-          <p className="text-sm text-gray-400">Log weight on a few more days to see a trend</p>
+        <div className="flex items-center justify-center h-[160px] md:h-[180px] rounded-xl bg-gray-50 border border-dashed border-gray-200">
+          <p className="text-xs text-gray-400 text-center px-4">Log weight on a few more days to see a trend</p>
         </div>
       )}
     </div>
   )
 }
 
-// ── 6. Today's expenses list ─────────────────────────────────────────────────
-function fmtTime(iso) {
-  if (!iso) return ''
-  const d = new Date(iso)
-  return isNaN(d.getTime()) ? '' : d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
-}
-
-function TodayExpenses({ expenses, categoryIcons, onDelete }) {
+// ── 5. Today's expenses (compact) ───────────────────────────────────────────
+function TodayExpensesCompact({ expenses, categoryIcons, onDelete, onViewAll }) {
+  const shown = expenses.slice(0, 5)
   return (
-    <div className="bg-white rounded-2xl p-5 sm:p-6 border border-gray-100 shadow-sm">
-      <h3 className="text-base font-semibold text-gray-800 mb-4">Today's Expenses</h3>
-      {expenses.length === 0 ? (
-        <div className="flex items-center justify-center h-20 rounded-xl bg-gray-50 border border-dashed border-gray-200">
-          <p className="text-sm text-gray-400">No expenses logged today</p>
-        </div>
+    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm">
+      <div className="flex items-center justify-between mb-1.5">
+        <h3 className="text-sm font-semibold text-gray-800">Today's Expenses</h3>
+        {onViewAll && (
+          <button onClick={onViewAll} className="text-xs font-semibold shrink-0" style={{ color: '#6C63FF' }}>
+            View all →
+          </button>
+        )}
+      </div>
+      {shown.length === 0 ? (
+        <p className="text-sm text-gray-400 py-3 text-center">No expenses today</p>
       ) : (
         <div className="divide-y divide-gray-50">
-          {expenses.map(e => (
+          {shown.map(e => (
             <button
               key={e.id}
               onClick={() => onDelete(e)}
-              className="w-full flex items-center gap-3 py-3 text-left hover:bg-gray-50 rounded-xl px-2 -mx-2 transition-colors"
+              className="w-full flex items-center gap-2.5 min-h-[44px] text-left hover:bg-gray-50 rounded-lg px-1.5 -mx-1.5 transition-colors"
             >
-              <span className="text-xl shrink-0">{categoryIcons[e.category] || '🔖'}</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-800 truncate">{e.note || e.category}</p>
-                <p className="text-xs text-gray-400">{e.category}</p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-sm font-bold text-gray-900">{fmt(e.amount)}</p>
-                <p className="text-xs text-gray-400">{fmtTime(e.created_at)}</p>
-              </div>
+              <span className="text-base shrink-0">{categoryIcons[e.category] || '🔖'}</span>
+              <span className="flex-1 min-w-0 text-sm text-gray-700 truncate">{e.note || e.category}</span>
+              <span className="text-sm font-bold text-gray-900 shrink-0">{fmt(e.amount)}</span>
             </button>
           ))}
         </div>
@@ -290,21 +270,17 @@ function TodayExpenses({ expenses, categoryIcons, onDelete }) {
   )
 }
 
-// ── 7. Secondary stats row ───────────────────────────────────────────────────
-function SecondaryStat({ label, value, icon }) {
+// ── 6. Secondary chips row ───────────────────────────────────────────────────
+function Chip({ icon, label }) {
   return (
-    <div className="bg-white rounded-xl p-3 sm:p-4 border border-gray-100 flex items-center gap-2.5">
-      <span className="text-base">{icon}</span>
-      <div className="min-w-0">
-        <p className="text-sm font-semibold text-gray-700 truncate">{value}</p>
-        <p className="text-[11px] text-gray-400">{label}</p>
-      </div>
+    <div className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-gray-100 text-xs font-semibold text-gray-600 whitespace-nowrap">
+      <span>{icon}</span>{label}
     </div>
   )
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
-export default function Dashboard() {
+export default function Dashboard({ onNavigate }) {
   const [profileName, setProfileName]     = useState('')
   const [currentUserId, setCurrentUserId] = useState(null)
   const [stats, setStats] = useState({
@@ -354,56 +330,71 @@ export default function Dashboard() {
   const dailyBudget = stats.monthlyBudget > 0 ? stats.monthlyBudget / 30 : 0
 
   return (
-    <div className="p-4 sm:p-8 max-w-3xl mx-auto space-y-5">
-      {/* 1. Header */}
-      <div>
-        <h2 className="text-xl sm:text-2xl font-bold text-gray-900">{getGreeting(profileName)}</h2>
-        <p className="mt-1 text-sm text-gray-500">{todayLong()}</p>
+    <div className="p-3 sm:p-6 max-w-3xl mx-auto space-y-3 sm:space-y-4">
+      {/* 1. Header — single line */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <h2 className="text-lg sm:text-xl font-bold text-gray-900">{getGreeting(profileName)}</h2>
+        <span className="text-gray-300">•</span>
+        <span className="text-sm text-gray-500">{todayShort()}</span>
       </div>
 
       {/* 2. Quick actions */}
-      <div className="flex flex-col sm:flex-row gap-3">
+      <div className="grid grid-cols-2 gap-3">
         <button
           onClick={() => setShowAddExpense(true)}
-          className="flex-1 w-full py-4 rounded-2xl text-white text-base font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-sm"
+          className="h-[52px] md:h-12 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm"
           style={{ backgroundColor: '#6C63FF' }}
         >
-          <span className="text-lg leading-none">+</span> Add Expense
+          <span className="text-base leading-none">+</span> Add Expense
         </button>
         <button
           onClick={() => setShowLogWeight(true)}
-          className="flex-1 w-full py-4 rounded-2xl text-white text-base font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-2 shadow-sm"
+          className="h-[52px] md:h-12 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm"
           style={{ backgroundColor: '#14B8A6' }}
         >
-          <span className="text-lg leading-none">+</span> Log Weight
+          <span className="text-base leading-none">+</span> Log Weight
         </button>
       </div>
 
       {loading ? (
-        <div className="space-y-5">
+        <div className="space-y-3 sm:space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="bg-white rounded-2xl h-20 border border-gray-100 animate-pulse" />
+            <div className="bg-white rounded-2xl h-20 border border-gray-100 animate-pulse" />
+          </div>
+          <div className="bg-white rounded-2xl h-48 border border-gray-100 animate-pulse" />
           <div className="bg-white rounded-2xl h-32 border border-gray-100 animate-pulse" />
-          <div className="bg-white rounded-2xl h-64 border border-gray-100 animate-pulse" />
-          <div className="bg-white rounded-2xl h-64 border border-gray-100 animate-pulse" />
         </div>
       ) : (
         <>
-          {/* 3. This month spending */}
-          <SpendingCard spend={stats.thisMonthSpend} budget={stats.monthlyBudget} />
+          {/* 3. Two stat cards side by side */}
+          <div className="grid grid-cols-2 gap-3">
+            <MonthSpendCard spend={stats.thisMonthSpend} budget={stats.monthlyBudget} />
+            <TodaySpendCard
+              spend={stats.todayExpenses.reduce((s, e) => s + e.amount, 0)}
+              count={stats.todayExpenses.length}
+            />
+          </div>
 
-          {/* 4. Daily spending chart */}
-          <DailySpendingChart dailySpend={stats.dailySpend} dailyBudget={dailyBudget} />
+          {/* 4. Charts — stacked mobile, side by side md+ */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+            <DailySpendingChart dailySpend={stats.dailySpend} dailyBudget={dailyBudget} />
+            <WeightTrendChart latestWeight={stats.latestWeight} weightLogs={stats.weightLogs} heightCm={stats.heightCm} />
+          </div>
 
-          {/* 5. Weight trend */}
-          <WeightTrendCard latestWeight={stats.latestWeight} weightLogs={stats.weightLogs} heightCm={stats.heightCm} />
+          {/* 5. Today's expenses (compact) */}
+          <TodayExpensesCompact
+            expenses={stats.todayExpenses}
+            categoryIcons={categoryIcons}
+            onDelete={handleDeleteExpense}
+            onViewAll={onNavigate ? () => onNavigate('expenses') : null}
+          />
 
-          {/* 6. Today's expenses */}
-          <TodayExpenses expenses={stats.todayExpenses} categoryIcons={categoryIcons} onDelete={handleDeleteExpense} />
-
-          {/* 7. Secondary stats */}
-          <div className="grid grid-cols-3 gap-3">
-            <SecondaryStat label="Total Invested" value={fmt(stats.totalInvested)} icon="📈" />
-            <SecondaryStat label="Active Goals" value={String(stats.activeGoals)} icon="🎯" />
-            <SecondaryStat label="Net Worth" value={fmt(stats.netWorth)} icon="💎" />
+          {/* 6. Secondary chips row — horizontally scrollable */}
+          <div className="flex gap-2 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
+            <Chip icon="💰" label={`Invested ${fmtCompact(stats.totalInvested)}`} />
+            <Chip icon="🎯" label={`${stats.activeGoals} Goals`} />
+            <Chip icon="📈" label={`Net Worth ${fmtCompact(stats.netWorth)}`} />
           </div>
         </>
       )}

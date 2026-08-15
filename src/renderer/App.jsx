@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import bridge from './lib/bridge'
 import Sidebar from './components/Sidebar'
+import BottomNav from './components/BottomNav'
 import TopBar from './components/TopBar'
 import Onboarding from './components/Onboarding'
 import AccountSetup from './components/AccountSetup'
@@ -175,13 +176,14 @@ export default function App() {
           syncStatus={syncStatus}
           onSignOut={handleSignOut}
         />
-        <main className="flex-1 overflow-y-auto">
+        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
           {activePage === 'dashboard'
-            ? <Dashboard />
+            ? <Dashboard onNavigate={setActivePage} />
             : <PageComponent onSyncRefresh={loadSyncStatus} currentUser={currentUser} onNavigate={setActivePage} />
           }
         </main>
       </div>
+      <BottomNav activePage={activePage} onNavigate={setActivePage} />
     </div>
   )
 }
