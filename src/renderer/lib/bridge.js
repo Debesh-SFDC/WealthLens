@@ -125,6 +125,16 @@ const bridge = {
   createUser: (data) => IS_ELECTRON
     ? window.electronAPI.createUser(data)
     : webCall('POST', '/users', data),
+
+  // Dashboard
+  getDashboardStats: () => IS_ELECTRON
+    ? window.electronAPI.getDashboardStats()
+    : webCall('GET', '/dashboard/stats'),
+
+  // Weight — always the caller's own entries
+  logWeight: (data) => IS_ELECTRON
+    ? window.electronAPI.logWeight(data)
+    : webCall('POST', '/weight', data),
 }
 
 export default bridge

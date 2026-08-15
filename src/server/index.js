@@ -15,6 +15,8 @@ const syncRouter = require('./routes/sync')
 const profileRouter = require('./routes/profile')
 const trackerRouter = require('./routes/tracker')
 const usersRouter = require('./routes/users')
+const dashboardRouter = require('./routes/dashboard')
+const weightRouter = require('./routes/weight')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -56,6 +58,12 @@ app.use('/api/tracker', requireAuth, trackerRouter)
 
 // User management — admin only
 app.use('/api/users', requireAuth, requireAdmin, usersRouter)
+
+// Dashboard — both roles (route itself scopes expenses/investments by role)
+app.use('/api/dashboard', requireAuth, dashboardRouter)
+
+// Weight — both roles, always scoped to the caller's own entries
+app.use('/api/weight', requireAuth, weightRouter)
 
 if (IS_WEB) {
   const distPath = path.join(__dirname, '..', '..', 'dist-web')

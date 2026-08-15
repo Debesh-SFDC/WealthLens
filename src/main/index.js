@@ -1152,25 +1152,70 @@ function setupIpcHandlers() {
   })
 
   // ── Dashboard stats ───────────────────────────────────────────────────────
+  // Mirrors GET /api/dashboard/stats (src/server/routes/dashboard.js) — same
+  // role scoping: expenses combined for admin / own-only for tracker, weight
+  // always own, investments/goals admin-only.
   ipcMain.handle('dashboard:getStats', () => {
-    const { totalInvested } = db.prepare(
-      'SELECT COALESCE(SUM(invested_amount), 0) as totalInvested FROM investments'
-    ).get()
-    const { netWorth } = db.prepare(
-      'SELECT COALESCE(SUM(current_value), 0) as netWorth FROM investments'
-    ).get()
     const now = new Date()
-    const month = String(now.getMonth() + 1).padStart(2, '0')
-    const year = String(now.getFullYear())
-    const { thisMonthSpend } = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as thisMonthSpend FROM expenses
-      WHERE strftime('%m', date) = ? AND strftime('%Y', date) = ?
-    `).get(month, year)
-    const { goalsActive } = db.prepare(
-      "SELECT COUNT(*) as goalsActive FROM goals WHERE is_achieved = 0"
-    ).get()
+    const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const today = now.toISOString().slice(0, 10)
+    const isAdmin = currentUserSession?.role === 'admin'
+    const userId = currentUserSession?.id
 
-    return { netWorth, totalInvested, thisMonthSpend, goalsActive }
+    let expQuery = `
+      SELECT e.*, u.name as logged_by_name FROM expenses e
+      LEFT JOIN users u ON e.logged_by_user_id = u.id
+      WHERE e.deleted_at IS NULL AND date LIKE ?`
+    const expParams = [`${month}%`]
+    if (!isAdmin) {
+      expQuery += ' AND e.logged_by_user_id = ?'
+      expParams.push(userId)
+    }
+    expQuery += ' ORDER BY e.date ASC, e.created_at ASC'
+    const monthExpenses = db.prepare(expQuery).all(...expParams)
+
+    const thisMonthSpend = monthExpenses.reduce((sum, e) => sum + e.amount, 0)
+    const todayExpenses = monthExpenses.filter(e => e.date === today)
+
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
+    const byDay = {}
+    for (const e of monthExpenses) byDay[e.date] = (byDay[e.date] || 0) + e.amount
+    const dailySpend = Array.from({ length: daysInMonth }, (_, i) => {
+      const date = `${month}-${String(i + 1).padStart(2, '0')}`
+      return { date, amount: byDay[date] || 0 }
+    })
+
+    const activePlan = db.prepare('SELECT id FROM salary_plans WHERE is_active = 1 LIMIT 1').get()
+    let monthlyBudget = 0
+    if (activePlan) {
+      const { total } = db.prepare(
+        "SELECT COALESCE(SUM(amount), 0) as total FROM salary_plan_items WHERE plan_id = ? AND category IN ('needs', 'wants')"
+      ).get(activePlan.id)
+      monthlyBudget = total
+    }
+
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000).toISOString().slice(0, 10)
+    const weightLogs = userId
+      ? db.prepare('SELECT * FROM weight_logs WHERE user_id = ? AND date >= ? ORDER BY date ASC').all(userId, thirtyDaysAgo)
+      : []
+    const latestWeight = weightLogs.length ? weightLogs[weightLogs.length - 1].weight_kg : null
+    const heightCm = userId ? (db.prepare('SELECT height_cm FROM users WHERE id = ?').get(userId)?.height_cm || 0) : 0
+
+    let totalInvested = 0, netWorth = 0, activeGoals = 0
+    if (isAdmin) {
+      const inv = db.prepare(
+        'SELECT COALESCE(SUM(invested_amount), 0) as invested, COALESCE(SUM(current_value), 0) as value FROM investments WHERE deleted_at IS NULL'
+      ).get()
+      totalInvested = inv.invested
+      netWorth = inv.value
+      const { c } = db.prepare('SELECT COUNT(*) as c FROM goals WHERE deleted_at IS NULL AND is_achieved = 0').get()
+      activeGoals = c
+    }
+
+    return {
+      thisMonthSpend, monthlyBudget, dailySpend, todayExpenses,
+      latestWeight, weightLogs, heightCm, totalInvested, activeGoals, netWorth,
+    }
   })
 
   // ── Google Drive ──────────────────────────────────────────────────────────
