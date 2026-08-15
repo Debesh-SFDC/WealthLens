@@ -7,7 +7,7 @@
     "dev": "electron-vite dev",
     "dev:web": "concurrently \"vite --mode web\" \"APP_MODE=web node src/server/index.js\"",
     "build": "electron-vite build",
-    "build:web": "vite build --mode web --outDir dist-web",
+    "build:web": "vite build --config vite.web.config.js --mode web",
     "preview": "electron-vite preview",
     "postinstall": "node scripts/postinstall.js",
     "rebuild:node": "SKIP_ELECTRON_REBUILD=1 npm rebuild better-sqlite3",
