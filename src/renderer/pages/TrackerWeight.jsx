@@ -376,8 +376,8 @@ export default function TrackerWeight({ user }) {
           >
             <span className="text-2xl">⚖️</span>
             <input
-              type="number" min="10" max="300" step="0.1"
-              placeholder="0.0"
+              type="number" min="10" max="300" step="0.01" inputMode="decimal"
+              placeholder="e.g. 70.5"
               value={weightInput}
               onChange={e => setWeightInput(e.target.value)}
               onFocus={() => setWtFocused(true)}

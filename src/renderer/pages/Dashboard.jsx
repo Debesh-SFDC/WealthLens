@@ -127,7 +127,7 @@ function QuickLogWeight({ userId, onSaved, onClose }) {
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <input
-            autoFocus type="number" step="0.1" min="20" max="300" placeholder="e.g. 70.5 kg" required
+            autoFocus type="number" step="0.01" min="20" max="300" inputMode="decimal" placeholder="e.g. 70.5" required
             value={input} onChange={e => setInput(e.target.value)}
             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
           />

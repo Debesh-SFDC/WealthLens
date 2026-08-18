@@ -714,7 +714,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Target Weight (kg)</label>
               <input
-                type="number" min="20" max="300" step="0.1" placeholder="e.g. 70"
+                type="number" min="20" max="300" step="0.01" inputMode="decimal" placeholder="e.g. 70.5"
                 value={profileForm.target_weight_kg}
                 onChange={e => setProfileForm(f => ({ ...f, target_weight_kg: e.target.value }))}
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"

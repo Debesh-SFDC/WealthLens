@@ -269,8 +269,8 @@ export default function TrackerHome({ user }) {
             >
               <span className="text-xl leading-none">⚖️</span>
               <input
-                type="number" min="10" max="300" step="0.1"
-                placeholder={todayWeightLog ? `${todayWeightLog.weight_kg}` : '0.0'}
+                type="number" min="10" max="300" step="0.01" inputMode="decimal"
+                placeholder={todayWeightLog ? `${todayWeightLog.weight_kg}` : 'e.g. 70.5'}
                 value={weightInput}
                 onChange={e => setWeightInput(e.target.value)}
                 onFocus={() => setWtFocused(true)}

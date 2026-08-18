@@ -272,7 +272,7 @@ export default function AdminWeight() {
                 <div className="flex items-center gap-2 flex-1 px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50">
                   <span className="text-sm font-semibold text-gray-400">kg</span>
                   <input
-                    type="number" placeholder="e.g. 65.5" step="0.1" min="20" max="300"
+                    type="number" placeholder="e.g. 70.5" step="0.01" min="20" max="300" inputMode="decimal"
                     value={weightInput}
                     onChange={e => setWeightInput(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') saveWeight() }}

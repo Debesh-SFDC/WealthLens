@@ -68,7 +68,7 @@ export default function BottomNav({ activePage, onNavigate }) {
   return (
     <>
       {moreOpen && (
-        <div className="fixed inset-0 z-40 md:hidden" onClick={() => setMoreOpen(false)}>
+        <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setMoreOpen(false)}>
           <div className="absolute inset-0 bg-black/40" />
           <div
             className="absolute bottom-[64px] left-0 right-0 bg-white rounded-t-2xl shadow-2xl overflow-hidden"
@@ -94,7 +94,7 @@ export default function BottomNav({ activePage, onNavigate }) {
       )}
 
       <nav
-        className="md:hidden fixed bottom-0 left-0 right-0 z-30 flex items-stretch h-16"
+        className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch h-16 lg:hidden"
         style={{ backgroundColor: '#1a1a2e', borderTop: '1px solid rgba(255,255,255,0.08)' }}
       >
         {TABS.map(tab => (

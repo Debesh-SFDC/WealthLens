@@ -176,7 +176,7 @@ export default function App() {
           syncStatus={syncStatus}
           onSignOut={handleSignOut}
         />
-        <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
+        <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           {activePage === 'dashboard'
             ? <Dashboard onNavigate={setActivePage} />
             : <PageComponent onSyncRefresh={loadSyncStatus} currentUser={currentUser} onNavigate={setActivePage} />
