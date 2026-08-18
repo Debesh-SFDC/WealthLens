@@ -106,6 +106,31 @@ function NavButton({ item, isActive, onClick }) {
   )
 }
 
+function TrackerBottomNav({ page, onNavigate }) {
+  return (
+    <nav
+      className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch h-16 lg:hidden"
+      style={{ backgroundColor: '#1a1a2e', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+    >
+      {navItems.map(item => {
+        const isActive = page === item.id
+        const { Icon, label } = item
+        return (
+          <button
+            key={item.id}
+            onClick={() => onNavigate(item.id)}
+            className="flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-[44px] min-h-[44px]"
+            style={{ color: isActive ? '#6C63FF' : 'rgba(255,255,255,0.45)' }}
+          >
+            <Icon />
+            <span className="text-[10px] font-semibold">{label}</span>
+          </button>
+        )
+      })}
+    </nav>
+  )
+}
+
 export default function TrackerApp({ user, onSignOut }) {
   const [page, setPage] = useState('home')
 
@@ -117,7 +142,7 @@ export default function TrackerApp({ user, onSignOut }) {
   return (
     <div className="flex h-screen overflow-hidden">
       <aside
-        className="flex flex-col shrink-0 h-screen"
+        className="hidden lg:flex flex-col shrink-0 h-screen"
         style={{
           width: 224,
           background: 'linear-gradient(180deg, #0F0E1A 0%, #13112A 100%)',
@@ -181,13 +206,15 @@ export default function TrackerApp({ user, onSignOut }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto bg-gray-50">
+      <main className="flex-1 overflow-y-auto bg-gray-50 pb-16 lg:pb-0">
         {page === 'home'       && <TrackerHome       user={user} />}
         {page === 'dashboard'  && <TrackerDashboard  user={user} />}
         {page === 'insights'   && <TrackerInsights   user={user} />}
         {page === 'categories' && <TrackerCategories user={user} />}
         {page === 'weight'     && <TrackerWeight     user={user} />}
       </main>
+
+      <TrackerBottomNav page={page} onNavigate={setPage} />
     </div>
   )
 }
