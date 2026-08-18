@@ -1,0 +1,25 @@
+name: Deploy to production
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and deploy
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            set -e
+            cd /var/www/wealthlens
+            git pull origin main
+            SKIP_ELECTRON_REBUILD=1 npm install
+            npm run build:web
+            mkdir -p /var/www/wealthlens/public
+            cp -r dist-web/* /var/www/wealthlens/public/
+            pm2 restart wealthlens-server
