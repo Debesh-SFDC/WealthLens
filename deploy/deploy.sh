@@ -5,7 +5,9 @@ cd /var/www/wealthlens
 git pull origin main
 # Web mode is Postgres-only — skip the Electron-ABI rebuild of better-sqlite3
 # (unneeded here, and electron-rebuild would need Electron's build headers).
-SKIP_ELECTRON_REBUILD=1 npm install --production
+# --production would skip devDependencies, which is where vite lives —
+# `npm run build:web` needs it, so install everything.
+SKIP_ELECTRON_REBUILD=1 npm install
 npm run build:web
 mkdir -p /var/www/wealthlens/public
 cp -r dist-web/* /var/www/wealthlens/public/
