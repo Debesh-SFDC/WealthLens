@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
+import Toast from '../components/Toast'
 import {
   BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts'
@@ -51,8 +52,9 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!form.amount || !form.category) return
-    await bridge.createExpense({ ...form, amount: parseFloat(form.amount) })
-    onAdded()
+    const amount = parseFloat(form.amount)
+    await bridge.createExpense({ ...form, amount })
+    onAdded({ amount, category: form.category })
   }
 
   return (
@@ -123,7 +125,7 @@ function QuickLogWeight({ userId, weightLogs, onSaved, onClose }) {
       // userId is only required for the Electron IPC path (no independent auth
       // context there); the web route always scopes to the JWT's user instead.
       await bridge.logWeight({ userId, weightKg: kg, date })
-      onSaved()
+      onSaved({ kg, date })
     } finally {
       setSaving(false)
     }
@@ -370,6 +372,11 @@ export default function Dashboard({ onNavigate }) {
   const [loading, setLoading]       = useState(true)
   const [showAddExpense, setShowAddExpense] = useState(false)
   const [showLogWeight, setShowLogWeight]   = useState(false)
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
+
+  function showToast(message, type = 'success') {
+    setToast({ visible: true, message, type })
+  }
 
   async function loadData() {
     setLoading(true)
@@ -393,10 +400,15 @@ export default function Dashboard({ onNavigate }) {
 
   useEffect(() => { loadData() }, [])
 
-  function handleAdded() {
+  function handleAdded(info) {
     setShowAddExpense(false)
     setShowLogWeight(false)
     loadData()
+    if (info?.kg != null) {
+      showToast(`✅ Weight logged — ${info.kg} kg for ${shortDateLabel(info.date, isoDaysAgo(0))}`)
+    } else if (info?.amount != null) {
+      showToast(`✅ Expense added — ${fmt(info.amount)} ${info.category}`)
+    }
   }
 
   async function handleDeleteExpense(expense) {
@@ -484,6 +496,13 @@ export default function Dashboard({ onNavigate }) {
       {showLogWeight && (
         <QuickLogWeight userId={currentUserId} weightLogs={stats.weightLogs} onSaved={handleAdded} onClose={() => setShowLogWeight(false)} />
       )}
+
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => setToast(t => ({ ...t, visible: false }))}
+      />
     </div>
   )
 }

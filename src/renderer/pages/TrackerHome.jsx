@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import bridge from '../lib/bridge'
+import Toast from '../components/Toast'
 
 const DEFAULT_CATS = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
@@ -73,8 +74,12 @@ export default function TrackerHome({ user }) {
   const [weightSaved,   setWeightSaved]   = useState(false)
   const [weightLogs,    setWeightLogs]    = useState([])
   const [weightLogDate, setWeightLogDate] = useState(todayStr())
+  const [weightShowPicker, setWeightShowPicker] = useState(false)
   const [wtFocused,     setWtFocused]     = useState(false)
   const [confirmSwap,   setConfirmSwap]   = useState(null) // { date, kg, existingKg } | null
+
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
+  function showToast(message, type = 'success') { setToast({ visible: true, message, type }) }
 
   const today = todayStr()
   const yesterday = yesterdayStr()
@@ -139,6 +144,7 @@ export default function TrackerHome({ user }) {
       setWeightSaved(true)
       setTimeout(() => setWeightSaved(false), 2000)
       await loadWeight()
+      showToast(`✅ Weight logged — ${kg} kg for ${compactDateLabel(date, today)}`)
     } finally { setWeightSaving(false) }
   }
 
@@ -176,6 +182,7 @@ export default function TrackerHome({ user }) {
       setSaved(true)
       setTimeout(() => setSaved(false), 1800)
       await load()
+      showToast(`✅ Expense added — ${fmt(amt)} ${category}`)
     } finally { setSaving(false) }
   }
 
@@ -307,19 +314,20 @@ export default function TrackerHome({ user }) {
               <span className="text-sm font-semibold text-gray-400">kg</span>
             </div>
 
-            <div className="relative shrink-0">
-              <input
-                type="date" value={weightLogDate} max={today} min={weightMinDate}
-                onChange={e => e.target.value && setWeightLogDate(e.target.value)}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-              />
-              <div className="pointer-events-none flex items-center gap-1 px-2.5 py-2.5 rounded-2xl text-xs font-bold text-gray-600 whitespace-nowrap" style={{ backgroundColor: '#F9FAFB' }}>
-                {compactDateLabel(weightLogDate, today)}
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
-                  <polyline points="6 9 12 15 18 9" />
-                </svg>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => setWeightShowPicker(v => !v)}
+              className="shrink-0 flex items-center gap-1 px-2.5 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all"
+              style={{
+                backgroundColor: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#EEF2FF' : '#F3F4F6',
+                color: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#6C63FF' : '#6B7280',
+              }}
+            >
+              {compactDateLabel(weightLogDate, today)}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
 
             <button
               onClick={saveWeight}
@@ -334,6 +342,59 @@ export default function TrackerHome({ user }) {
             >
               {weightSaved ? '✓' : weightSaving ? '…' : todayWeightLog ? 'Update' : 'Log'}
             </button>
+          </div>
+
+          {/* Selected date + quick chips — Today/Yesterday/Pick date */}
+          <p className="text-xs text-gray-400 mt-3 mb-1.5">
+            Logging for: <span className="font-semibold text-gray-700">{formatDateLabel(weightLogDate)}</span>
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={() => { setWeightLogDate(today); setWeightShowPicker(false) }}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+              style={{
+                backgroundColor: weightLogDate === today && !weightShowPicker ? '#EEF2FF' : '#F3F4F6',
+                color: weightLogDate === today && !weightShowPicker ? '#6C63FF' : '#6B7280',
+              }}
+            >
+              Today
+            </button>
+            <button
+              type="button"
+              onClick={() => { setWeightLogDate(yesterday); setWeightShowPicker(false) }}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+              style={{
+                backgroundColor: weightLogDate === yesterday && !weightShowPicker ? '#EEF2FF' : '#F3F4F6',
+                color: weightLogDate === yesterday && !weightShowPicker ? '#6C63FF' : '#6B7280',
+              }}
+            >
+              Yesterday
+            </button>
+            <button
+              type="button"
+              onClick={() => setWeightShowPicker(v => !v)}
+              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
+              style={{
+                backgroundColor: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#EEF2FF' : '#F3F4F6',
+                color: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#6C63FF' : '#6B7280',
+              }}
+            >
+              {weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday)
+                ? compactDateLabel(weightLogDate, today)
+                : 'Pick date'}
+            </button>
+            {weightShowPicker && (
+              <input
+                type="date"
+                value={weightLogDate}
+                max={today}
+                min={weightMinDate}
+                onChange={e => { if (e.target.value) setWeightLogDate(e.target.value) }}
+                className="text-xs text-gray-700 outline-none border border-gray-200 rounded-xl px-2 py-1.5 bg-white"
+                style={{ maxWidth: 130 }}
+              />
+            )}
           </div>
 
           {/* Last 7 days quick reference — helps spot missed days to backfill */}
@@ -632,6 +693,13 @@ export default function TrackerHome({ user }) {
           </div>
         </div>
       )}
+
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => setToast(t => ({ ...t, visible: false }))}
+      />
     </>
   )
 }
