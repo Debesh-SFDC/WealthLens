@@ -18,6 +18,13 @@ const todayStr = () => new Date().toISOString().split('T')[0]
 const yesterdayStr = () => {
   const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split('T')[0]
 }
+const isoDaysAgo = n => {
+  const d = new Date(); d.setDate(d.getDate() - n); return d.toISOString().split('T')[0]
+}
+function compactDateLabel(dateStr, todayStr) {
+  if (dateStr === todayStr) return 'Today'
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' })
+}
 
 function getGreeting(name) {
   const h = new Date().getHours()
@@ -64,12 +71,15 @@ export default function TrackerHome({ user }) {
   const [weightInput,   setWeightInput]   = useState('')
   const [weightSaving,  setWeightSaving]  = useState(false)
   const [weightSaved,   setWeightSaved]   = useState(false)
-  const [todayWeightLog, setTodayWeightLog] = useState(null)
+  const [weightLogs,    setWeightLogs]    = useState([])
+  const [weightLogDate, setWeightLogDate] = useState(todayStr())
   const [wtFocused,     setWtFocused]     = useState(false)
+  const [confirmSwap,   setConfirmSwap]   = useState(null) // { date, kg, existingKg } | null
 
   const today = todayStr()
   const yesterday = yesterdayStr()
   const currentMonth = selectedDate.slice(0, 7)
+  const weightMinDate = isoDaysAgo(30)
 
   const loadCategories = useCallback(async () => {
     try {
@@ -108,24 +118,40 @@ export default function TrackerHome({ user }) {
 
   const loadWeight = useCallback(async () => {
     try {
-      const logs = await window.electronAPI.getWeightLogs({ userId: user.id, from: today, to: today })
-      setTodayWeightLog(logs?.[0] ?? null)
+      // weightMinDate covers 30 days back — the full backfill range plus the
+      // last-7-days quick reference list, in a single fetch.
+      const logs = await bridge.getWeightLogs({ userId: user.id, from: isoDaysAgo(30), to: today })
+      setWeightLogs(logs || [])
     } catch {}
   }, [user.id, today])
 
   useEffect(() => { loadWeight() }, [loadWeight])
 
-  async function saveWeight() {
-    const kg = parseFloat(weightInput)
-    if (!kg || kg < 10 || kg > 300 || weightSaving) return
+  const weightLogsByDate = {}
+  for (const l of weightLogs) weightLogsByDate[l.date] = l
+  const todayWeightLog = weightLogsByDate[today] ?? null
+
+  async function doSaveWeight(date, kg) {
     setWeightSaving(true)
     try {
-      await window.electronAPI.logWeight({ userId: user.id, weightKg: kg, date: today })
+      await bridge.logWeight({ userId: user.id, weightKg: kg, date })
       setWeightInput('')
       setWeightSaved(true)
       setTimeout(() => setWeightSaved(false), 2000)
       await loadWeight()
     } finally { setWeightSaving(false) }
+  }
+
+  async function saveWeight() {
+    const kg = parseFloat(weightInput)
+    if (!kg || kg < 10 || kg > 300 || weightSaving) return
+
+    const existing = weightLogsByDate[weightLogDate]
+    if (existing && weightLogDate !== today) {
+      setConfirmSwap({ date: weightLogDate, kg, existingKg: existing.weight_kg })
+      return
+    }
+    await doSaveWeight(weightLogDate, kg)
   }
 
   const dateExpenses = expenses.filter(e => e.date === selectedDate)
@@ -259,7 +285,7 @@ export default function TrackerHome({ user }) {
 
           <div className="flex items-center gap-2">
             <div
-              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 flex-1"
+              className="flex items-center gap-2 rounded-2xl px-3 py-2.5 flex-1 min-w-0"
               style={{
                 backgroundColor: '#F9FAFB',
                 border: `2px solid ${wtFocused ? '#6C63FF' : 'transparent'}`,
@@ -281,6 +307,20 @@ export default function TrackerHome({ user }) {
               <span className="text-sm font-semibold text-gray-400">kg</span>
             </div>
 
+            <div className="relative shrink-0">
+              <input
+                type="date" value={weightLogDate} max={today} min={weightMinDate}
+                onChange={e => e.target.value && setWeightLogDate(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <div className="pointer-events-none flex items-center gap-1 px-2.5 py-2.5 rounded-2xl text-xs font-bold text-gray-600 whitespace-nowrap" style={{ backgroundColor: '#F9FAFB' }}>
+                {compactDateLabel(weightLogDate, today)}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
+            </div>
+
             <button
               onClick={saveWeight}
               disabled={!weightInput || weightSaving}
@@ -294,6 +334,25 @@ export default function TrackerHome({ user }) {
             >
               {weightSaved ? '✓' : weightSaving ? '…' : todayWeightLog ? 'Update' : 'Log'}
             </button>
+          </div>
+
+          {/* Last 7 days quick reference — helps spot missed days to backfill */}
+          <div className="mt-3 rounded-2xl border border-gray-100 divide-y divide-gray-50 overflow-hidden">
+            {Array.from({ length: 7 }, (_, i) => isoDaysAgo(i)).map(d => {
+              const log = weightLogsByDate[d]
+              return (
+                <button
+                  type="button" key={d} onClick={() => setWeightLogDate(d)}
+                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs transition-colors"
+                  style={{ backgroundColor: weightLogDate === d ? '#EEF2FF' : 'transparent' }}
+                >
+                  <span className="font-semibold text-gray-500">{compactDateLabel(d, today)}</span>
+                  <span className={log ? 'font-bold text-gray-800' : 'text-gray-300'}>
+                    {log ? `${log.weight_kg} kg` : '—— not logged'}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </div>
 
@@ -504,6 +563,38 @@ export default function TrackerHome({ user }) {
           )}
         </div>
       </div>
+
+      {/* ── Weight backfill confirm modal ── */}
+      {confirmSwap && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
+          onClick={e => { if (e.target === e.currentTarget) setConfirmSwap(null) }}
+        >
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl" style={{ animation: 'popIn 0.2s ease' }}>
+            <p className="text-base font-bold text-gray-900 mb-1">Already logged</p>
+            <p className="text-sm text-gray-400 mb-5">
+              You already logged {confirmSwap.existingKg}kg on {compactDateLabel(confirmSwap.date, today)}. Update it to {confirmSwap.kg}kg?
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmSwap(null)}
+                className="flex-1 py-3 rounded-2xl text-sm font-semibold text-gray-700 transition-colors"
+                style={{ border: '2px solid #F3F4F6' }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => { const c = confirmSwap; setConfirmSwap(null); doSaveWeight(c.date, c.kg) }}
+                className="flex-1 py-3 rounded-2xl text-white text-sm font-bold transition-colors"
+                style={{ background: 'linear-gradient(135deg, #6C63FF 0%, #4338CA 100%)' }}
+              >
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Delete confirm modal ── */}
       {deleteId && (

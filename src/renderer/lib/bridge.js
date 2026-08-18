@@ -138,6 +138,9 @@ const bridge = {
   logWeight: (data) => IS_ELECTRON
     ? window.electronAPI.logWeight(data)
     : webCall('POST', '/weight', data),
+  getWeightLogs: ({ userId, from, to } = {}) => IS_ELECTRON
+    ? window.electronAPI.getWeightLogs({ userId, from, to })
+    : webCall('GET', `/weight?${new URLSearchParams({ from, to })}`),
 }
 
 export default bridge

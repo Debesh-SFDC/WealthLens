@@ -94,24 +94,52 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
 }
 
 // ── Quick Log Weight modal ──────────────────────────────────────────────────
-function QuickLogWeight({ userId, onSaved, onClose }) {
-  const today = new Date().toISOString().slice(0, 10)
-  const [input, setInput] = useState('')
-  const [saving, setSaving] = useState(false)
+function isoDaysAgo(n) {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return d.toISOString().slice(0, 10)
+}
 
-  async function handleSubmit(e) {
-    e.preventDefault()
-    const kg = parseFloat(input)
-    // userId is only required for the Electron IPC path (no independent auth
-    // context there); the web route always scopes to the JWT's user instead.
-    if (isNaN(kg) || kg <= 0 || (IS_ELECTRON && !userId)) return
+function shortDateLabel(dateStr, todayStr) {
+  if (dateStr === todayStr) return 'Today'
+  return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' })
+}
+
+function QuickLogWeight({ userId, weightLogs, onSaved, onClose }) {
+  const today = isoDaysAgo(0)
+  const minDate = isoDaysAgo(30)
+  const [input, setInput] = useState('')
+  const [logDate, setLogDate] = useState(today)
+  const [saving, setSaving] = useState(false)
+  const [confirmSwap, setConfirmSwap] = useState(null) // { date, kg, existingKg } | null
+
+  const logsByDate = {}
+  for (const l of weightLogs || []) logsByDate[l.date] = l
+  const last7 = Array.from({ length: 7 }, (_, i) => isoDaysAgo(i))
+
+  async function doSave(date, kg) {
     setSaving(true)
     try {
-      await bridge.logWeight({ userId, weightKg: kg, date: today })
+      // userId is only required for the Electron IPC path (no independent auth
+      // context there); the web route always scopes to the JWT's user instead.
+      await bridge.logWeight({ userId, weightKg: kg, date })
       onSaved()
     } finally {
       setSaving(false)
     }
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    const kg = parseFloat(input)
+    if (isNaN(kg) || kg <= 0 || (IS_ELECTRON && !userId)) return
+
+    const existing = logsByDate[logDate]
+    if (existing && logDate !== today) {
+      setConfirmSwap({ date: logDate, kg, existingKg: existing.weight_kg })
+      return
+    }
+    await doSave(logDate, kg)
   }
 
   return (
@@ -126,19 +154,70 @@ function QuickLogWeight({ userId, onSaved, onClose }) {
           </button>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <input
-            autoFocus type="number" step="0.01" min="20" max="300" inputMode="decimal" placeholder="e.g. 70.5" required
-            value={input} onChange={e => setInput(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
-          />
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-            <button type="submit" disabled={!input || saving} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40" style={{ backgroundColor: '#14B8A6' }}>
-              {saving ? 'Saving…' : 'Save'}
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus type="number" step="0.01" min="20" max="300" inputMode="decimal" placeholder="e.g. 70.5" required
+              value={input} onChange={e => setInput(e.target.value)}
+              className="flex-1 min-w-0 px-4 py-3 rounded-xl border border-gray-200 text-xl font-bold text-gray-900 focus:outline-none focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/20"
+            />
+            <div className="relative shrink-0">
+              <input
+                type="date" value={logDate} max={today} min={minDate}
+                onChange={e => e.target.value && setLogDate(e.target.value)}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+              <div className="pointer-events-none flex items-center gap-1 px-3 py-3 rounded-xl border border-gray-200 bg-gray-50 text-sm font-semibold text-gray-700 whitespace-nowrap">
+                {shortDateLabel(logDate, today)}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+              </div>
+            </div>
+            <button type="submit" disabled={!input || saving} className="shrink-0 px-4 py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40" style={{ backgroundColor: '#14B8A6' }}>
+              {saving ? '…' : 'Save'}
             </button>
+          </div>
+
+          {/* Last 7 days quick reference — helps pick which day to backfill */}
+          <div className="rounded-xl border border-gray-100 divide-y divide-gray-50 overflow-hidden">
+            {last7.map(d => {
+              const log = logsByDate[d]
+              return (
+                <button
+                  type="button" key={d} onClick={() => setLogDate(d)}
+                  className="w-full flex items-center justify-between px-3 py-2 text-xs transition-colors"
+                  style={{ backgroundColor: logDate === d ? '#F0FDFA' : 'transparent' }}
+                >
+                  <span className="font-semibold text-gray-600">{shortDateLabel(d, today)}</span>
+                  <span className={log ? 'font-bold text-gray-900' : 'text-gray-300'}>
+                    {log ? `${log.weight_kg} kg` : '—— not logged'}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </form>
       </div>
+
+      {confirmSwap && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={e => e.target === e.currentTarget && setConfirmSwap(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-[320px] shadow-2xl">
+            <p className="text-sm font-bold text-gray-900 mb-1">Already logged</p>
+            <p className="text-sm text-gray-500 mb-5">
+              You already logged {confirmSwap.existingKg}kg on {shortDateLabel(confirmSwap.date, today)}. Update it to {confirmSwap.kg}kg?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmSwap(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
+              <button
+                onClick={() => { const c = confirmSwap; setConfirmSwap(null); doSave(c.date, c.kg) }}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#14B8A6' }}
+              >
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -403,7 +482,7 @@ export default function Dashboard({ onNavigate }) {
         <QuickAddExpense categories={categories} onAdded={handleAdded} onClose={() => setShowAddExpense(false)} />
       )}
       {showLogWeight && (
-        <QuickLogWeight userId={currentUserId} onSaved={handleAdded} onClose={() => setShowLogWeight(false)} />
+        <QuickLogWeight userId={currentUserId} weightLogs={stats.weightLogs} onSaved={handleAdded} onClose={() => setShowLogWeight(false)} />
       )}
     </div>
   )

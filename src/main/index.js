@@ -1283,6 +1283,7 @@ function setupIpcHandlers() {
 
   // ── Weight Logs ────────────────────────────────────────────────────────────
   ipcMain.handle('weight:log', (_, { userId, weightKg, date, note }) => {
+    const logDate = date || new Date().toISOString().slice(0, 10)
     db.prepare(`
       INSERT INTO weight_logs (user_id, weight_kg, date, note)
       VALUES (?, ?, ?, ?)
@@ -1290,7 +1291,7 @@ function setupIpcHandlers() {
         weight_kg = excluded.weight_kg,
         note = excluded.note,
         created_at = datetime('now')
-    `).run(userId, weightKg, date, note ?? null)
+    `).run(userId, weightKg, logDate, note ?? null)
     return { success: true }
   })
 
