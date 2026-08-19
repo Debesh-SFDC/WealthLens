@@ -1,5 +1,6 @@
 const express = require('express')
 const { getDb } = require('../db')
+const { requireAdmin } = require('../auth')
 
 const router = express.Router()
 
@@ -38,6 +39,37 @@ router.post('/', async (req, res) => {
     [req.user.id, weightKg, date, note ?? null, now]
   )
   res.json({ success: true })
+})
+
+// GET /api/weight/all — admin only. Weight logs for every user, grouped by
+// user, so the admin's Health tab can show the whole household at a glance.
+router.get('/all', requireAdmin, async (req, res) => {
+  const db = getDb()
+  const { rows: users } = await db.query(
+    'SELECT id, name, role, avatar_color, height_cm, target_weight_kg FROM users ORDER BY role DESC, name ASC'
+  )
+  const { rows: logs } = await db.query(
+    'SELECT user_id, date, weight_kg, created_at as logged_at FROM weight_logs ORDER BY date ASC'
+  )
+
+  const result = users.map(u => {
+    const userLogs = logs.filter(l => l.user_id === u.id)
+    const latest = userLogs.length ? userLogs[userLogs.length - 1] : null
+    const heightM = u.height_cm ? u.height_cm / 100 : null
+    const bmi = latest && heightM ? Number((latest.weight_kg / (heightM * heightM)).toFixed(1)) : null
+    return {
+      id: u.id,
+      name: u.name,
+      role: u.role,
+      avatar_color: u.avatar_color,
+      logs: userLogs.map(l => ({ date: l.date, weight_kg: l.weight_kg, logged_at: l.logged_at })),
+      latestWeight: latest ? latest.weight_kg : null,
+      targetWeight: u.target_weight_kg ?? null,
+      bmi,
+    }
+  })
+
+  res.json({ users: result })
 })
 
 module.exports = router

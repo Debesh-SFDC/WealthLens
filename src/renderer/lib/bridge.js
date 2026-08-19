@@ -141,6 +141,11 @@ const bridge = {
   getWeightLogs: ({ userId, from, to } = {}) => IS_ELECTRON
     ? window.electronAPI.getWeightLogs({ userId, from, to })
     : webCall('GET', `/weight?${new URLSearchParams({ from, to })}`),
+
+  // Weight — admin only, every family member grouped by user
+  getAllUsersWeight: () => IS_ELECTRON
+    ? window.electronAPI.getAllUsersWeight()
+    : webCall('GET', '/weight/all'),
 }
 
 export default bridge

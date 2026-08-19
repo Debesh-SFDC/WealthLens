@@ -1218,7 +1218,7 @@ function setupIpcHandlers() {
     const latestWeight = weightLogs.length ? weightLogs[weightLogs.length - 1].weight_kg : null
     const heightCm = userId ? (db.prepare('SELECT height_cm FROM users WHERE id = ?').get(userId)?.height_cm || 0) : 0
 
-    let totalInvested = 0, netWorth = 0, activeGoals = 0
+    let totalInvested = 0, netWorth = 0, activeGoals = 0, familyWeights = []
     if (isAdmin) {
       const inv = db.prepare(
         'SELECT COALESCE(SUM(invested_amount), 0) as invested, COALESCE(SUM(current_value), 0) as value FROM investments WHERE deleted_at IS NULL'
@@ -1227,11 +1227,25 @@ function setupIpcHandlers() {
       netWorth = inv.value
       const { c } = db.prepare('SELECT COUNT(*) as c FROM goals WHERE deleted_at IS NULL AND is_achieved = 0').get()
       activeGoals = c
+
+      // Household health at a glance — every other family member's latest weight.
+      const otherUsers = db.prepare(
+        'SELECT id, name, avatar_color, height_cm, target_weight_kg FROM users WHERE id != ? ORDER BY name ASC'
+      ).all(userId)
+      familyWeights = otherUsers.map(u => {
+        const latestRow = db.prepare(
+          'SELECT weight_kg FROM weight_logs WHERE user_id = ? AND date >= ? ORDER BY date DESC LIMIT 1'
+        ).get(u.id, thirtyDaysAgo)
+        const latest = latestRow ? latestRow.weight_kg : null
+        const heightM = u.height_cm ? u.height_cm / 100 : null
+        const bmi = latest && heightM ? Number((latest / (heightM * heightM)).toFixed(1)) : null
+        return { id: u.id, name: u.name, avatar_color: u.avatar_color, latestWeight: latest, targetWeight: u.target_weight_kg ?? null, bmi }
+      })
     }
 
     return {
       thisMonthSpend, monthlyBudget, dailySpend, todayExpenses,
-      latestWeight, weightLogs, heightCm, totalInvested, activeGoals, netWorth,
+      latestWeight, weightLogs, heightCm, totalInvested, activeGoals, netWorth, familyWeights,
     }
   })
 
@@ -1331,6 +1345,38 @@ function setupIpcHandlers() {
     return db.prepare(
       'SELECT id, name, role, avatar_color, height_cm, date_of_birth FROM users ORDER BY role DESC'
     ).all()
+  })
+
+  // Mirrors GET /api/weight/all (src/server/routes/weight.js) — admin only,
+  // every user's weight logs grouped by user, for the Health tab's family view.
+  ipcMain.handle('weight:getAllUsers', () => {
+    if (currentUserSession?.role !== 'admin') throw new Error('Access denied. Admin only.')
+
+    const users = db.prepare(
+      'SELECT id, name, role, avatar_color, height_cm, target_weight_kg FROM users ORDER BY role DESC, name ASC'
+    ).all()
+    const logs = db.prepare(
+      'SELECT user_id, date, weight_kg, created_at AS logged_at FROM weight_logs ORDER BY date ASC'
+    ).all()
+
+    return {
+      users: users.map(u => {
+        const userLogs = logs.filter(l => l.user_id === u.id)
+        const latest = userLogs.length ? userLogs[userLogs.length - 1] : null
+        const heightM = u.height_cm ? u.height_cm / 100 : null
+        const bmi = latest && heightM ? Number((latest.weight_kg / (heightM * heightM)).toFixed(1)) : null
+        return {
+          id: u.id,
+          name: u.name,
+          role: u.role,
+          avatar_color: u.avatar_color,
+          logs: userLogs.map(l => ({ date: l.date, weight_kg: l.weight_kg, logged_at: l.logged_at })),
+          latestWeight: latest ? latest.weight_kg : null,
+          targetWeight: u.target_weight_kg ?? null,
+          bmi,
+        }
+      }),
+    }
   })
 
   ipcMain.handle('phone:import', (_, filePath, userId) => {

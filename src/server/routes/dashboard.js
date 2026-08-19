@@ -56,7 +56,7 @@ router.get('/stats', async (req, res) => {
   const { rows: heightRows } = await db.query('SELECT height_cm FROM users WHERE id = ?', [req.user.id])
   const heightCm = heightRows[0]?.height_cm || 0
 
-  let totalInvested = 0, netWorth = 0, activeGoals = 0
+  let totalInvested = 0, netWorth = 0, activeGoals = 0, familyWeights = []
   if (isAdmin) {
     const { rows: invRows } = await db.query(
       'SELECT COALESCE(SUM(invested_amount), 0) as invested, COALESCE(SUM(current_value), 0) as value FROM investments WHERE deleted_at IS NULL'
@@ -67,11 +67,30 @@ router.get('/stats', async (req, res) => {
       'SELECT COUNT(*) as c FROM goals WHERE deleted_at IS NULL AND is_achieved = 0'
     )
     activeGoals = Number(goalRows[0].c)
+
+    // Household health at a glance — every other family member's latest weight.
+    const { rows: otherUsers } = await db.query(
+      'SELECT id, name, avatar_color, height_cm, target_weight_kg FROM users WHERE id != ? ORDER BY name ASC',
+      [req.user.id]
+    )
+    for (const u of otherUsers) {
+      const { rows: uLogs } = await db.query(
+        'SELECT weight_kg FROM weight_logs WHERE user_id = ? AND date >= ? ORDER BY date DESC LIMIT 1',
+        [u.id, thirtyDaysAgo]
+      )
+      const latest = uLogs[0] ? Number(uLogs[0].weight_kg) : null
+      const heightM = u.height_cm ? u.height_cm / 100 : null
+      const bmi = latest && heightM ? Number((latest / (heightM * heightM)).toFixed(1)) : null
+      familyWeights.push({
+        id: u.id, name: u.name, avatar_color: u.avatar_color,
+        latestWeight: latest, targetWeight: u.target_weight_kg ?? null, bmi,
+      })
+    }
   }
 
   res.json({
     thisMonthSpend, monthlyBudget, dailySpend, todayExpenses,
-    latestWeight, weightLogs, heightCm, totalInvested, activeGoals, netWorth,
+    latestWeight, weightLogs, heightCm, totalInvested, activeGoals, netWorth, familyWeights,
   })
 })
 

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import bridge from '../lib/bridge'
 
 function calcAge(dob) {
   if (!dob) return null
@@ -145,7 +146,66 @@ function LineChart({ logs, from, to }) {
   )
 }
 
-export default function AdminWeight() {
+function MiniLineChart({ logs }) {
+  const recent = [...(logs || [])].sort((a, b) => a.date.localeCompare(b.date)).slice(-30)
+  if (recent.length < 2) {
+    return <div className="h-12 flex items-center justify-center text-xs text-gray-300">Not enough data yet</div>
+  }
+  const w = 280, h = 48, pad = 4
+  const wvals = recent.map(l => l.weight_kg)
+  const minW = Math.min(...wvals), maxW = Math.max(...wvals)
+  const rng = maxW - minW || 1
+  const gx = i => pad + (i / (recent.length - 1)) * (w - pad * 2)
+  const gy = v => pad + (h - pad * 2) - ((v - minW) / rng) * (h - pad * 2)
+  const points = recent.map((l, i) => `${gx(i).toFixed(1)},${gy(l.weight_kg).toFixed(1)}`).join(' ')
+  const last = recent[recent.length - 1]
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: h }} preserveAspectRatio="none">
+      <polyline points={points} fill="none" stroke="#6C63FF" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={gx(recent.length - 1)} cy={gy(last.weight_kg)} r={3} fill="#6C63FF" />
+    </svg>
+  )
+}
+
+function FamilyWeightCard({ member }) {
+  const { name, role, avatar_color, latestWeight, targetWeight, bmi, logs } = member
+  const progress = latestWeight && targetWeight
+    ? Math.max(0, Math.min(100, 100 - (Math.abs(latestWeight - targetWeight) / targetWeight) * 100))
+    : null
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-50">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+            style={{ backgroundColor: avatar_color || '#6C63FF' }}>
+            {name.charAt(0).toUpperCase()}
+          </div>
+          <p className="text-sm font-bold text-gray-900 truncate">{name}</p>
+        </div>
+        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 capitalize shrink-0">{role}</span>
+      </div>
+
+      {latestWeight === null ? (
+        <p className="text-sm text-gray-400 py-4 text-center">No weight logged yet</p>
+      ) : (
+        <>
+          <p className="text-xs text-gray-500 mb-1">
+            Latest: <span className="font-bold text-gray-900">{latestWeight} kg</span>
+            {bmi != null && <> &nbsp;•&nbsp; BMI: <span className="font-bold text-gray-900">{bmi}</span></>}
+          </p>
+          <p className="text-xs text-gray-500 mb-2">
+            {targetWeight ? <>Target: <span className="font-bold text-gray-900">{targetWeight} kg</span></> : 'No target set'}
+            {progress !== null && <> &nbsp;•&nbsp; Progress: <span className="font-bold text-gray-900">{progress.toFixed(0)}%</span></>}
+          </p>
+          <MiniLineChart logs={logs} />
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function AdminWeight({ currentUser } = {}) {
   const [users,     setUsers]     = useState([])
   const [allLogs,   setAllLogs]   = useState([])
   const [selUserId, setSelUserId] = useState(null)
@@ -158,6 +218,22 @@ export default function AdminWeight() {
   const [profileDob, setProfileDob] = useState('')
   const [profileSaving, setProfileSaving] = useState(false)
   const [profileSaved, setProfileSaved] = useState(false)
+  const [familyMembers, setFamilyMembers] = useState([])
+  const [familyLoading, setFamilyLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setFamilyLoading(true)
+    bridge.getAllUsersWeight()
+      .then(res => {
+        if (cancelled) return
+        const members = (res?.users || []).filter(u => u.id !== currentUser?.id)
+        setFamilyMembers(members)
+      })
+      .catch(() => { if (!cancelled) setFamilyMembers([]) })
+      .finally(() => { if (!cancelled) setFamilyLoading(false) })
+    return () => { cancelled = true }
+  }, [currentUser?.id])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -257,6 +333,22 @@ export default function AdminWeight() {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Family Weight Progress — every other family member, own data shown separately below */}
+        <div className="space-y-3">
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Family Weight Progress</p>
+          {familyLoading ? (
+            <div className="text-sm text-gray-300 py-6 text-center">Loading…</div>
+          ) : familyMembers.length === 0 ? (
+            <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50 text-center text-sm text-gray-400">
+              No other family members yet
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {familyMembers.map(m => <FamilyWeightCard key={m.id} member={m} />)}
+            </div>
+          )}
         </div>
 
         {loading ? (

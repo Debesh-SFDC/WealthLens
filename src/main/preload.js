@@ -122,6 +122,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getWeightProfile:       (userId) => ipcRenderer.invoke('weight:getProfile', userId),
   getAllWeightLogsAdmin:   ()       => ipcRenderer.invoke('weight:getAllForAdmin'),
   getUsersWithWeightProfile: ()    => ipcRenderer.invoke('weight:getUsersWithProfile'),
+  getAllUsersWeight:       ()       => ipcRenderer.invoke('weight:getAllUsers'),
   importPhoneData: (filePath, userId) => ipcRenderer.invoke('phone:import', filePath, userId),
 
   // Rebalancing actions
