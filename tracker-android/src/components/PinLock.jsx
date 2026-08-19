@@ -78,7 +78,7 @@ export default function PinLock({ onUnlock, isFirstTime = false }) {
     ? 'Choose a 6-digit PIN to protect your data'
     : step === 'confirm'
     ? 'Enter the same PIN again'
-    : 'WealthLens Tracker'
+    : 'Lifelog Tracker'
 
   return (
     <div className="flex flex-col items-center justify-center min-h-screen px-8"
@@ -109,7 +109,7 @@ export default function PinLock({ onUnlock, isFirstTime = false }) {
             <polyline points="12,20 16,15 20,18 24,12" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
           </svg>
         </div>
-        <p className="text-white text-xl font-extrabold tracking-tight">WealthLens</p>
+        <p className="text-white text-xl font-extrabold tracking-tight">Lifelog</p>
         <p className="text-white/50 text-sm font-medium">Tracker</p>
       </div>
 

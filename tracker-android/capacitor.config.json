@@ -1,6 +1,6 @@
 {
   "appId": "com.wealthlens.tracker",
-  "appName": "WealthLensTracker",
+  "appName": "Lifelog",
   "webDir": "dist",
   "plugins": {
     "CapacitorSQLite": {

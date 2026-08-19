@@ -77,7 +77,7 @@ export default function TrackerSettings({ onLock }) {
         weight_logs: weightLogs,
       }
       const json     = JSON.stringify(payload, null, 2)
-      const fileName = `wealthlens-${new Date().toISOString().split('T')[0]}.json`
+      const fileName = `lifelog-${new Date().toISOString().split('T')[0]}.json`
 
       await Filesystem.writeFile({
         path: fileName,
@@ -88,9 +88,9 @@ export default function TrackerSettings({ onLock }) {
       const { uri } = await Filesystem.getUri({ directory: Directory.Cache, path: fileName })
 
       await Share.share({
-        title: 'WealthLens Data Export',
+        title: 'Lifelog Data Export',
         url: uri,
-        dialogTitle: 'Share with WealthLens desktop',
+        dialogTitle: 'Share with Lifelog desktop',
       })
       setExportMsg(`Exported ${expenses.length} expenses + ${weightLogs.length} weight logs`)
     } catch (e) {
@@ -195,7 +195,7 @@ export default function TrackerSettings({ onLock }) {
       {/* Export Data */}
       <div className="bg-white rounded-3xl p-4 mb-4 shadow-sm" style={{ animation: 'fadeInUp 0.3s ease 160ms both' }}>
         <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-1">Sync with Desktop</p>
-        <p className="text-xs text-gray-400 mb-4">Export your data and share the file with the WealthLens desktop app to sync expenses and weight logs.</p>
+        <p className="text-xs text-gray-400 mb-4">Export your data and share the file with the Lifelog desktop app to sync expenses and weight logs.</p>
         {exportMsg && (
           <p className="text-xs font-semibold mb-3" style={{ color: exportMsg.includes('failed') ? '#EF4444' : '#10B981' }}>{exportMsg}</p>
         )}

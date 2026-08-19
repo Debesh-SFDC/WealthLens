@@ -40,7 +40,7 @@ export default function App() {
               <polyline points="12,20 16,15 20,18 24,12" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
             </svg>
           </div>
-          <p className="text-white font-bold text-lg">WealthLens</p>
+          <p className="text-white font-bold text-lg">Lifelog</p>
         </div>
       </div>
     )
