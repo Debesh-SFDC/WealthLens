@@ -1,6 +1,7 @@
 const express = require('express')
 const { randomUUID } = require('crypto')
 const { getDb } = require('../db')
+const { requireAdmin } = require('../auth')
 
 const router = express.Router()
 
@@ -78,6 +79,36 @@ router.get('/monthly-stats', async (req, res) => {
     total, byCategory, dailyAvg,
     topDay: topDayEntry ? { date: topDayEntry[0], amount: topDayEntry[1] } : null,
   })
+})
+
+// POST /api/expenses/categories — admin only. { name, icon?, color? } -> { id }
+// mirrors expenses:createCategory.
+router.post('/categories', requireAdmin, async (req, res) => {
+  const { name, icon, color } = req.body || {}
+  if (!name?.trim()) return res.status(400).json({ error: 'name is required' })
+
+  const db = getDb()
+  try {
+    const { rows } = await db.query(
+      'INSERT INTO expense_categories (name, icon, color, is_default) VALUES (?, ?, ?, 0) RETURNING id',
+      [name.trim(), icon ?? null, color ?? null]
+    )
+    res.json({ id: rows[0].id })
+  } catch {
+    res.status(409).json({ error: 'A category with that name already exists' })
+  }
+})
+
+// DELETE /api/expenses/categories/:id — admin only. Default categories can't
+// be deleted (mirrors expenses:deleteCategory's `AND is_default = 0` guard).
+router.delete('/categories/:id', requireAdmin, async (req, res) => {
+  const db = getDb()
+  const { rowCount } = await db.query(
+    'DELETE FROM expense_categories WHERE id = ? AND is_default = 0',
+    [req.params.id]
+  )
+  if (!rowCount) return res.status(400).json({ error: "Default categories can't be deleted" })
+  res.json({ success: true })
 })
 
 // POST /api/expenses — mirrors expenses:create

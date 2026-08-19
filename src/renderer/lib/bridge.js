@@ -75,6 +75,12 @@ const bridge = {
   getExpenseMonthlyStats: ({ month, year } = {}) => IS_ELECTRON
     ? window.electronAPI.getExpenseMonthlyStats({ month, year })
     : webCall('GET', `/expenses/monthly-stats?${new URLSearchParams({ month, year })}`),
+  createExpenseCategory: (data) => IS_ELECTRON
+    ? window.electronAPI.createExpenseCategory(data)
+    : webCall('POST', '/expenses/categories', data),
+  deleteExpenseCategory: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteExpenseCategory(id)
+    : webCall('DELETE', `/expenses/categories/${id}`),
 
   // Salary plans — real preload names
   getActivePlan: () => IS_ELECTRON

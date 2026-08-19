@@ -99,6 +99,184 @@ function ImportPhoneButton() {
   )
 }
 
+const CATEGORY_COLORS = [
+  '#FF6B6B', '#FF8E53', '#F59E0B', '#FBBF24', '#A3E635', '#10B981',
+  '#06B6D4', '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7', '#EC4899',
+  '#F43F5E', '#64748B', '#22C55E', '#0EA5E9', '#14B8A6', '#8B93A5',
+]
+
+function CategoryManager() {
+  const [categories, setCategories] = useState([])
+  const [usageCounts, setUsageCounts] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [name, setName] = useState('')
+  const [icon, setIcon] = useState('🏷️')
+  const [color, setColor] = useState('#6366F1')
+  const [saving, setSaving] = useState(false)
+  const [formError, setFormError] = useState('')
+  const [confirmDelete, setConfirmDelete] = useState(null) // { id, name, count } | null
+  const [deleteError, setDeleteError] = useState('')
+
+  async function load() {
+    setLoading(true)
+    try {
+      const [cats, expenses] = await Promise.all([
+        bridge.getExpenseCategories(),
+        bridge.getAllExpenses({}),
+      ])
+      setCategories(cats || [])
+      const counts = {}
+      for (const e of expenses || []) counts[e.category] = (counts[e.category] || 0) + 1
+      setUsageCounts(counts)
+    } catch {
+      setCategories([])
+    }
+    setLoading(false)
+  }
+
+  useEffect(() => { load() }, [])
+
+  async function save() {
+    if (!name.trim()) { setFormError('Category name is required'); return }
+    if (!icon.trim()) { setFormError('Pick an emoji icon'); return }
+    setSaving(true)
+    setFormError('')
+    try {
+      await bridge.createExpenseCategory({ name: name.trim(), icon: icon.trim(), color })
+      setName(''); setIcon('🏷️'); setColor('#6366F1')
+      setShowForm(false)
+      load()
+    } catch (err) {
+      setFormError(err.message || 'Could not create category')
+    }
+    setSaving(false)
+  }
+
+  function requestDelete(cat) {
+    setDeleteError('')
+    const count = usageCounts[cat.name] || 0
+    if (count > 0) setConfirmDelete({ id: cat.id, name: cat.name, count })
+    else doDelete(cat.id)
+  }
+
+  async function doDelete(id) {
+    setDeleteError('')
+    try {
+      await bridge.deleteExpenseCategory(id)
+      setConfirmDelete(null)
+      load()
+    } catch (err) {
+      setDeleteError(err.message || 'Could not delete category')
+      setConfirmDelete(null)
+    }
+  }
+
+  return (
+    <div className="p-6">
+      {loading ? (
+        <p className="text-sm text-gray-400 text-center py-6">Loading…</p>
+      ) : (
+        <div className="rounded-xl border border-gray-100 divide-y divide-gray-50 overflow-hidden mb-4">
+          {categories.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">No categories yet</p>
+          ) : categories.map(cat => (
+            <div key={cat.id} className="flex items-center gap-3 px-4 py-3">
+              <span className="text-lg w-7 text-center shrink-0">{cat.icon || '🏷️'}</span>
+              <span className="text-sm font-semibold text-gray-700 flex-1 truncate">{cat.name}</span>
+              {usageCounts[cat.name] > 0 && (
+                <span className="text-xs text-gray-400 shrink-0">{usageCounts[cat.name]} used</span>
+              )}
+              <button
+                onClick={() => requestDelete(cat)}
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors text-lg leading-none shrink-0"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {deleteError && <p className="text-xs font-medium text-red-500 mb-3">{deleteError}</p>}
+
+      {!showForm ? (
+        <button
+          onClick={() => { setShowForm(true); setFormError('') }}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl border border-dashed border-gray-300 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors"
+        >
+          <span className="text-base leading-none">+</span> Add Category
+        </button>
+      ) : (
+        <div className="rounded-xl border border-gray-100 p-4 space-y-3">
+          <div className="flex gap-3">
+            <input
+              type="text" placeholder="🛒" maxLength={4}
+              value={icon} onChange={e => setIcon(e.target.value)}
+              className="w-14 px-2 py-2 rounded-xl border border-gray-200 text-center text-lg focus:outline-none focus:border-[#6C63FF]"
+            />
+            <input
+              type="text" placeholder="Category name"
+              value={name} onChange={e => { setName(e.target.value); setFormError('') }}
+              className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Color</label>
+            <div className="flex flex-wrap gap-2">
+              {CATEGORY_COLORS.map(c => (
+                <button key={c} type="button" onClick={() => setColor(c)}
+                  className="w-7 h-7 rounded-lg transition-all"
+                  style={{
+                    backgroundColor: c,
+                    transform: color === c ? 'scale(1.15)' : 'scale(1)',
+                    boxShadow: color === c ? `0 0 0 2px white, 0 0 0 4px ${c}` : 'none',
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+          {formError && <p className="text-xs font-medium text-red-500">{formError}</p>}
+          <div className="flex gap-2">
+            <button onClick={() => setShowForm(false)} className="flex-1 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+              Cancel
+            </button>
+            <button
+              onClick={save} disabled={saving}
+              className="flex-1 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+              style={{ backgroundColor: '#6C63FF' }}
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-[360px] shadow-2xl">
+            <p className="text-sm font-bold text-gray-900 mb-1">Delete "{confirmDelete.name}"?</p>
+            <p className="text-sm text-gray-500 mb-5">
+              This category has {confirmDelete.count} expense{confirmDelete.count !== 1 ? 's' : ''}. Delete anyway?
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setConfirmDelete(null)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => doDelete(confirmDelete.id)}
+                className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity bg-red-500"
+              >
+                Delete Anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function Settings({ onSyncRefresh, currentUser }) {
   // My Profile (identity + financial + health, consolidated)
   const [profileForm, setProfileForm] = useState({
@@ -1142,6 +1320,15 @@ export default function Settings({ onSyncRefresh, currentUser }) {
           </div>
         </div>
       )}
+
+      {/* ── Expense Categories (Settings is admin-only end to end) ─────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+        <div className="px-6 py-4 border-b border-gray-100">
+          <h3 className="text-base font-semibold text-gray-800">🏷️ Expense Categories</h3>
+          <p className="text-xs text-gray-400 mt-0.5">Manage the categories available when logging an expense</p>
+        </div>
+        <CategoryManager />
+      </div>
 
       {/* ── Import from Phone — Electron-only (uses local file paths) ──────── */}
       {IS_ELECTRON && (

@@ -211,6 +211,12 @@ CREATE TABLE IF NOT EXISTS expense_categories (
   is_default  INTEGER DEFAULT 0
 );
 
+-- is_default is INTEGER (not boolean) to match every other flag column in this
+-- schema (e.g. salary_plans.is_active) — use 1, not true, or Postgres rejects it.
+INSERT INTO expense_categories (name, icon, color, is_default)
+VALUES ('Grocery', '🛒', '#22c55e', 1)
+ON CONFLICT (name) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS weight_logs (
   id          SERIAL PRIMARY KEY,
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

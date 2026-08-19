@@ -385,7 +385,7 @@ export default function Dashboard({ onNavigate }) {
         bridge.getDashboardStats(),
         bridge.getProfile(),
         IS_ELECTRON ? window.electronAPI.getSession() : null,
-        window.electronAPI?.getExpenseCategories?.() ?? Promise.resolve(null),
+        bridge.getExpenseCategories(),
       ])
       setStats(s || {})
       setProfileName(profile?.name || '')

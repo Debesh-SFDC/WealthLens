@@ -217,6 +217,7 @@ function seedDefaultCategories() {
     'INSERT INTO expense_categories (name, icon, color, is_default) VALUES (?, ?, ?, 1)'
   )
   const defaults = [
+    ['Grocery', '🛒', '#22c55e'],
     ['Food & Dining', '🍔', '#FF6B6B'],
     ['Transportation', '🚗', '#4ECDC4'],
     ['Shopping', '🛍️', '#45B7D1'],
@@ -240,6 +241,7 @@ function migrateCategories() {
   const newCats = [
     ['Bills', '📄', '#6366F1'],
     ['EMI', '🏦', '#EF4444'],
+    ['Grocery', '🛒', '#22c55e'],
   ]
   for (const [name, icon, color] of newCats) {
     add.run(name, icon, color)
