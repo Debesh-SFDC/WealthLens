@@ -132,7 +132,7 @@ export function initiateAuth(clientId, clientSecret, browserApp = null) {
 
           res.writeHead(200, { 'Content-Type': 'text/html' })
           res.end(`<html><body style="font-family:sans-serif;padding:40px;text-align:center">
-            <h2 style="color:#6C63FF">✅ WealthLens connected to Google Drive!</h2>
+            <h2 style="color:#6C63FF">✅ Lifelog connected to Google Drive!</h2>
             <p style="color:#555">You can close this tab and return to the app.</p>
           </body></html>`)
           server.close()

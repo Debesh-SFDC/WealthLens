@@ -74,7 +74,7 @@ if (IS_WEB) {
 }
 
 app.listen(PORT, () => {
-  console.log(`WealthLens server listening on port ${PORT} [mode=${MODE}]`)
+  console.log(`Lifelog server listening on port ${PORT} [mode=${MODE}]`)
 })
 
 module.exports = app

@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-echo "Deploying WealthLens to Hostinger..."
+echo "Deploying Lifelog to Hostinger..."
 cd /var/www/wealthlens
 git pull origin main
 # Web mode is Postgres-only — skip the Electron-ABI rebuild of better-sqlite3

@@ -19,6 +19,12 @@ import {
   pullSyncFile, pushSyncFile, markSyncSuccess, markSyncFailed,
 } from './googleDrive.js'
 
+// Pinned to the pre-rebrand name (app is now "Lifelog") so userData still
+// resolves to the existing ~/Library/Application Support/WealthLens folder —
+// changing this would orphan the current wealthlens.db and auth/session files
+// for anyone with the app already installed.
+app.setName('WealthLens')
+
 let mainWindow
 
 const iconPath = join(__dirname, '../../resources/icon.icns')
@@ -810,7 +816,7 @@ function setupIpcHandlers() {
     const suffix = exchange === 'BSE' ? '.BO' : '.NS'
     const ticker = `${symbol.trim().toUpperCase()}${suffix}`
     const url = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1d`
-    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 WealthLens/1.0' } })
+    const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 Lifelog/1.0' } })
     if (!res.ok) throw new Error(`Yahoo Finance error: ${res.status}`)
     const body = await res.json()
     const meta = body.chart?.result?.[0]?.meta
@@ -819,7 +825,7 @@ function setupIpcHandlers() {
   })
 
   ipcMain.handle('api:fetchGoldPrice', async () => {
-    const headers = { 'User-Agent': 'Mozilla/5.0 WealthLens/1.0' }
+    const headers = { 'User-Agent': 'Mozilla/5.0 Lifelog/1.0' }
     const [goldRes, fxRes] = await Promise.all([
       fetch('https://query2.finance.yahoo.com/v8/finance/chart/GC=F?interval=1d&range=1d', { headers }),
       fetch('https://query2.finance.yahoo.com/v8/finance/chart/USDINR=X?interval=1d&range=1d', { headers }),

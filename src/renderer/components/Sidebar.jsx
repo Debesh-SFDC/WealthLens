@@ -110,9 +110,14 @@ export default function Sidebar({ activePage, onNavigate }) {
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-6">
         <AppLogoIcon size={36} />
-        <span className="text-white font-bold text-lg tracking-tight">
-          WealthLens
-        </span>
+        <div>
+          <span className="text-white font-bold text-lg tracking-tight block">
+            Lifelog
+          </span>
+          <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            Your life, logged.
+          </span>
+        </div>
       </div>
 
       {/* Divider */}
@@ -196,7 +201,7 @@ export default function Sidebar({ activePage, onNavigate }) {
 
       {/* Version */}
       <div className="px-5 py-3">
-        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>WealthLens v1.0.0</p>
+        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Lifelog v1.0.0</p>
       </div>
     </aside>
   )

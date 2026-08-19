@@ -69,7 +69,7 @@ export default function AccountSetup({ onComplete }) {
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center gap-3 justify-center mb-8">
           <AppLogoIcon size={40} />
-          <span className="text-white font-bold text-xl tracking-tight">WealthLens</span>
+          <span className="text-white font-bold text-xl tracking-tight">Lifelog</span>
         </div>
 
         <div className="flex items-center px-4 mb-8">
@@ -98,7 +98,7 @@ export default function AccountSetup({ onComplete }) {
           {/* ── Step 0: Admin account ── */}
           {step === 0 && (
             <>
-              <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome to WealthLens 👋</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome to Lifelog 👋</h2>
               <p className="text-sm text-gray-500 mb-6">Let's create your account first.</p>
 
               <div className="space-y-4 mb-6">

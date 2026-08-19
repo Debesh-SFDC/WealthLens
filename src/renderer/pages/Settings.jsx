@@ -1335,7 +1335,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">Import from Phone</h3>
-          <p className="text-xs text-gray-400 mt-0.5">Import expenses and weight logs exported from the WealthLens mobile app</p>
+          <p className="text-xs text-gray-400 mt-0.5">Import expenses and weight logs exported from the Lifelog mobile app</p>
         </div>
         <div className="p-6">
           <p className="text-xs text-gray-500 mb-4 leading-relaxed">
@@ -1563,7 +1563,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                   </p>
                 )}
                 <p className="text-[11px] text-gray-400">
-                  Auto-syncs every time the app opens and closes. Also runs on the WealthLens PWA (Android) with the same Google account.
+                  Auto-syncs every time the app opens and closes. Also runs on the Lifelog PWA (Android) with the same Google account.
                 </p>
               </div>
 
@@ -1695,7 +1695,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Device ID</p>
             <p className="text-sm font-mono text-gray-700 select-all">{deviceId || '—'}</p>
           </div>
-          <p className="text-xs text-gray-400">WealthLens v1.0.0</p>
+          <p className="text-xs text-gray-400">Lifelog v1.0.0</p>
         </div>
       </div>
     </div>

@@ -1,4 +1,4 @@
-# WealthLens Hostinger Deployment Checklist
+# Lifelog Hostinger Deployment Checklist
 
 ## One-time setup on KVM1:
 - [ ] Create wealthlens_db in PostgreSQL

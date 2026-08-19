@@ -1154,7 +1154,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                   {showPrefillBanner && (
                     <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-orange-50 border border-orange-200">
                       <p className="text-xs text-orange-800">
-                        ✨ Pre-filled with your WealthLens data — review and adjust anything before recalculating
+                        ✨ Pre-filled with your Lifelog data — review and adjust anything before recalculating
                       </p>
                       <button onClick={() => setShowPrefillBanner(false)}
                         className="shrink-0 px-2.5 py-1 rounded-lg bg-white border border-orange-200 text-orange-700 text-xs font-semibold hover:bg-orange-100">

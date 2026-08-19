@@ -151,7 +151,7 @@ export default function TrackerApp({ user, onSignOut }) {
       >
         <div className="flex items-center gap-3 px-5 py-6">
           <AppLogoIcon size={36} />
-          <span className="text-white font-bold text-lg tracking-tight">WealthLens</span>
+          <span className="text-white font-bold text-lg tracking-tight">Lifelog</span>
         </div>
 
         <div className="mx-5 mb-4" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />

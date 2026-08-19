@@ -1,4 +1,4 @@
--- WealthLens Postgres schema — mirrors src/db/database.js (SQLite) as of the
+-- Lifelog Postgres schema — mirrors src/db/database.js (SQLite) as of the
 -- Hostinger-readiness pass. Run with: psql $DATABASE_URL < scripts/setup-postgres.sql
 --
 -- Portability note: booleans (is_active, is_achieved, inflation_adjust, is_default)

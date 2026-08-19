@@ -1,7 +1,7 @@
 {
-  "name": "wealthlens",
+  "name": "lifelog",
   "version": "1.0.0",
-  "description": "Personal wealth management desktop app",
+  "description": "Personal life tracking desktop app",
   "main": "out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -51,7 +51,7 @@
   },
   "build": {
     "appId": "com.wealthlens.app",
-    "productName": "WealthLens",
+    "productName": "Lifelog",
     "directories": {
       "output": "dist"
     },

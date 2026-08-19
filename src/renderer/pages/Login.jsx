@@ -45,8 +45,8 @@ export default function Login({ onSignIn }) {
         <div className="flex flex-col items-center gap-3 mb-8">
           <AppLogoIcon size={56} />
           <div className="text-center">
-            <h1 className="text-white font-bold text-2xl tracking-tight">WealthLens</h1>
-            <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.5)' }}>Your Personal Finance Hub</p>
+            <h1 className="text-white font-bold text-2xl tracking-tight">Lifelog</h1>
+            <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.5)' }}>Your life, logged.</p>
           </div>
         </div>
 

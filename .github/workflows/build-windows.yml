@@ -26,6 +26,6 @@ jobs:
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
-          name: WealthLens-Windows
+          name: Lifelog-Windows
           path: dist/*.exe
           retention-days: 30

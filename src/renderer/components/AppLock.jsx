@@ -132,7 +132,7 @@ export default function AppLock({ onUnlocked, isSetup }) {
         {/* Logo + branding */}
         <div className="flex flex-col items-center mb-8">
           <AppLogoIcon size={72} />
-          <h1 className="mt-4 text-3xl font-bold text-white tracking-tight">WealthLens</h1>
+          <h1 className="mt-4 text-3xl font-bold text-white tracking-tight">Lifelog</h1>
           <p className="mt-2 text-sm" style={{ color: 'rgba(255,255,255,0.45)' }}>
             {isSetup ? 'Set a password to protect your financial data' : 'Enter your password to continue'}
           </p>
@@ -150,7 +150,7 @@ export default function AppLock({ onUnlocked, isSetup }) {
               </p>
               <p className="text-xs text-gray-400">
                 {isSetup
-                  ? 'Required every time you open WealthLens'
+                  ? 'Required every time you open Lifelog'
                   : 'Your data is securely encrypted'}
               </p>
             </div>
@@ -253,7 +253,7 @@ export default function AppLock({ onUnlocked, isSetup }) {
                 ? 'Verifying…'
                 : isSetup
                   ? 'Set Password & Enter App'
-                  : 'Unlock WealthLens'}
+                  : 'Unlock Lifelog'}
             </button>
           </form>
         </div>

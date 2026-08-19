@@ -1,6 +1,6 @@
 {
   "appId": "com.wealthlens.app",
-  "appName": "WealthLens",
+  "appName": "Lifelog",
   "webDir": "dist-web",
   "server": {
     "url": "https://wealthlens.arogyahms.in",

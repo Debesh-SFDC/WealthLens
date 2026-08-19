@@ -71,8 +71,8 @@ export default function Onboarding({ onComplete }) {
 
         {/* Logo */}
         <div className="flex items-center gap-3 justify-center mb-8">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: '#6C63FF' }}>WL</div>
-          <span className="text-white font-bold text-xl tracking-tight">WealthLens</span>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: '#6C63FF' }}>L</div>
+          <span className="text-white font-bold text-xl tracking-tight">Lifelog</span>
         </div>
 
         {/* Progress steps */}
@@ -103,7 +103,7 @@ export default function Onboarding({ onComplete }) {
           {/* ── Step 0: Profile ── */}
           {step === 0 && (
             <>
-              <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome to WealthLens 👋</h2>
+              <h2 className="text-2xl font-bold text-gray-900 mb-1">Welcome to Lifelog 👋</h2>
               <p className="text-sm text-gray-500 mb-6">Let's set up your profile to get started.</p>
 
               <div className="space-y-4 mb-6">

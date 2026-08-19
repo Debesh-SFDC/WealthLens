@@ -1,1 +1,1 @@
-# WealthLens
+# Lifelog
