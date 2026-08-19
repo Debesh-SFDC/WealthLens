@@ -167,11 +167,53 @@ function MiniLineChart({ logs }) {
   )
 }
 
-function FamilyWeightCard({ member }) {
+function trendInfo(logs) {
+  const sorted = [...(logs || [])].sort((a, b) => a.date.localeCompare(b.date))
+  if (sorted.length < 2) return null
+  const diff = sorted[sorted.length - 1].weight_kg - sorted[sorted.length - 2].weight_kg
+  if (Math.abs(diff) < 0.05) return { symbol: '→', color: '#6B7280', label: 'stable' }
+  if (diff < 0) return { symbol: '↓', color: '#10B981', label: 'losing' }
+  return { symbol: '↑', color: '#EF4444', label: 'gaining' }
+}
+
+function WeekTable({ logs }) {
+  const logMap = {}
+  for (const l of (logs || [])) logMap[l.date] = l.weight_kg
+  const today = new Date()
+  const todayStr = today.toISOString().split('T')[0]
+  const rows = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(today)
+    d.setDate(today.getDate() - i)
+    const dateStr = d.toISOString().split('T')[0]
+    const label = `${d.toLocaleDateString('en-IN', { weekday: 'short' })} ${d.getDate()}`
+    return { dateStr, label, w: logMap[dateStr] ?? null, isToday: dateStr === todayStr }
+  })
+
+  return (
+    <div className="mt-3">
+      <p className="text-xs font-semibold text-gray-400 mb-1.5">Last 7 days</p>
+      <div className="rounded-xl border border-gray-100 divide-y divide-gray-50 overflow-hidden">
+        {rows.map(r => (
+          <div key={r.dateStr}
+            className="flex items-center justify-between px-2.5 py-1 text-xs"
+            style={{ backgroundColor: r.isToday ? '#F3F1FF' : 'transparent' }}>
+            <span className={r.isToday ? 'font-semibold text-[#6C63FF]' : 'text-gray-500'}>{r.label}</span>
+            {r.w !== null
+              ? <span className="font-bold text-gray-900">{r.w.toFixed(2)}kg</span>
+              : <span className="text-gray-300">——</span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function FamilyWeightCard({ member, isYou }) {
   const { name, role, avatar_color, latestWeight, targetWeight, bmi, logs } = member
   const progress = latestWeight && targetWeight
     ? Math.max(0, Math.min(100, 100 - (Math.abs(latestWeight - targetWeight) / targetWeight) * 100))
     : null
+  const trend = latestWeight !== null ? trendInfo(logs) : null
 
   return (
     <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-50">
@@ -181,7 +223,7 @@ function FamilyWeightCard({ member }) {
             style={{ backgroundColor: avatar_color || '#6C63FF' }}>
             {name.charAt(0).toUpperCase()}
           </div>
-          <p className="text-sm font-bold text-gray-900 truncate">{name}</p>
+          <p className="text-sm font-bold text-gray-900 truncate">{name}{isYou && <span className="text-gray-400 font-medium"> (You)</span>}</p>
         </div>
         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 capitalize shrink-0">{role}</span>
       </div>
@@ -192,6 +234,7 @@ function FamilyWeightCard({ member }) {
         <>
           <p className="text-xs text-gray-500 mb-1">
             Latest: <span className="font-bold text-gray-900">{latestWeight} kg</span>
+            {trend && <span className="font-bold ml-1" style={{ color: trend.color }} title={trend.label}>{trend.symbol}</span>}
             {bmi != null && <> &nbsp;•&nbsp; BMI: <span className="font-bold text-gray-900">{bmi}</span></>}
           </p>
           <p className="text-xs text-gray-500 mb-2">
@@ -199,6 +242,7 @@ function FamilyWeightCard({ member }) {
             {progress !== null && <> &nbsp;•&nbsp; Progress: <span className="font-bold text-gray-900">{progress.toFixed(0)}%</span></>}
           </p>
           <MiniLineChart logs={logs} />
+          <WeekTable logs={logs} />
         </>
       )}
     </div>
@@ -227,8 +271,7 @@ export default function AdminWeight({ currentUser } = {}) {
     bridge.getAllUsersWeight()
       .then(res => {
         if (cancelled) return
-        const members = (res?.users || []).filter(u => u.id !== currentUser?.id)
-        setFamilyMembers(members)
+        setFamilyMembers(res?.users || [])
       })
       .catch(() => { if (!cancelled) setFamilyMembers([]) })
       .finally(() => { if (!cancelled) setFamilyLoading(false) })
@@ -335,18 +378,18 @@ export default function AdminWeight({ currentUser } = {}) {
           </div>
         </div>
 
-        {/* Family Weight Progress — every other family member, own data shown separately below */}
+        {/* Family Weight Progress — every household member, including the signed-in admin */}
         <div className="space-y-3">
           <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Family Weight Progress</p>
           {familyLoading ? (
             <div className="text-sm text-gray-300 py-6 text-center">Loading…</div>
           ) : familyMembers.length === 0 ? (
             <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50 text-center text-sm text-gray-400">
-              No other family members yet
+              No family members yet
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {familyMembers.map(m => <FamilyWeightCard key={m.id} member={m} />)}
+              {familyMembers.map(m => <FamilyWeightCard key={m.id} member={m} isYou={m.id === currentUser?.id} />)}
             </div>
           )}
         </div>
