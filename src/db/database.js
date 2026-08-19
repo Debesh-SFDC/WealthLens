@@ -37,6 +37,7 @@ export function initDatabase() {
   migrateSyncColumns()
   createSyncLogTable()
   createFirePlannerTable()
+  createTravelTables()
   return db
 }
 
@@ -702,6 +703,110 @@ function createFirePlannerTable() {
     );
   `)
   try { db.exec('ALTER TABLE fire_planner_settings ADD COLUMN additional_instruments_json TEXT') } catch {}
+}
+
+// Travel module (Phase 1: trips, itinerary, budget; Phase 2: packing, documents,
+// companions) — admin only, fully separate from expenses (no trip_id on expenses,
+// no shared tables). budget_amount is the manually-set planned total; actual spend
+// is derived as SUM(travel_budget_items.actual_amount), computed in the GET route
+// rather than stored redundantly.
+function createTravelTables() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS travel_trips (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id        TEXT UNIQUE,
+      title          TEXT NOT NULL,
+      destination    TEXT,
+      start_date     TEXT,
+      end_date       TEXT,
+      status         TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','ongoing','completed')),
+      budget_amount  REAL DEFAULT 0,
+      emoji          TEXT,
+      color          TEXT,
+      notes          TEXT,
+      created_at     TEXT,
+      updated_at     TEXT,
+      deleted_at     TEXT,
+      device_id      TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_itinerary_items (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id      TEXT UNIQUE,
+      trip_id      INTEGER NOT NULL REFERENCES travel_trips(id) ON DELETE CASCADE,
+      day_number   INTEGER NOT NULL DEFAULT 1,
+      date         TEXT,
+      time         TEXT,
+      title        TEXT NOT NULL,
+      category     TEXT DEFAULT 'activity' CHECK (category IN ('activity','transport','food','stay','other')),
+      location     TEXT,
+      notes        TEXT,
+      sort_order   INTEGER DEFAULT 0,
+      created_at   TEXT,
+      updated_at   TEXT,
+      deleted_at   TEXT,
+      device_id    TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_budget_items (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id         TEXT UNIQUE,
+      trip_id         INTEGER NOT NULL REFERENCES travel_trips(id) ON DELETE CASCADE,
+      category        TEXT NOT NULL DEFAULT 'other' CHECK (category IN ('flights','stay','food','transport','activities','shopping','other')),
+      label           TEXT NOT NULL,
+      planned_amount  REAL DEFAULT 0,
+      actual_amount   REAL DEFAULT 0,
+      notes           TEXT,
+      created_at      TEXT,
+      updated_at      TEXT,
+      deleted_at      TEXT,
+      device_id       TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_packing_items (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id      TEXT UNIQUE,
+      trip_id      INTEGER NOT NULL REFERENCES travel_trips(id) ON DELETE CASCADE,
+      item_name    TEXT NOT NULL,
+      category     TEXT DEFAULT 'other' CHECK (category IN ('clothing','documents','electronics','toiletries','other')),
+      is_packed    INTEGER DEFAULT 0,
+      sort_order   INTEGER DEFAULT 0,
+      created_at   TEXT,
+      updated_at   TEXT,
+      deleted_at   TEXT,
+      device_id    TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_documents (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id      TEXT UNIQUE,
+      trip_id      INTEGER NOT NULL REFERENCES travel_trips(id) ON DELETE CASCADE,
+      doc_type     TEXT DEFAULT 'other' CHECK (doc_type IN ('flight','hotel','train','car_rental','insurance','other')),
+      title        TEXT NOT NULL,
+      details      TEXT,
+      created_at   TEXT,
+      updated_at   TEXT,
+      deleted_at   TEXT,
+      device_id    TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS travel_companions (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id      TEXT UNIQUE,
+      trip_id      INTEGER NOT NULL REFERENCES travel_trips(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      relation     TEXT,
+      created_at   TEXT,
+      updated_at   TEXT,
+      deleted_at   TEXT,
+      device_id    TEXT
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_travel_itinerary_trip ON travel_itinerary_items(trip_id)') } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_travel_budget_trip ON travel_budget_items(trip_id)') } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_travel_packing_trip ON travel_packing_items(trip_id)') } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_travel_documents_trip ON travel_documents(trip_id)') } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_travel_companions_trip ON travel_companions(trip_id)') } catch {}
 }
 
 export function logSyncEvent(db, { deviceId, status, rowsUploaded = 0, rowsDownloaded = 0, errorMessage = null }) {

@@ -158,6 +158,80 @@ const bridge = {
   getAllUsersWeight: () => IS_ELECTRON
     ? window.electronAPI.getAllUsersWeight()
     : webCall('GET', '/weight/all'),
+
+  // Travel — admin only. Electron IPC side isn't wired up yet (the live
+  // deployment is web-only) — window.electronAPI.* calls below won't exist
+  // in the preload yet; kept for shape-consistency with the rest of bridge.js.
+  getAllTrips: () => IS_ELECTRON
+    ? window.electronAPI.getAllTrips()
+    : webCall('GET', '/travel'),
+  getTripById: (id) => IS_ELECTRON
+    ? window.electronAPI.getTripById(id)
+    : webCall('GET', `/travel/${id}`),
+  createTrip: (data) => IS_ELECTRON
+    ? window.electronAPI.createTrip(data)
+    : webCall('POST', '/travel', data),
+  updateTrip: (data) => IS_ELECTRON
+    ? window.electronAPI.updateTrip(data)
+    : webCall('PUT', `/travel/${data.id}`, data),
+  deleteTrip: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteTrip(id)
+    : webCall('DELETE', `/travel/${id}`),
+
+  // Travel — itinerary
+  createItineraryItem: (tripId, data) => IS_ELECTRON
+    ? window.electronAPI.createItineraryItem(tripId, data)
+    : webCall('POST', `/travel/${tripId}/itinerary`, data),
+  updateItineraryItem: (data) => IS_ELECTRON
+    ? window.electronAPI.updateItineraryItem(data)
+    : webCall('PUT', `/travel/itinerary/${data.id}`, data),
+  deleteItineraryItem: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteItineraryItem(id)
+    : webCall('DELETE', `/travel/itinerary/${id}`),
+
+  // Travel — budget
+  createBudgetItem: (tripId, data) => IS_ELECTRON
+    ? window.electronAPI.createBudgetItem(tripId, data)
+    : webCall('POST', `/travel/${tripId}/budget`, data),
+  updateBudgetItem: (data) => IS_ELECTRON
+    ? window.electronAPI.updateBudgetItem(data)
+    : webCall('PUT', `/travel/budget/${data.id}`, data),
+  deleteBudgetItem: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteBudgetItem(id)
+    : webCall('DELETE', `/travel/budget/${id}`),
+
+  // Travel — packing
+  createPackingItem: (tripId, data) => IS_ELECTRON
+    ? window.electronAPI.createPackingItem(tripId, data)
+    : webCall('POST', `/travel/${tripId}/packing`, data),
+  updatePackingItem: (data) => IS_ELECTRON
+    ? window.electronAPI.updatePackingItem(data)
+    : webCall('PUT', `/travel/packing/${data.id}`, data),
+  deletePackingItem: (id) => IS_ELECTRON
+    ? window.electronAPI.deletePackingItem(id)
+    : webCall('DELETE', `/travel/packing/${id}`),
+
+  // Travel — documents (plain text notes, not file uploads)
+  createDocument: (tripId, data) => IS_ELECTRON
+    ? window.electronAPI.createDocument(tripId, data)
+    : webCall('POST', `/travel/${tripId}/documents`, data),
+  updateDocument: (data) => IS_ELECTRON
+    ? window.electronAPI.updateDocument(data)
+    : webCall('PUT', `/travel/documents/${data.id}`, data),
+  deleteDocument: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteDocument(id)
+    : webCall('DELETE', `/travel/documents/${id}`),
+
+  // Travel — companions (free-text names, not linked to users)
+  createCompanion: (tripId, data) => IS_ELECTRON
+    ? window.electronAPI.createCompanion(tripId, data)
+    : webCall('POST', `/travel/${tripId}/companions`, data),
+  updateCompanion: (data) => IS_ELECTRON
+    ? window.electronAPI.updateCompanion(data)
+    : webCall('PUT', `/travel/companions/${data.id}`, data),
+  deleteCompanion: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteCompanion(id)
+    : webCall('DELETE', `/travel/companions/${id}`),
 }
 
 export default bridge
