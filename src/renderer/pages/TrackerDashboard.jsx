@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import bridge from '../lib/bridge'
 
+const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
+
 const CATEGORIES = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
   { name: 'Transport',     icon: '🚗', color: '#06B6D4', bg: '#ECFEFF' },
@@ -248,10 +250,13 @@ export default function TrackerDashboard({ user }) {
   const load = useCallback(async () => {
     setLoading(true)
     try {
+      // getTrackerBudget and getWeightProfile have no REST route yet — web
+      // mode defaults to 0 / no profile instead of hitting window.electronAPI
+      // (which is undefined there and would throw before Promise.all even runs).
       const [b, wLogs, wProf, ...results] = await Promise.all([
-        window.electronAPI.getTrackerBudget().catch(() => 0),
-        window.electronAPI.getWeightLogs({ userId: user.id }).catch(() => []),
-        window.electronAPI.getWeightProfile(user.id).catch(() => ({ height_cm: 0 })),
+        IS_ELECTRON ? window.electronAPI.getTrackerBudget().catch(() => 0) : Promise.resolve(0),
+        bridge.getWeightLogs({ userId: user.id }).catch(() => []),
+        IS_ELECTRON ? window.electronAPI.getWeightProfile(user.id).catch(() => ({ height_cm: 0 })) : Promise.resolve(null),
         ...Array.from({ length: 13 }, (_, i) => {
           const m = offsetMonth(-12 + i)
           return bridge.getAllExpenses({ month: m }).then(data => [m, data])

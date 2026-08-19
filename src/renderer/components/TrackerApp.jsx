@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import AppLogoIcon from './AppLogoIcon'
 import TrackerHome from '../pages/TrackerHome'
+import TrackerMonth from '../pages/TrackerMonth'
 import TrackerDashboard from '../pages/TrackerDashboard'
 import TrackerInsights from '../pages/TrackerInsights'
-import TrackerCategories from '../pages/TrackerCategories'
 import TrackerWeight from '../pages/TrackerWeight'
 
 function HomeIcon() {
@@ -36,12 +36,13 @@ function InsightsIcon() {
   )
 }
 
-function CategoriesIcon() {
+function ExpensesIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
-      <circle cx="9" cy="9" r="3" />
-      <circle cx="15" cy="15" r="3" />
-      <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+      <path d="M6 2h12v19l-3-2-3 2-3-2-3 2V2z" />
+      <line x1="9" y1="7" x2="15" y2="7" />
+      <line x1="9" y1="11" x2="15" y2="11" />
+      <line x1="9" y1="15" x2="13" y2="15" />
     </svg>
   )
 }
@@ -69,9 +70,9 @@ function SignOutIcon() {
 
 const navItems = [
   { id: 'home',       label: 'Home',       Icon: HomeIcon },
+  { id: 'expenses',   label: 'Expenses',   Icon: ExpensesIcon },
   { id: 'dashboard',  label: 'Dashboard',  Icon: DashboardIcon },
   { id: 'insights',   label: 'Insights',   Icon: InsightsIcon },
-  { id: 'categories', label: 'Categories', Icon: CategoriesIcon },
   { id: 'weight',     label: 'Weight',     Icon: WeightIcon },
 ]
 
@@ -208,9 +209,9 @@ export default function TrackerApp({ user, onSignOut }) {
 
       <main className="flex-1 overflow-y-auto bg-gray-50 pb-16 lg:pb-0">
         {page === 'home'       && <TrackerHome       user={user} />}
+        {page === 'expenses'   && <TrackerMonth      user={user} />}
         {page === 'dashboard'  && <TrackerDashboard  user={user} />}
         {page === 'insights'   && <TrackerInsights   user={user} />}
-        {page === 'categories' && <TrackerCategories user={user} />}
         {page === 'weight'     && <TrackerWeight     user={user} />}
       </main>
 

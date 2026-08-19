@@ -1,6 +1,8 @@
 import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
 
+const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
+
 const TRACKER_CATEGORIES = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B' },
   { name: 'Transport',     icon: '🚗', color: '#4ECDC4' },
@@ -29,7 +31,8 @@ export default function TrackerMonth({ user }) {
 
   useEffect(() => {
     bridge.getAllExpenses({ month, logged_by: user.id }).then(setExpenses).catch(() => {})
-    window.electronAPI.getTrackerBudget().then(setBudget).catch(() => {})
+    // getTrackerBudget has no REST route yet — web mode defaults to 0.
+    if (IS_ELECTRON) window.electronAPI.getTrackerBudget().then(setBudget).catch(() => {})
   }, [month, user.id])
 
   const total = expenses.reduce((s, e) => s + e.amount, 0)

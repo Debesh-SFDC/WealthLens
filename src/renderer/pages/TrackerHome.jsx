@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
 
+const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
+
 const DEFAULT_CATS = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
   { name: 'Transport',     icon: '🚗', color: '#06B6D4', bg: '#ECFEFF' },
@@ -88,7 +90,7 @@ export default function TrackerHome({ user }) {
 
   const loadCategories = useCallback(async () => {
     try {
-      const cats = await window.electronAPI.getExpenseCategories()
+      const cats = await bridge.getExpenseCategories()
       if (cats?.length) {
         const merged = [...DEFAULT_CATS]
         for (const c of cats) {
@@ -110,9 +112,10 @@ export default function TrackerHome({ user }) {
 
   const load = useCallback(async () => {
     try {
+      // getTrackerBudget has no REST route yet — web mode defaults to 0.
       const [data, b] = await Promise.all([
         bridge.getAllExpenses({ month: currentMonth }),
-        window.electronAPI.getTrackerBudget().catch(() => 0),
+        IS_ELECTRON ? window.electronAPI.getTrackerBudget().catch(() => 0) : Promise.resolve(0),
       ])
       setExpenses(data)
       setBudget(b || 0)
