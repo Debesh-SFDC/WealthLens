@@ -180,23 +180,25 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
       const expFilter = { month: ym }
       if (userFilter !== 'all') expFilter.logged_by = Number(userFilter)
 
-      const [exps, cats, stats, allocs, profile, users] = await Promise.all([
+      const [exps, cats, stats, activePlan, users] = await Promise.all([
         bridge.getAllExpenses(expFilter),
-        window.electronAPI.getExpenseCategories(),
-        window.electronAPI.getExpenseMonthlyStats({ month, year }),
-        window.electronAPI.getSalaryAllocations(),
-        bridge.getProfile(),
-        window.electronAPI.getUsers(),
+        bridge.getExpenseCategories(),
+        bridge.getExpenseMonthlyStats({ month, year }),
+        bridge.getActivePlan(),
+        bridge.getUsers(),
       ])
       setExpenses(exps || [])
       setCategories(cats || [])
       setMonthlyStats(stats || null)
       setAllUsers(users || [])
 
-      const needsRow = (allocs || []).find(r => r.bank === '__bucket__' && r.label === 'Needs')
-      if (needsRow && profile?.monthly_salary) {
-        setNeedsBudget((needsRow.percentage / 100) * profile.monthly_salary)
-      }
+      const needsTotal = (activePlan?.items || [])
+        .filter(i => i.category === 'needs')
+        .reduce((s, i) => s + i.amount, 0)
+      setNeedsBudget(needsTotal)
+    } catch (err) {
+      console.error('Failed to load expenses:', err)
+      setExpenses([])
     } finally {
       setLoading(false)
     }

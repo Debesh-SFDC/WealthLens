@@ -31,6 +31,55 @@ router.get('/', async (req, res) => {
   res.json(rows)
 })
 
+// GET /api/expenses/categories — mirrors expenses:getCategories. No role
+// restriction — both admin and tracker need the category list to log an expense.
+router.get('/categories', async (req, res) => {
+  const db = getDb()
+  const { rows } = await db.query(
+    'SELECT * FROM expense_categories ORDER BY is_default DESC, name ASC'
+  )
+  res.json(rows)
+})
+
+// GET /api/expenses/monthly-stats?month=&year= — mirrors expenses:getMonthlyStats.
+// Same role scoping as GET / — admin sees the whole household, tracker only their own.
+router.get('/monthly-stats', async (req, res) => {
+  const db = getDb()
+  const { month, year } = req.query || {}
+  const ym = `${year}-${String(month).padStart(2, '0')}`
+
+  let query = 'SELECT * FROM expenses WHERE deleted_at IS NULL AND date LIKE ?'
+  const params = [`${ym}%`]
+  if (req.user.role === 'tracker') {
+    query += ' AND logged_by_user_id = ?'
+    params.push(req.user.id)
+  } else if (req.query.logged_by) {
+    query += ' AND logged_by_user_id = ?'
+    params.push(req.query.logged_by)
+  }
+  const { rows } = await db.query(query, params)
+
+  const total = rows.reduce((s, r) => s + r.amount, 0)
+
+  const catMap = {}
+  for (const r of rows) catMap[r.category] = (catMap[r.category] || 0) + r.amount
+  const byCategory = Object.entries(catMap)
+    .map(([category, amount]) => ({ category, amount }))
+    .sort((a, b) => b.amount - a.amount)
+
+  const daysInMonth = new Date(Number(year), Number(month), 0).getDate()
+  const dailyAvg = rows.length ? total / daysInMonth : 0
+
+  const dayMap = {}
+  for (const r of rows) dayMap[r.date] = (dayMap[r.date] || 0) + r.amount
+  const topDayEntry = Object.entries(dayMap).sort((a, b) => b[1] - a[1])[0]
+
+  res.json({
+    total, byCategory, dailyAvg,
+    topDay: topDayEntry ? { date: topDayEntry[0], amount: topDayEntry[1] } : null,
+  })
+})
+
 // POST /api/expenses — mirrors expenses:create
 router.post('/', async (req, res) => {
   const d = req.body || {}
