@@ -11,6 +11,25 @@ export const WISHLIST_CATEGORIES = [
   'Fitness', 'Accessories', 'Other',
 ]
 
+// Emoji + accent color per category — drives the card's left border, the
+// category chip tint, and the pill selector in the add/edit modal.
+const CATEGORY_META = {
+  'Motorcycle':        { emoji: '🏍️', color: '#F97316' },
+  'Riding Gear':        { emoji: '🪖', color: '#EF4444' },
+  'Electronics':        { emoji: '📱', color: '#3B82F6' },
+  'PC':                 { emoji: '🖥️', color: '#6366F1' },
+  'Watches':            { emoji: '⌚', color: '#F59E0B' },
+  'Clothing':           { emoji: '👕', color: '#EC4899' },
+  'Shoes':              { emoji: '👟', color: '#92400E' },
+  'Bags & Backpacks':   { emoji: '🎒', color: '#14B8A6' },
+  'Home':               { emoji: '🏠', color: '#22C55E' },
+  'Travel':             { emoji: '✈️', color: '#06B6D4' },
+  'Fitness':            { emoji: '🏋️', color: '#84CC16' },
+  'Accessories':        { emoji: '💍', color: '#A855F7' },
+  'Other':              { emoji: '📦', color: '#9CA3AF' },
+}
+const categoryMeta = (c) => CATEGORY_META[c] || CATEGORY_META['Other']
+
 const PURCHASE_TIMINGS = [
   'Now', 'This Month', 'Next 3 Months', 'Later',
   'After I Buy a House', 'After I Move',
@@ -18,17 +37,24 @@ const PURCHASE_TIMINGS = [
 ]
 
 const PRIORITIES = [
-  { value: 'high',   label: 'High',   emoji: '🔴' },
-  { value: 'medium', label: 'Medium', emoji: '🟡' },
-  { value: 'low',    label: 'Low',    emoji: '🟢' },
+  { value: 'high',   label: 'High',   emoji: '🔴', color: '#EF4444', tint: '#FEF2F2', border: '#FECACA' },
+  { value: 'medium', label: 'Medium', emoji: '🟡', color: '#F59E0B', tint: '#FFFBEB', border: '#FDE68A' },
+  { value: 'low',    label: 'Low',    emoji: '🟢', color: '#22C55E', tint: '#F0FDF4', border: '#BBF7D0' },
 ]
 
 const STATUSES = [
-  { value: 'wishlist',    label: 'Wishlist',    bg: '#EEF2FF', fg: '#4F46E5' },
-  { value: 'shortlisted', label: 'Shortlisted', bg: '#E0F2FE', fg: '#0284C7' },
-  { value: 'planned',     label: 'Planned',     bg: '#FEF3C7', fg: '#B45309' },
-  { value: 'purchased',   label: 'Purchased ✓', bg: '#DCFCE7', fg: '#16A34A' },
-  { value: 'dropped',     label: 'Dropped',     bg: '#F3F4F6', fg: '#6B7280' },
+  { value: 'wishlist',    label: 'Wishlist',    bg: '#F3F0FF', fg: '#6C63FF' },
+  { value: 'shortlisted', label: 'Shortlisted', bg: '#FFFBEB', fg: '#B45309' },
+  { value: 'planned',     label: 'Planned',     bg: '#EFF6FF', fg: '#1D4ED8' },
+  { value: 'purchased',   label: 'Purchased ✓', bg: '#F0FDF4', fg: '#15803D' },
+  { value: 'dropped',     label: 'Dropped',     bg: '#F3F4F6', fg: '#6B7280', strike: true },
+]
+
+const SORT_OPTIONS = [
+  { value: 'recent',   label: 'Recently Added', emoji: '🕒' },
+  { value: 'priority', label: 'Priority',        emoji: '🔥' },
+  { value: 'price',    label: 'Price',           emoji: '💰' },
+  { value: 'name',     label: 'Name',            emoji: '🔤' },
 ]
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -36,12 +62,65 @@ const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR',
 const priorityMeta = (p) => PRIORITIES.find(x => x.value === p) || PRIORITIES[1]
 const statusMeta = (s) => STATUSES.find(x => x.value === s) || STATUSES[0]
 
-function BagIcon(props) {
+// One-time keyframes for the "new card slides in" / "flash on purchase"
+// micro-interactions — a plain <style> tag needs no Tailwind config change.
+function WishlistAnimationStyles() {
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" {...props}>
-      <path d="M6 7h12l1.2 13.2a1 1 0 0 1-1 1.1H5.8a1 1 0 0 1-1-1.1L6 7z" />
-      <path d="M9 7V5.5a3 3 0 0 1 6 0V7" />
+    <style>{`
+      @keyframes wl-slide-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+      .wl-card-enter { animation: wl-slide-in 0.35s ease-out; }
+    `}</style>
+  )
+}
+
+function ChevronDown(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <polyline points="6 9 12 15 18 9" />
     </svg>
+  )
+}
+
+function CloseIcon(props) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+    </svg>
+  )
+}
+
+// ── Generic pop-over dropdown (button + panel) — used instead of native
+// <select> elements so the filter bar doesn't look like an HTML form. ──────
+function PopDropdown({ trigger, children, align = 'left' }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative">
+      <button type="button" onClick={() => setOpen(o => !o)}>{trigger(open)}</button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div
+            className={`absolute z-40 mt-2 min-w-[200px] bg-white rounded-2xl shadow-xl border border-gray-100 py-2 overflow-hidden ${align === 'right' ? 'right-0' : 'left-0'}`}
+            onClick={() => setOpen(false)}
+          >
+            {children}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+function DropdownRow({ active, onClick, children }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-left hover:bg-gray-50 transition-colors"
+      style={{ color: active ? '#6C63FF' : '#374151', backgroundColor: active ? '#F5F4FF' : 'transparent' }}
+    >
+      {children}
+    </button>
   )
 }
 
@@ -55,7 +134,6 @@ function WishlistModal({ item, onSave, onClose }) {
       priority: 'medium', status: 'wishlist', purchase_timing: 'No Plan', notes: '',
     }
   )
-  const [showMore, setShowMore] = useState(isEdit)
   const [saving, setSaving] = useState(false)
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
@@ -74,68 +152,40 @@ function WishlistModal({ item, onSave, onClose }) {
     }
   }
 
+  function testLink() {
+    if (form.url) window.open(form.url, '_blank', 'noopener,noreferrer')
+  }
+
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm sm:flex sm:items-center sm:justify-center sm:p-4"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white rounded-2xl w-full max-w-[480px] max-h-[90vh] overflow-y-auto shadow-2xl">
-        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-bold text-gray-900">{isEdit ? 'Edit Item' : 'Add to Wishlist'}</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-500">
-              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-            </svg>
+      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[560px] sm:rounded-3xl overflow-y-auto shadow-2xl">
+        <div className="px-5 sm:px-7 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+          <h2 className="text-xl font-extrabold text-gray-900">{isEdit ? 'Edit Item' : 'Add to Wishlist'}</h2>
+          <button onClick={onClose} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
+            <CloseIcon className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Item name *</label>
-            <input
-              autoFocus required
-              type="text" placeholder="e.g. Shoei GT-Air 3 Helmet"
-              value={form.name} onChange={e => set('name', e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-lg font-semibold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Category *</label>
-            <select
-              required value={form.category} onChange={e => set('category', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-            >
-              {WISHLIST_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Product URL</label>
-            <input
-              type="url" placeholder="Paste product link here"
-              value={form.url || ''} onChange={e => set('url', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-            />
-          </div>
-
-          <button
-            type="button"
-            onClick={() => setShowMore(s => !s)}
-            className="flex items-center gap-1.5 text-sm font-semibold"
-            style={{ color: '#6C63FF' }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
-              className="w-4 h-4 transition-transform" style={{ transform: showMore ? 'rotate(90deg)' : 'none' }}>
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-            {showMore ? 'Hide details' : 'Add more details'}
-          </button>
-
-          {showMore && (
-            <div className="space-y-4 pt-4 border-t border-gray-100">
+        <form onSubmit={handleSubmit} className="p-5 sm:p-7 space-y-8">
+          {/* Section 1 — The Item */}
+          <section>
+            <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>🎯 The Item</h3>
+            <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Brand</label>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">What do you want?</label>
+                <input
+                  autoFocus required
+                  type="text" placeholder="e.g. Shoei GT-Air 3 Helmet"
+                  value={form.name} onChange={e => set('name', e.target.value)}
+                  className="w-full px-4 py-3.5 rounded-2xl border-2 border-gray-100 bg-gray-50 text-lg font-bold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:bg-white transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Brand (optional)</label>
                 <input
                   type="text" placeholder="e.g. Shoei"
                   value={form.brand || ''} onChange={e => set('brand', e.target.value)}
@@ -144,77 +194,157 @@ function WishlistModal({ item, onSave, onClose }) {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Current price</label>
+                <label className="text-sm font-semibold text-gray-700 mb-2 block">Category</label>
+                <div className="flex flex-wrap gap-2">
+                  {WISHLIST_CATEGORIES.map(c => {
+                    const meta = categoryMeta(c)
+                    const active = form.category === c
+                    return (
+                      <button
+                        key={c} type="button" onClick={() => set('category', c)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-semibold border-2 transition-colors min-h-[40px]"
+                        style={{
+                          backgroundColor: active ? '#6C63FF' : '#fff',
+                          borderColor: active ? '#6C63FF' : '#E5E7EB',
+                          color: active ? '#fff' : '#374151',
+                        }}
+                      >
+                        <span>{meta.emoji}</span>{c}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 2 — The Link */}
+          <section>
+            <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>🔗 The Link</h3>
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Paste the product link</label>
+            <div className="flex gap-2">
+              <div className="relative flex-1 min-w-0">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔗</span>
+                <input
+                  type="url" placeholder="https://…"
+                  value={form.url || ''} onChange={e => set('url', e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                />
+              </div>
+              <button
+                type="button" onClick={testLink} disabled={!form.url}
+                className="shrink-0 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Test Link
+              </button>
+            </div>
+          </section>
+
+          {/* Section 3 — Price, Priority & Status */}
+          <section>
+            <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>💰 Price & Priority</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Current price</label>
                 <div className="relative">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-semibold text-sm">₹</span>
+                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold">₹</span>
                   <input
                     type="number" min="0" step="0.01" placeholder="0"
                     value={form.price} onChange={e => set('price', e.target.value)}
-                    className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full pl-8 pr-4 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Priority</label>
-                <div className="flex gap-2">
-                  {PRIORITIES.map(p => (
-                    <button
-                      key={p.value} type="button" onClick={() => set('priority', p.value)}
-                      className="flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors"
-                      style={{
-                        borderColor: form.priority === p.value ? '#6C63FF' : '#E5E7EB',
-                        backgroundColor: form.priority === p.value ? '#F0EFFF' : '#fff',
-                        color: form.priority === p.value ? '#6C63FF' : '#6B7280',
-                      }}
-                    >
-                      {p.emoji} {p.label}
-                    </button>
-                  ))}
+                <label className="text-sm font-semibold text-gray-700 mb-2 block">Priority</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {PRIORITIES.map(p => {
+                    const active = form.priority === p.value
+                    return (
+                      <button
+                        key={p.value} type="button" onClick={() => set('priority', p.value)}
+                        className="py-3 rounded-2xl text-sm font-bold border-2 transition-colors min-h-[48px]"
+                        style={{
+                          borderColor: active ? p.color : '#E5E7EB',
+                          backgroundColor: active ? p.tint : '#fff',
+                          color: active ? p.color : '#6B7280',
+                        }}
+                      >
+                        {p.emoji} {p.label}
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Status</label>
-                <select
-                  value={form.status} onChange={e => set('status', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-                >
-                  {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Purchase timing</label>
-                <select
-                  value={form.purchase_timing} onChange={e => set('purchase_timing', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-                >
-                  {PURCHASE_TIMINGS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Notes</label>
-                <textarea
-                  rows={3} placeholder="Why do you want this? Any conditions?"
-                  value={form.notes || ''} onChange={e => set('notes', e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 resize-none"
-                />
+                <label className="text-sm font-semibold text-gray-700 mb-2 block">Status</label>
+                <div className="flex flex-wrap gap-2">
+                  {STATUSES.map(s => {
+                    const active = form.status === s.value
+                    return (
+                      <button
+                        key={s.value} type="button" onClick={() => set('status', s.value)}
+                        className="px-3.5 py-2 rounded-full text-sm font-semibold transition-colors"
+                        style={{
+                          backgroundColor: active ? s.fg : s.bg,
+                          color: active ? '#fff' : s.fg,
+                        }}
+                      >
+                        {s.label}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
             </div>
-          )}
+          </section>
 
-          <div className="flex gap-3 pt-2">
-            <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+          {/* Section 4 — When to Buy */}
+          <section>
+            <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>🕐 When to Buy</h3>
+            <div className="flex flex-wrap gap-2">
+              {PURCHASE_TIMINGS.map(t => {
+                const active = form.purchase_timing === t
+                return (
+                  <button
+                    key={t} type="button" onClick={() => set('purchase_timing', t)}
+                    className="px-3.5 py-2 rounded-full text-sm font-semibold border-2 transition-colors"
+                    style={{
+                      backgroundColor: active ? '#6C63FF' : '#fff',
+                      borderColor: active ? '#6C63FF' : '#E5E7EB',
+                      color: active ? '#fff' : '#374151',
+                    }}
+                  >
+                    {t}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+
+          {/* Section 5 — Notes */}
+          <section>
+            <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>📝 Notes</h3>
+            <textarea
+              rows={3} placeholder="e.g. Only buy if price drops below ₹5,000 or after moving house"
+              value={form.notes || ''} onChange={e => set('notes', e.target.value)}
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 resize-none"
+            />
+            <p className="text-xs text-gray-400 mt-2">💡 Just a name and category is enough — everything else is optional.</p>
+          </section>
+
+          <div className="flex gap-3 pt-2 pb-1 sticky bottom-0 bg-white">
+            <button type="button" onClick={onClose} className="flex-1 py-3.5 rounded-2xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[48px]">
               Cancel
             </button>
             <button
               type="submit" disabled={saving}
-              className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+              className="flex-1 py-3.5 rounded-2xl text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-60 min-h-[48px] shadow-lg shadow-[#6C63FF]/30"
               style={{ backgroundColor: '#6C63FF' }}
             >
-              {saving ? 'Saving…' : 'Save to Wishlist'}
+              {saving ? 'Saving…' : 'Save to Wishlist 🛍️'}
             </button>
           </div>
         </form>
@@ -226,25 +356,41 @@ function WishlistModal({ item, onSave, onClose }) {
 // ── Item card ────────────────────────────────────────────────────────────
 function ItemCard({ item, onEdit, onMarkPurchased, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false)
+  const [flash, setFlash] = useState(false)
   const pr = priorityMeta(item.priority)
   const st = statusMeta(item.status)
+  const cat = categoryMeta(item.category)
+  const isPurchased = item.status === 'purchased'
+
+  async function handleMarkPurchased() {
+    setFlash(true)
+    await onMarkPurchased(item)
+    setTimeout(() => setFlash(false), 900)
+  }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+    <div
+      className={`wl-card-enter relative bg-white rounded-2xl shadow-md hover:shadow-xl hover:scale-[1.02] transition-all duration-200 p-5 ${isPurchased ? 'opacity-75' : ''}`}
+      style={{ borderLeft: `4px solid ${isPurchased ? '#22C55E' : cat.color}` }}
+    >
+      {/* Purchase flash overlay */}
+      <div
+        className="absolute inset-0 rounded-2xl pointer-events-none transition-opacity duration-700"
+        style={{ backgroundColor: '#22C55E', opacity: flash ? 0.18 : 0 }}
+      />
+
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <h3 className="font-bold text-gray-900 text-[15px] truncate">{item.name}</h3>
-          <p className="text-xs text-gray-500 mt-1 flex items-center gap-1.5 flex-wrap">
-            {item.brand && <span>{item.brand}</span>}
-            {item.brand && <span>•</span>}
-            <span className="px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">{item.category}</span>
-          </p>
-        </div>
+        <span
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
+          style={{ backgroundColor: `${cat.color}1A`, color: cat.color }}
+        >
+          <span>{cat.emoji}</span>{item.category}
+        </span>
 
         <div className="relative shrink-0">
           <button
             onClick={() => setMenuOpen(o => !o)}
-            className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
+            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
           >
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
               <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
@@ -253,17 +399,17 @@ function ItemCard({ item, onEdit, onMarkPurchased, onDelete }) {
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-9 z-20 w-44 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
-                <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
-                  Edit
+              <div className="absolute right-0 top-10 z-20 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden py-1">
+                <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  ✏️ Edit
                 </button>
-                {item.status !== 'purchased' && (
-                  <button onClick={() => { setMenuOpen(false); onMarkPurchased(item) }} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50">
-                    Mark Purchased
+                {!isPurchased && (
+                  <button onClick={() => { setMenuOpen(false); handleMarkPurchased() }} className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    ✅ Mark Purchased
                   </button>
                 )}
-                <button onClick={() => { setMenuOpen(false); onDelete(item) }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50">
-                  Delete
+                <button onClick={() => { setMenuOpen(false); onDelete(item) }} className="w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50">
+                  🗑️ Delete
                 </button>
               </div>
             </>
@@ -271,40 +417,127 @@ function ItemCard({ item, onEdit, onMarkPurchased, onDelete }) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 mt-3 flex-wrap">
-        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full bg-gray-50 text-gray-700">
-          {pr.emoji} {pr.label}
-        </span>
-        <span className="text-xs font-semibold px-2 py-1 rounded-full" style={{ backgroundColor: st.bg, color: st.fg }}>
+      <div className="flex items-center gap-2 mt-2.5">
+        <span className="text-sm font-semibold text-gray-600">{pr.emoji} {pr.label}</span>
+        <span
+          className="text-xs font-bold px-2.5 py-1 rounded-full transition-colors duration-200"
+          style={{ backgroundColor: st.bg, color: st.fg, textDecoration: st.strike ? 'line-through' : 'none' }}
+        >
           {st.label}
         </span>
       </div>
 
-      <div className="mt-3 flex items-center justify-between gap-2">
-        <p className="text-sm font-bold text-gray-900">
-          {item.price != null && item.price !== ''
-            ? INR.format(item.price)
-            : <span className="text-gray-400 font-medium">Price not set</span>}
+      <h3 className="text-lg font-extrabold text-gray-900 mt-3 leading-snug line-clamp-2">{item.name}</h3>
+      {item.brand && <p className="text-sm text-gray-500 mt-0.5">by {item.brand}</p>}
+
+      <p className="mt-3">
+        {item.price != null && item.price !== ''
+          ? <span className="text-xl font-extrabold text-gray-900">{INR.format(item.price)}</span>
+          : <span className="text-sm text-gray-400 italic">Price not set</span>}
+      </p>
+
+      {item.purchase_timing && (
+        <p className="mt-2 flex items-center gap-1.5 text-sm text-gray-500">
+          <span>🕐</span>{item.purchase_timing}
         </p>
-        {item.purchase_timing && (
-          <p className="text-xs text-gray-500 text-right">🕐 {item.purchase_timing}</p>
-        )}
-      </div>
-
-      {item.notes && <p className="text-xs text-gray-500 mt-2 truncate">{item.notes}</p>}
-
-      {item.url && (
-        <a
-          href={item.url} target="_blank" rel="noopener noreferrer"
-          className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold"
-          style={{ color: '#6C63FF' }}
-        >
-          Open Product
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-            <line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" />
-          </svg>
-        </a>
       )}
+
+      {item.notes && <p className="text-sm text-gray-500 italic mt-3 line-clamp-2">"{item.notes}"</p>}
+
+      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
+        {item.url ? (
+          <a
+            href={item.url} target="_blank" rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm font-bold"
+            style={{ color: '#6C63FF' }}
+          >
+            Open Product
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+              <line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" />
+            </svg>
+          </a>
+        ) : <span />}
+        {isPurchased && <span className="text-sm font-bold text-green-600">✅ Purchased</span>}
+      </div>
+    </div>
+  )
+}
+
+// ── Mobile filter bottom sheet ──────────────────────────────────────────
+function MobileFilterSheet({ categoryFilter, setCategoryFilter, sortBy, setSortBy, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 sm:hidden" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="absolute inset-0 bg-black/40" />
+      <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl max-h-[80vh] overflow-y-auto">
+        <div className="sticky top-0 bg-white px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-lg font-extrabold text-gray-900">Filter & Sort</h3>
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-gray-100">
+            <CloseIcon className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-6">
+          <div>
+            <h4 className="text-sm font-bold text-gray-700 mb-2.5">Category</h4>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setCategoryFilter('')}
+                className="px-3.5 py-2.5 rounded-full text-sm font-semibold border-2 min-h-[44px]"
+                style={{
+                  backgroundColor: categoryFilter === '' ? '#6C63FF' : '#fff',
+                  borderColor: categoryFilter === '' ? '#6C63FF' : '#E5E7EB',
+                  color: categoryFilter === '' ? '#fff' : '#374151',
+                }}
+              >
+                All Categories
+              </button>
+              {WISHLIST_CATEGORIES.map(c => {
+                const meta = categoryMeta(c)
+                const active = categoryFilter === c
+                return (
+                  <button
+                    key={c} onClick={() => setCategoryFilter(c)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-full text-sm font-semibold border-2 min-h-[44px]"
+                    style={{
+                      backgroundColor: active ? '#6C63FF' : '#fff',
+                      borderColor: active ? '#6C63FF' : '#E5E7EB',
+                      color: active ? '#fff' : '#374151',
+                    }}
+                  >
+                    <span>{meta.emoji}</span>{c}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-bold text-gray-700 mb-2.5">Sort by</h4>
+            <div className="space-y-1.5">
+              {SORT_OPTIONS.map(o => {
+                const active = sortBy === o.value
+                return (
+                  <button
+                    key={o.value} onClick={() => setSortBy(o.value)}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-semibold text-left min-h-[48px]"
+                    style={{ backgroundColor: active ? '#F5F4FF' : 'transparent', color: active ? '#6C63FF' : '#374151' }}
+                  >
+                    <span>{o.emoji}</span>{o.label}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+
+          <button
+            onClick={onClose}
+            className="w-full py-3.5 rounded-2xl text-white text-sm font-bold min-h-[48px]"
+            style={{ backgroundColor: '#6C63FF' }}
+          >
+            Done
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -315,6 +548,7 @@ export default function Wishlist() {
   const [loading, setLoading] = useState(true)
   const [modalItem, setModalItem] = useState(null)
   const [showModal, setShowModal] = useState(false)
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
 
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -375,6 +609,9 @@ export default function Wishlist() {
     return sorted
   }, [items, categoryFilter, statusFilter, priorityFilter, search, sortBy])
 
+  const activeItems = useMemo(() => visibleItems.filter(i => i.status !== 'purchased'), [visibleItems])
+  const purchasedItems = useMemo(() => visibleItems.filter(i => i.status === 'purchased'), [visibleItems])
+
   function openAdd() { setModalItem(null); setShowModal(true) }
   function openEdit(item) { setModalItem(item); setShowModal(true) }
   function closeModal() { setShowModal(false); setModalItem(null) }
@@ -391,119 +628,205 @@ export default function Wishlist() {
     await load()
   }
 
-  const chipDefs = [
-    { id: 'all', label: 'All', count: counts.all },
-    { id: 'high', label: 'High Priority', count: counts.high },
-    { id: 'shortlisted', label: 'Shortlisted', count: counts.shortlisted },
-    { id: 'planned', label: 'Planned', count: counts.planned },
-    { id: 'purchased', label: 'Purchased', count: counts.purchased },
+  const CHIP_DEFS = [
+    { id: 'all', emoji: '🛍️', label: 'All', count: counts.all, fill: '#6C63FF', tint: '#F5F4FF', text: '#4F46E5' },
+    { id: 'high', emoji: '🔴', label: 'High Priority', count: counts.high, fill: '#EF4444', tint: '#FEF2F2', text: '#DC2626' },
+    { id: 'shortlisted', emoji: '⭐', label: 'Shortlisted', count: counts.shortlisted, fill: '#F59E0B', tint: '#FFFBEB', text: '#B45309' },
+    { id: 'planned', emoji: '📋', label: 'Planned', count: counts.planned, fill: '#3B82F6', tint: '#EFF6FF', text: '#1D4ED8' },
+    { id: 'purchased', emoji: '✅', label: 'Purchased', count: counts.purchased, fill: '#22C55E', tint: '#F0FDF4', text: '#15803D' },
   ]
 
+  const activeFilterCount = (categoryFilter ? 1 : 0) + (sortBy !== 'recent' ? 1 : 0)
+
   return (
-    <div className="p-4 lg:p-8 max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-5 gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">My Wishlist</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{counts.all} item{counts.all === 1 ? '' : 's'}</p>
+    <div className="p-4 lg:p-8 max-w-5xl mx-auto pb-24 sm:pb-8">
+      <WishlistAnimationStyles />
+
+      {/* Hero header */}
+      <div
+        className="relative overflow-hidden rounded-3xl p-6 md:p-8 mb-5"
+        style={{ background: 'linear-gradient(120deg, rgba(108,99,255,0.13) 0%, rgba(139,92,246,0.11) 50%, rgba(236,72,153,0.10) 100%)' }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 flex items-center gap-2.5">
+              <span className="text-3xl md:text-4xl">🛍️</span> My Wishlist
+            </h1>
+            <p className="text-sm text-gray-600 mt-1 font-medium">
+              {counts.all} item{counts.all === 1 ? '' : 's'}
+              {counts.high > 0 && <> • {counts.high} high priority</>}
+            </p>
+          </div>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 px-5 py-3 rounded-full bg-white text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all min-h-[48px]"
+            style={{ color: '#6C63FF' }}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Add Item
+          </button>
+        </div>
+      </div>
+
+      {/* Stats pill row */}
+      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
+        {CHIP_DEFS.map(c => {
+          const active = activeChip === c.id
+          return (
+            <button
+              key={c.id}
+              onClick={() => applyChip(c.id)}
+              className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold border transition-colors whitespace-nowrap"
+              style={{
+                backgroundColor: active ? c.fill : '#fff',
+                borderColor: active ? c.fill : '#E5E7EB',
+                color: active ? '#fff' : '#4B5563',
+              }}
+            >
+              <span>{c.emoji}</span>{c.label} <span style={{ opacity: 0.85 }}>({c.count})</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Search + filter bar — desktop */}
+      <div className="hidden sm:flex items-center gap-2 mb-6">
+        <div className="relative flex-1 min-w-[200px]">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+          <input
+            type="text" placeholder="Search by name or brand…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2.5 rounded-full border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+          />
+        </div>
+
+        <PopDropdown
+          trigger={(open) => (
+            <span
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:border-gray-300 transition-colors"
+            >
+              {categoryFilter ? <>{categoryMeta(categoryFilter).emoji} {categoryFilter}</> : 'Category'}
+              <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </span>
+          )}
+        >
+          <DropdownRow active={!categoryFilter} onClick={() => setCategoryFilter('')}>All Categories</DropdownRow>
+          {WISHLIST_CATEGORIES.map(c => (
+            <DropdownRow key={c} active={categoryFilter === c} onClick={() => setCategoryFilter(c)}>
+              {categoryMeta(c).emoji} {c}
+            </DropdownRow>
+          ))}
+        </PopDropdown>
+
+        <PopDropdown
+          align="right"
+          trigger={(open) => (
+            <span className="flex items-center gap-1.5 px-4 py-2.5 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:border-gray-300 transition-colors">
+              {SORT_OPTIONS.find(o => o.value === sortBy)?.emoji} Sort
+              <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
+            </span>
+          )}
+        >
+          {SORT_OPTIONS.map(o => (
+            <DropdownRow key={o.value} active={sortBy === o.value} onClick={() => setSortBy(o.value)}>
+              {o.emoji} {o.label}
+            </DropdownRow>
+          ))}
+        </PopDropdown>
+      </div>
+
+      {/* Search + filter bar — mobile */}
+      <div className="flex sm:hidden items-center gap-2 mb-6">
+        <div className="relative flex-1 min-w-0">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+          <input
+            type="text" placeholder="Search…"
+            value={search} onChange={e => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-3 rounded-full border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 min-h-[48px]"
+          />
         </div>
         <button
-          onClick={openAdd}
-          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity shrink-0"
-          style={{ backgroundColor: '#6C63FF' }}
+          onClick={() => setMobileFilterOpen(true)}
+          className="relative shrink-0 flex items-center gap-1.5 px-4 py-3 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 min-h-[48px]"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          Add Item
+          Filter <ChevronDown className="w-4 h-4" />
+          {activeFilterCount > 0 && (
+            <span
+              className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
+              style={{ backgroundColor: '#6C63FF' }}
+            >
+              {activeFilterCount}
+            </span>
+          )}
         </button>
       </div>
 
-      {/* Summary chips */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
-        {chipDefs.map(c => (
-          <button
-            key={c.id}
-            onClick={() => applyChip(c.id)}
-            className="shrink-0 px-3.5 py-2 rounded-full text-xs font-semibold border transition-colors whitespace-nowrap"
-            style={{
-              borderColor: activeChip === c.id ? '#6C63FF' : '#E5E7EB',
-              backgroundColor: activeChip === c.id ? '#6C63FF' : '#fff',
-              color: activeChip === c.id ? '#fff' : '#4B5563',
-            }}
-          >
-            {c.label}: {c.count}
-          </button>
-        ))}
-      </div>
-
-      {/* Search + filters */}
-      <div className="flex flex-wrap gap-2 mb-5">
-        <input
-          type="text" placeholder="Search by name or brand"
-          value={search} onChange={e => setSearch(e.target.value)}
-          className="flex-1 min-w-[180px] px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+      {mobileFilterOpen && (
+        <MobileFilterSheet
+          categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter}
+          sortBy={sortBy} setSortBy={setSortBy}
+          onClose={() => setMobileFilterOpen(false)}
         />
-        <select
-          value={categoryFilter} onChange={e => setCategoryFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-[#6C63FF]"
-        >
-          <option value="">All Categories</option>
-          {WISHLIST_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select
-          value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-[#6C63FF]"
-        >
-          <option value="">All Statuses</option>
-          {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
-        <select
-          value={priorityFilter} onChange={e => setPriorityFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-[#6C63FF]"
-        >
-          <option value="">All Priorities</option>
-          {PRIORITIES.map(p => <option key={p.value} value={p.value}>{p.emoji} {p.label}</option>)}
-        </select>
-        <select
-          value={sortBy} onChange={e => setSortBy(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 focus:outline-none focus:border-[#6C63FF]"
-        >
-          <option value="recent">Recently Added</option>
-          <option value="priority">Priority</option>
-          <option value="price">Price</option>
-          <option value="name">Name</option>
-        </select>
-      </div>
+      )}
 
       {loading ? (
-        <p className="text-sm text-gray-400 py-14 text-center">Loading…</p>
+        <p className="text-sm text-gray-400 py-14 text-center">Loading your wishlist…</p>
       ) : items.length === 0 ? (
-        <div className="flex flex-col items-center justify-center text-center py-16">
-          <BagIcon className="w-20 h-20 mb-4" style={{ color: '#D1D5DB' }} />
-          <p className="text-gray-700 font-semibold">Your wishlist is empty</p>
-          <p className="text-sm text-gray-400 mt-1 mb-5">Save items you want to buy in the future</p>
+        <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+          <div style={{ fontSize: 64, lineHeight: 1 }} className="mb-4">🛍️</div>
+          <p className="text-xl font-extrabold text-gray-900">Your wishlist is empty</p>
+          <p className="text-sm text-gray-500 mt-1.5 mb-6 max-w-xs">
+            Save things you want to buy — from gadgets to gear to everyday essentials.
+          </p>
           <button
             onClick={openAdd}
-            className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
+            className="px-6 py-3.5 rounded-full text-white text-sm font-bold shadow-lg hover:opacity-90 transition-opacity min-h-[48px]"
             style={{ backgroundColor: '#6C63FF' }}
           >
-            + Add First Item
+            + Add Your First Item
           </button>
         </div>
       ) : visibleItems.length === 0 ? (
-        <p className="text-sm text-gray-400 py-14 text-center">No items match these filters.</p>
+        <p className="text-sm text-gray-400 py-14 text-center">🔍 No items match these filters.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {visibleItems.map(item => (
-            <ItemCard
-              key={item.id}
-              item={item}
-              onEdit={openEdit}
-              onMarkPurchased={markPurchased}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
+        <>
+          {activeItems.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {activeItems.map(item => (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  onEdit={openEdit}
+                  onMarkPurchased={markPurchased}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
+
+          {purchasedItems.length > 0 && (
+            <div className={activeItems.length > 0 ? 'mt-10' : ''}>
+              <div className="flex items-center gap-3 mb-5">
+                <div className="h-px flex-1 bg-gray-200" />
+                <span className="text-sm font-bold text-gray-500 flex items-center gap-1.5">✅ Purchased ({purchasedItems.length})</span>
+                <div className="h-px flex-1 bg-gray-200" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {purchasedItems.map(item => (
+                  <ItemCard
+                    key={item.id}
+                    item={item}
+                    onEdit={openEdit}
+                    onMarkPurchased={markPurchased}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {showModal && <WishlistModal item={modalItem} onSave={handleSaved} onClose={closeModal} />}
