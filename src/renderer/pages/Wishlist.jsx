@@ -57,10 +57,44 @@ const SORT_OPTIONS = [
   { value: 'name',     label: 'Name',            emoji: '🔤' },
 ]
 
+// Timeline view — one section per purchase_timing value, in display order.
+// `kind: 'current-year'` sections are inferred to belong to the current
+// calendar year (there's no real target date on the item, just this label),
+// so they're hidden when a different specific year is selected. `conditional`
+// and `noplan` sections have no year at all — only "All Time" shows them.
+const TIME_SECTIONS = [
+  { key: 'Now',                       emoji: '🔥', label: 'Now',                       color: '#EF4444', tint: '#FEF2F2', kind: 'current-year' },
+  { key: 'This Month',                emoji: '📅', label: 'This Month',                color: '#F97316', tint: '#FFF7ED', kind: 'current-year' },
+  { key: 'Next 3 Months',             emoji: '🗓️', label: 'Next 3 Months',             color: '#F59E0B', tint: '#FFFBEB', kind: 'current-year' },
+  { key: 'Later',                     emoji: '⏳', label: 'Later',                     color: '#3B82F6', tint: '#EFF6FF', kind: 'current-year' },
+  { key: 'After I Buy a House',       emoji: '🏠', label: 'After I Buy a House',       color: '#A855F7', tint: '#FAF5FF', kind: 'conditional' },
+  { key: 'After I Move',              emoji: '🚚', label: 'After I Move',              color: '#A855F7', tint: '#FAF5FF', kind: 'conditional' },
+  { key: 'When Current One Breaks',   emoji: '🔧', label: 'When Current One Breaks',   color: '#A855F7', tint: '#FAF5FF', kind: 'conditional' },
+  { key: 'After Next Salary Revision', emoji: '💵', label: 'After Next Salary Revision', color: '#A855F7', tint: '#FAF5FF', kind: 'conditional' },
+  { key: 'No Plan',                   emoji: '📋', label: 'No Plan',                   color: '#6B7280', tint: '#F9FAFB', kind: 'noplan' },
+]
+const PURCHASED_SECTION = { key: 'Purchased', emoji: '✅', label: 'Purchased', color: '#22C55E', tint: '#F0FDF4' }
+
+const CURRENT_YEAR = new Date().getFullYear()
+const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
+
+const VIEW_STORAGE_KEY = 'wealthlens_wishlist_view'
+function getStoredView() {
+  try {
+    return localStorage.getItem(VIEW_STORAGE_KEY) === 'timeline' ? 'timeline' : 'grid'
+  } catch {
+    return 'grid'
+  }
+}
+
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
 const priorityMeta = (p) => PRIORITIES.find(x => x.value === p) || PRIORITIES[1]
 const statusMeta = (s) => STATUSES.find(x => x.value === s) || STATUSES[0]
+// Any purchase_timing that doesn't match a known section (shouldn't happen —
+// the modal only offers these 9 values — but items are never dropped from
+// view, so unknown/blank values fall back to "No Plan").
+const timingSection = (timing) => TIME_SECTIONS.find(d => d.key === timing) || TIME_SECTIONS[TIME_SECTIONS.length - 1]
 
 // One-time keyframes for the "new card slides in" / "flash on purchase"
 // micro-interactions — a plain <style> tag needs no Tailwind config change.
@@ -463,6 +497,221 @@ function ItemCard({ item, onEdit, onMarkPurchased, onDelete }) {
   )
 }
 
+// ── Compact card used inside timeline sections ──────────────────────────
+function TimelineCard({ item, onEdit, onMarkPurchased, onDelete }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const cat = categoryMeta(item.category)
+  const st = statusMeta(item.status)
+  const isPurchased = item.status === 'purchased'
+
+  return (
+    <div
+      className="wl-card-enter relative bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 w-[210px] shrink-0 md:w-auto"
+      style={{ borderLeft: `3px solid ${isPurchased ? '#22C55E' : cat.color}` }}
+    >
+      <div className="flex items-start justify-between gap-1">
+        <h4 className="text-sm font-bold text-gray-900 leading-snug line-clamp-2 pr-1">{item.name}</h4>
+        <div className="relative shrink-0">
+          <button
+            onClick={() => setMenuOpen(o => !o)}
+            className="w-7 h-7 -mr-1 -mt-1 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
+              <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+            </svg>
+          </button>
+          {menuOpen && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+              <div className="absolute right-0 top-8 z-20 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
+                <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                  ✏️ Edit
+                </button>
+                {!isPurchased && (
+                  <button onClick={() => { setMenuOpen(false); onMarkPurchased(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                    ✅ Mark Purchased
+                  </button>
+                )}
+                <button onClick={() => { setMenuOpen(false); onDelete(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50">
+                  🗑️ Delete
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      <p className="text-xs text-gray-500 mt-0.5 truncate">
+        {item.brand && <>{item.brand} • </>}
+        {item.price != null && item.price !== '' ? INR.format(item.price) : 'Price not set'}
+      </p>
+
+      <div className="flex items-center justify-between gap-2 mt-2.5">
+        <span
+          className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+          style={{ backgroundColor: st.bg, color: st.fg, textDecoration: st.strike ? 'line-through' : 'none' }}
+        >
+          {st.label}
+        </span>
+        {item.url && (
+          <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold" style={{ color: '#6C63FF' }}>
+            Open ↗
+          </a>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── One collapsible timeline section (header + its cards) ──────────────
+function TimelineSection({ def, monthLabel, items, collapsed, onToggle, onEdit, onMarkPurchased, onDelete }) {
+  if (items.length === 0) return null
+  const label = def.key === 'This Month' && monthLabel ? `${def.label} — ${monthLabel}` : def.label
+
+  return (
+    <div className="mb-7">
+      <button type="button" onClick={onToggle} className="w-full flex items-center gap-2.5 mb-3">
+        <span className="text-lg">{def.emoji}</span>
+        <span className="text-sm font-extrabold uppercase tracking-wide whitespace-nowrap" style={{ color: def.color }}>{label}</span>
+        <span className="text-xs font-bold px-2 py-0.5 rounded-full whitespace-nowrap" style={{ backgroundColor: def.tint, color: def.color }}>
+          {items.length} item{items.length === 1 ? '' : 's'}
+        </span>
+        <div className="h-px flex-1 bg-gray-100" />
+        <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${collapsed ? '-rotate-90' : ''}`} />
+      </button>
+
+      {!collapsed && (
+        <>
+          <div className="flex md:hidden gap-3 overflow-x-auto pb-1 -mx-1 px-1">
+            {items.map(item => (
+              <TimelineCard key={item.id} item={item} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete} />
+            ))}
+          </div>
+          <div className="hidden md:grid grid-cols-2 lg:grid-cols-3 gap-3">
+            {items.map(item => (
+              <TimelineCard key={item.id} item={item} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+// ── Timeline view — items grouped by purchase timing ────────────────────
+function TimelineView({ items, onEdit, onMarkPurchased, onDelete }) {
+  const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR)
+  const [collapsed, setCollapsed] = useState({})
+
+  const nonPurchased = useMemo(() => items.filter(i => i.status !== 'purchased'), [items])
+  const purchased = useMemo(() => items.filter(i => i.status === 'purchased'), [items])
+
+  const monthLabel = useMemo(() => new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }), [])
+
+  const visibleSections = useMemo(
+    () => TIME_SECTIONS.filter(def => selectedYear === 'all' || def.kind === 'current-year'),
+    [selectedYear]
+  )
+
+  const groupedByKey = useMemo(() => {
+    const groups = {}
+    for (const def of TIME_SECTIONS) groups[def.key] = []
+    for (const item of nonPurchased) groups[timingSection(item.purchase_timing).key].push(item)
+    return groups
+  }, [nonPurchased])
+
+  // Budget breakdown — planned (not-yet-purchased) items with a price set,
+  // independent of the year pill so the totals always describe everything.
+  const priced = useMemo(() => nonPurchased.filter(i => i.price != null && i.price !== ''), [nonPurchased])
+  const sumByKind = (kind) => priced.filter(i => timingSection(i.purchase_timing).kind === kind).reduce((s, i) => s + Number(i.price), 0)
+  const thisYearTotal = sumByKind('current-year')
+  const conditionalTotal = sumByKind('conditional')
+  const noPlanTotal = sumByKind('noplan')
+  const totalSpend = thisYearTotal + conditionalTotal + noPlanTotal
+
+  const toggleSection = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }))
+
+  const nothingToShow = visibleSections.every(def => groupedByKey[def.key].length === 0) && purchased.length === 0
+
+  return (
+    <div>
+      {/* Budget summary */}
+      <div className="rounded-2xl p-4 mb-5" style={{ backgroundColor: '#F5F4FF' }}>
+        <p className="text-sm font-bold text-gray-800">
+          💰 Planned spend: <span style={{ color: '#6C63FF' }}>{INR.format(totalSpend)}</span> across {priced.length} item{priced.length === 1 ? '' : 's'}
+        </p>
+        <p className="text-xs text-gray-500 mt-1.5 flex flex-wrap gap-x-4 gap-y-1">
+          <span>This year: <b className="text-gray-700">{INR.format(thisYearTotal)}</b></span>
+          <span>Conditional: <b className="text-gray-700">{INR.format(conditionalTotal)}</b></span>
+          <span>No plan: <b className="text-gray-700">{INR.format(noPlanTotal)}</b></span>
+        </p>
+      </div>
+
+      {/* Year selector */}
+      <div className="flex gap-2 mb-6 overflow-x-auto pb-1 -mx-1 px-1">
+        {YEAR_OPTIONS.map(y => (
+          <button
+            key={y} onClick={() => setSelectedYear(y)}
+            className="shrink-0 px-4 py-2 rounded-full text-sm font-bold border transition-colors"
+            style={{
+              backgroundColor: selectedYear === y ? '#6C63FF' : '#fff',
+              borderColor: selectedYear === y ? '#6C63FF' : '#E5E7EB',
+              color: selectedYear === y ? '#fff' : '#4B5563',
+            }}
+          >
+            {y}
+          </button>
+        ))}
+        <button
+          onClick={() => setSelectedYear('all')}
+          className="shrink-0 px-4 py-2 rounded-full text-sm font-bold border transition-colors"
+          style={{
+            backgroundColor: selectedYear === 'all' ? '#6C63FF' : '#fff',
+            borderColor: selectedYear === 'all' ? '#6C63FF' : '#E5E7EB',
+            color: selectedYear === 'all' ? '#fff' : '#4B5563',
+          }}
+        >
+          All Time
+        </button>
+      </div>
+
+      {nothingToShow ? (
+        <p className="text-sm text-gray-400 py-14 text-center">
+          📭 Nothing planned for {selectedYear === 'all' ? 'this view' : selectedYear} — try "All Time".
+        </p>
+      ) : (
+        <>
+          {visibleSections.map(def => (
+            <TimelineSection
+              key={def.key}
+              def={def}
+              monthLabel={monthLabel}
+              items={groupedByKey[def.key]}
+              collapsed={Boolean(collapsed[def.key])}
+              onToggle={() => toggleSection(def.key)}
+              onEdit={onEdit}
+              onMarkPurchased={onMarkPurchased}
+              onDelete={onDelete}
+            />
+          ))}
+
+          {purchased.length > 0 && (
+            <TimelineSection
+              def={PURCHASED_SECTION}
+              items={purchased}
+              collapsed={Boolean(collapsed[PURCHASED_SECTION.key])}
+              onToggle={() => toggleSection(PURCHASED_SECTION.key)}
+              onEdit={onEdit}
+              onMarkPurchased={onMarkPurchased}
+              onDelete={onDelete}
+            />
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 // ── Mobile filter bottom sheet ──────────────────────────────────────────
 function MobileFilterSheet({ categoryFilter, setCategoryFilter, sortBy, setSortBy, onClose }) {
   return (
@@ -549,6 +798,12 @@ export default function Wishlist() {
   const [modalItem, setModalItem] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
+  const [view, setView] = useState(getStoredView)
+
+  function changeView(v) {
+    setView(v)
+    try { localStorage.setItem(VIEW_STORAGE_KEY, v) } catch {}
+  }
 
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState('')
@@ -657,16 +912,35 @@ export default function Wishlist() {
               {counts.high > 0 && <> • {counts.high} high priority</>}
             </p>
           </div>
-          <button
-            onClick={openAdd}
-            className="flex items-center gap-2 px-5 py-3 rounded-full bg-white text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all min-h-[48px]"
-            style={{ color: '#6C63FF' }}
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
-              <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Add Item
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 bg-white/70 backdrop-blur rounded-full p-1 shadow-sm border border-white">
+              <button
+                onClick={() => changeView('grid')}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-bold transition-colors min-h-[40px]"
+                style={{ backgroundColor: view === 'grid' ? '#6C63FF' : 'transparent', color: view === 'grid' ? '#fff' : '#6B7280' }}
+              >
+                ⊞ Grid
+              </button>
+              <button
+                onClick={() => changeView('timeline')}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-bold transition-colors min-h-[40px]"
+                style={{ backgroundColor: view === 'timeline' ? '#6C63FF' : 'transparent', color: view === 'timeline' ? '#fff' : '#6B7280' }}
+              >
+                📅 Timeline
+              </button>
+            </div>
+
+            <button
+              onClick={openAdd}
+              className="flex items-center gap-2 px-5 py-3 rounded-full bg-white text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all min-h-[48px]"
+              style={{ color: '#6C63FF' }}
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Add Item
+            </button>
+          </div>
         </div>
       </div>
 
@@ -790,6 +1064,13 @@ export default function Wishlist() {
         </div>
       ) : visibleItems.length === 0 ? (
         <p className="text-sm text-gray-400 py-14 text-center">🔍 No items match these filters.</p>
+      ) : view === 'timeline' ? (
+        <TimelineView
+          items={visibleItems}
+          onEdit={openEdit}
+          onMarkPurchased={markPurchased}
+          onDelete={handleDelete}
+        />
       ) : (
         <>
           {activeItems.length > 0 && (
