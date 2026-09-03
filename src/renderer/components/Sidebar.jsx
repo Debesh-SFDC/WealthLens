@@ -36,6 +36,16 @@ const navItems = [
     ),
   },
   {
+    id: 'wishlist',
+    label: 'Wishlist',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <path d="M6 7h12l1.2 13.2a1 1 0 0 1-1 1.1H5.8a1 1 0 0 1-1-1.1L6 7z" />
+        <path d="M9 7V5.5a3 3 0 0 1 6 0V7" />
+      </svg>
+    ),
+  },
+  {
     id: 'networth',
     label: 'Net Worth',
     icon: (

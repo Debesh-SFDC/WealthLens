@@ -14,6 +14,7 @@ import NetWorth from './pages/NetWorth'
 import FirePlannerPage from './pages/FirePlannerPage'
 import Goals from './pages/Goals'
 import TravelPage from './pages/TravelPage'
+import Wishlist from './pages/Wishlist'
 import Settings from './pages/Settings'
 import TrackerApp from './components/TrackerApp'
 import AdminWeight from './pages/AdminWeight'
@@ -27,6 +28,7 @@ const adminPages = {
   goals:       Goals,
   salary:      SalaryAllocator,
   travel:      TravelPage,
+  wishlist:    Wishlist,
   settings:    Settings,
   health:      AdminWeight,
 }

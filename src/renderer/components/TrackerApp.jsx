@@ -5,6 +5,7 @@ import TrackerMonth from '../pages/TrackerMonth'
 import TrackerDashboard from '../pages/TrackerDashboard'
 import TrackerInsights from '../pages/TrackerInsights'
 import TrackerWeight from '../pages/TrackerWeight'
+import Wishlist from '../pages/Wishlist'
 
 function HomeIcon() {
   return (
@@ -58,6 +59,15 @@ function WeightIcon() {
   )
 }
 
+function WishlistIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+      <path d="M6 7h12l1.2 13.2a1 1 0 0 1-1 1.1H5.8a1 1 0 0 1-1-1.1L6 7z" />
+      <path d="M9 7V5.5a3 3 0 0 1 6 0V7" />
+    </svg>
+  )
+}
+
 function SignOutIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
@@ -71,6 +81,7 @@ function SignOutIcon() {
 const navItems = [
   { id: 'home',       label: 'Home',       Icon: HomeIcon },
   { id: 'expenses',   label: 'Expenses',   Icon: ExpensesIcon },
+  { id: 'wishlist',   label: 'Wishlist',   Icon: WishlistIcon },
   { id: 'dashboard',  label: 'Dashboard',  Icon: DashboardIcon },
   { id: 'insights',   label: 'Insights',   Icon: InsightsIcon },
   { id: 'weight',     label: 'Weight',     Icon: WeightIcon },
@@ -210,6 +221,7 @@ export default function TrackerApp({ user, onSignOut }) {
       <main className="flex-1 overflow-y-auto bg-gray-50 pb-16 lg:pb-0">
         {page === 'home'       && <TrackerHome       user={user} />}
         {page === 'expenses'   && <TrackerMonth      user={user} />}
+        {page === 'wishlist'   && <Wishlist          user={user} />}
         {page === 'dashboard'  && <TrackerDashboard  user={user} />}
         {page === 'insights'   && <TrackerInsights   user={user} />}
         {page === 'weight'     && <TrackerWeight     user={user} />}

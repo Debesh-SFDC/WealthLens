@@ -351,3 +351,38 @@ CREATE INDEX IF NOT EXISTS idx_travel_budget_trip ON travel_budget_items(trip_id
 CREATE INDEX IF NOT EXISTS idx_travel_packing_trip ON travel_packing_items(trip_id);
 CREATE INDEX IF NOT EXISTS idx_travel_documents_trip ON travel_documents(trip_id);
 CREATE INDEX IF NOT EXISTS idx_travel_companions_trip ON travel_companions(trip_id);
+
+-- Wishlist — a private, per-user list of things to buy someday. Available to
+-- both admin and tracker roles; every route/IPC handler scopes to the
+-- caller's own user_id, so wishlists are never visible across users.
+CREATE TABLE IF NOT EXISTS wishlist_items (
+  id              SERIAL PRIMARY KEY,
+  sync_id         TEXT UNIQUE,
+  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name            TEXT NOT NULL,
+  brand           TEXT,
+  category        TEXT NOT NULL DEFAULT 'Other',
+  url             TEXT,
+  price           REAL,
+  currency        TEXT DEFAULT 'INR',
+  priority        TEXT DEFAULT 'medium' CHECK (priority IN ('high','medium','low')),
+  status          TEXT DEFAULT 'wishlist' CHECK (status IN ('wishlist','shortlisted','planned','purchased','dropped')),
+  purchase_timing TEXT DEFAULT 'No Plan',
+  notes           TEXT,
+  deleted_at      TEXT,
+  created_at      TEXT DEFAULT (now()::text),
+  updated_at      TEXT DEFAULT (now()::text)
+);
+
+CREATE INDEX IF NOT EXISTS idx_wishlist_items_user ON wishlist_items(user_id);
+
+-- Seed one example item for the admin account (id=1), once — guarded with
+-- WHERE NOT EXISTS rather than ON CONFLICT since there's no natural unique
+-- key to target here, and this script is safe to re-run.
+INSERT INTO wishlist_items
+  (user_id, name, brand, category, url, purchase_timing, status, priority, notes)
+SELECT 1, 'AutoEngina Helmet & Jacket Hanger', 'AutoEngina', 'Home',
+  'https://autoengina.com/products/helmet-jacket-hanger-engina-lifestyle?variant=46303575474396',
+  'After I Buy a House', 'wishlist', 'medium',
+  'Buy this or something similar depending on the new home available wall/storage space.'
+WHERE NOT EXISTS (SELECT 1 FROM wishlist_items) AND EXISTS (SELECT 1 FROM users WHERE id = 1);

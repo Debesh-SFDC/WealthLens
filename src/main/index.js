@@ -1431,6 +1431,60 @@ function setupIpcHandlers() {
     return { expensesImported, weightImported }
   })
 
+  // ── Wishlist ───────────────────────────────────────────────────────────────
+  // Always scoped to currentUserSession.id (never a renderer-supplied userId)
+  // so one signed-in user can never read or edit another's wishlist items.
+  ipcMain.handle('wishlist:getAll', (_, filters = {}) => {
+    const { status, priority, category, search } = filters || {}
+    let query = 'SELECT * FROM wishlist_items WHERE user_id = ? AND deleted_at IS NULL'
+    const params = [currentUserSession?.id]
+    if (status)   { query += ' AND status = ?';   params.push(status) }
+    if (priority) { query += ' AND priority = ?'; params.push(priority) }
+    if (category) { query += ' AND category = ?'; params.push(category) }
+    if (search)   { query += ' AND (name LIKE ? OR brand LIKE ?)'; params.push(`%${search}%`, `%${search}%`) }
+    query += ' ORDER BY created_at DESC'
+    return db.prepare(query).all(...params)
+  })
+
+  ipcMain.handle('wishlist:create', (_, d = {}) => {
+    if (!d.name) throw new Error('name is required')
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      INSERT INTO wishlist_items (sync_id, user_id, name, brand, category, url, price, currency,
+        priority, status, purchase_timing, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(), currentUserSession?.id, d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null,
+      d.price ?? null, d.currency ?? 'INR', d.priority ?? 'medium', d.status ?? 'wishlist',
+      d.purchase_timing ?? 'No Plan', d.notes ?? null, now, now
+    )
+    return { id: info.lastInsertRowid }
+  })
+
+  ipcMain.handle('wishlist:update', (_, d = {}) => {
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      UPDATE wishlist_items SET name = ?, brand = ?, category = ?, url = ?, price = ?, currency = ?,
+        priority = ?, status = ?, purchase_timing = ?, notes = ?, updated_at = ?
+      WHERE id = ? AND user_id = ?
+    `).run(
+      d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null, d.price ?? null, d.currency ?? 'INR',
+      d.priority ?? 'medium', d.status ?? 'wishlist', d.purchase_timing ?? 'No Plan', d.notes ?? null,
+      now, d.id, currentUserSession?.id
+    )
+    if (!info.changes) throw new Error('Item not found')
+    return { success: true }
+  })
+
+  ipcMain.handle('wishlist:delete', (_, id) => {
+    const now = new Date().toISOString()
+    const info = db.prepare(
+      'UPDATE wishlist_items SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ?'
+    ).run(now, now, id, currentUserSession?.id)
+    if (!info.changes) throw new Error('Item not found')
+    return { success: true }
+  })
+
   // Rebalancing actions
   ipcMain.handle('rebalancing:getAll', () => {
     return db.prepare('SELECT * FROM rebalancing_actions ORDER BY created_at DESC').all()

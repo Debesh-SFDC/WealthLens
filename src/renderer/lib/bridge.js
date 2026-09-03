@@ -232,6 +232,20 @@ const bridge = {
   deleteCompanion: (id) => IS_ELECTRON
     ? window.electronAPI.deleteCompanion(id)
     : webCall('DELETE', `/travel/companions/${id}`),
+
+  // Wishlist — both roles, always scoped to the caller's own items
+  getWishlistItems: (filters) => IS_ELECTRON
+    ? window.electronAPI.getWishlistItems(filters)
+    : webCall('GET', `/wishlist?${new URLSearchParams(filters || {})}`),
+  createWishlistItem: (data) => IS_ELECTRON
+    ? window.electronAPI.createWishlistItem(data)
+    : webCall('POST', '/wishlist', data),
+  updateWishlistItem: (data) => IS_ELECTRON
+    ? window.electronAPI.updateWishlistItem(data)
+    : webCall('PUT', `/wishlist/${data.id}`, data),
+  deleteWishlistItem: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteWishlistItem(id)
+    : webCall('DELETE', `/wishlist/${id}`),
 }
 
 export default bridge

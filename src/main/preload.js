@@ -128,4 +128,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Rebalancing actions
   rebalancingGetAll: () => ipcRenderer.invoke('rebalancing:getAll'),
   rebalancingUpsert: (text, status) => ipcRenderer.invoke('rebalancing:upsert', text, status),
+
+  // Wishlist — always the caller's own items (scoped server-side by session)
+  getWishlistItems:    (filters) => ipcRenderer.invoke('wishlist:getAll', filters),
+  createWishlistItem:  (data)    => ipcRenderer.invoke('wishlist:create', data),
+  updateWishlistItem:  (data)    => ipcRenderer.invoke('wishlist:update', data),
+  deleteWishlistItem:  (id)      => ipcRenderer.invoke('wishlist:delete', id),
 })

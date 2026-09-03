@@ -38,6 +38,7 @@ export function initDatabase() {
   createSyncLogTable()
   createFirePlannerTable()
   createTravelTables()
+  createWishlistTable()
   return db
 }
 
@@ -807,6 +808,53 @@ function createTravelTables() {
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_travel_packing_trip ON travel_packing_items(trip_id)') } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_travel_documents_trip ON travel_documents(trip_id)') } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_travel_companions_trip ON travel_companions(trip_id)') } catch {}
+}
+
+// Wishlist — a private, per-user list of things to buy someday. Available to
+// both admin and tracker roles; every route/IPC handler scopes to the
+// caller's own user_id, so wishlists are never visible across users.
+function createWishlistTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wishlist_items (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id         TEXT UNIQUE,
+      user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name            TEXT NOT NULL,
+      brand           TEXT,
+      category        TEXT NOT NULL DEFAULT 'Other',
+      url             TEXT,
+      price           REAL,
+      currency        TEXT DEFAULT 'INR',
+      priority        TEXT DEFAULT 'medium' CHECK (priority IN ('high','medium','low')),
+      status          TEXT DEFAULT 'wishlist' CHECK (status IN ('wishlist','shortlisted','planned','purchased','dropped')),
+      purchase_timing TEXT DEFAULT 'No Plan',
+      notes           TEXT,
+      deleted_at      TEXT,
+      created_at      TEXT DEFAULT (datetime('now')),
+      updated_at      TEXT DEFAULT (datetime('now'))
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_wishlist_items_user ON wishlist_items(user_id)') } catch {}
+
+  // Seed one example item for the admin account, once, so the tab isn't
+  // empty on first run.
+  const { count } = db.prepare('SELECT COUNT(*) as count FROM wishlist_items').get()
+  if (count === 0) {
+    const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+    if (admin) {
+      db.prepare(`
+        INSERT INTO wishlist_items
+          (user_id, name, brand, category, url, purchase_timing, status, priority, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        admin.id,
+        'AutoEngina Helmet & Jacket Hanger', 'AutoEngina', 'Home',
+        'https://autoengina.com/products/helmet-jacket-hanger-engina-lifestyle?variant=46303575474396',
+        'After I Buy a House', 'wishlist', 'medium',
+        'Buy this or something similar depending on the new home available wall/storage space.'
+      )
+    }
+  }
 }
 
 export function logSyncEvent(db, { deviceId, status, rowsUploaded = 0, rowsDownloaded = 0, errorMessage = null }) {
