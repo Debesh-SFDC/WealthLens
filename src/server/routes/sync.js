@@ -86,18 +86,18 @@ router.post('/', async (req, res) => {
       const local = localRows[0]
       if (!local) {
         await db.query(
-          `INSERT INTO profile (sync_id, name, monthly_salary, salary_updated_at, date_of_birth, retirement_age, updated_at, device_id)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO profile (sync_id, name, monthly_salary, salary_updated_at, date_of_birth, retirement_age, retirement_date, updated_at, device_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [pr.id, pr.name, pr.monthly_salary, pr.salary_updated_at ?? null, pr.date_of_birth ?? null,
-           pr.retirement_age ?? 60, pr.updated_at, pr.device_id ?? null]
+           pr.retirement_age ?? 60, pr.retirement_date ?? null, pr.updated_at, pr.device_id ?? null]
         )
         downloaded++
       } else if (newer(pr.updated_at, local.updated_at)) {
         await db.query(
           `UPDATE profile SET sync_id = ?, name = ?, monthly_salary = ?, salary_updated_at = ?,
-             date_of_birth = ?, retirement_age = ?, updated_at = ?, device_id = ? WHERE id = ?`,
+             date_of_birth = ?, retirement_age = ?, retirement_date = ?, updated_at = ?, device_id = ? WHERE id = ?`,
           [pr.id, pr.name, pr.monthly_salary, pr.salary_updated_at ?? null, pr.date_of_birth ?? null,
-           pr.retirement_age ?? 60, pr.updated_at, pr.device_id ?? null, local.id]
+           pr.retirement_age ?? 60, pr.retirement_date ?? null, pr.updated_at, pr.device_id ?? null, local.id]
         )
         downloaded++
       }

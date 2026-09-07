@@ -543,13 +543,13 @@ function setupIpcHandlers() {
     const existing = db.prepare('SELECT id FROM profile LIMIT 1').get()
     if (existing) {
       db.prepare(
-        `UPDATE profile SET name = ?, monthly_salary = ?, salary_updated_at = datetime('now'), date_of_birth = ?, retirement_age = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`
-      ).run(data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60, deviceId, existing.id)
+        `UPDATE profile SET name = ?, monthly_salary = ?, salary_updated_at = datetime('now'), date_of_birth = ?, retirement_age = ?, retirement_date = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`
+      ).run(data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60, data.retirement_date || null, deviceId, existing.id)
       return { id: existing.id }
     }
     const result = db.prepare(
-      `INSERT INTO profile (sync_id, name, monthly_salary, salary_updated_at, date_of_birth, retirement_age, updated_at, device_id) VALUES (?, ?, ?, datetime('now'), ?, ?, datetime('now'), ?)`
-    ).run(randomUUID(), data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60, deviceId)
+      `INSERT INTO profile (sync_id, name, monthly_salary, salary_updated_at, date_of_birth, retirement_age, retirement_date, updated_at, device_id) VALUES (?, ?, ?, datetime('now'), ?, ?, ?, datetime('now'), ?)`
+    ).run(randomUUID(), data.name, data.monthly_salary, data.date_of_birth || null, data.retirement_age || 60, data.retirement_date || null, deviceId)
     return { id: result.lastInsertRowid }
   })
 

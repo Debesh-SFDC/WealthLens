@@ -44,6 +44,16 @@ function addYears(date, n) {
   return d
 }
 
+// Whole years between a birth date and a target date.
+function ageOnDate(dob, target) {
+  let age = target.getFullYear() - dob.getFullYear()
+  if (
+    target.getMonth() < dob.getMonth() ||
+    (target.getMonth() === dob.getMonth() && target.getDate() < dob.getDate())
+  ) age -= 1
+  return age
+}
+
 // ── Count-up hook (numbers animate 0 → value on mount, ~1s, ease-out) ─────
 function useCountUp(target, duration = 1000) {
   const [value, setValue] = useState(0)
@@ -133,23 +143,28 @@ export default function RetirementCountdown({
 
   const goToFire = onNavigate ? () => onNavigate('fire') : null
 
-  // ── Edge case: no DOB ──────────────────────────────────────────────────
+  // ── Resolve the target retirement date ─────────────────────────────────
+  // Priority: (a) an explicit profile.retirement_date, (b) DOB + retirement_age,
+  // (c) retirement_age years from today.
   const dobStr = profile?.date_of_birth
-  if (!dobStr) {
-    return (
-      <div className={CARD_CLS} style={CARD_STYLE}>
-        <Header />
-        <p className="mt-3 text-sm text-white/70">
-          Set your date of birth in Settings to see your retirement countdown.
-        </p>
-        {goToFire && <SettingsLink onClick={goToFire} />}
-      </div>
-    )
+  const explicitDateStr = profile?.retirement_date
+  const retirementAge = Number(profile?.retirement_age) || 60
+
+  let retirementDate
+  if (explicitDateStr) {
+    retirementDate = new Date(`${explicitDateStr}T00:00:00`)
+  } else if (dobStr) {
+    retirementDate = addYears(new Date(`${dobStr}T00:00:00`), retirementAge)
+  } else {
+    retirementDate = addYears(new Date(), retirementAge)
   }
 
-  const dob = new Date(`${dobStr}T00:00:00`)
-  const retirementAge = Number(profile?.retirement_age) || 60
-  const retirementDate = addYears(dob, retirementAge)
+  // Age the user will be on that date — computed from DOB when we have it,
+  // otherwise just the configured target age.
+  const ageAtRetirement = dobStr
+    ? ageOnDate(new Date(`${dobStr}T00:00:00`), retirementDate)
+    : retirementAge
+
   const today = new Date()
   const reached = today >= retirementDate
 
@@ -194,7 +209,7 @@ export default function RetirementCountdown({
           <p className="mt-3 text-xs text-white/55">
             Target: {fmtDate(retirementDate)}
             <span className="mx-1.5">•</span>
-            Age {retirementAge}
+            Age {ageAtRetirement}
           </p>
         </>
       )}

@@ -53,9 +53,14 @@ CREATE TABLE IF NOT EXISTS profile (
   tracker_monthly_budget REAL DEFAULT 0,
   date_of_birth          TEXT,
   retirement_age         INTEGER DEFAULT 60,
+  retirement_date        TEXT DEFAULT '2041-08-12',
   updated_at             TEXT,
   device_id              TEXT
 );
+
+-- Specific target retirement date (takes priority over DOB + retirement_age in
+-- the Retirement Countdown widget). Safe to re-run against an already-live DB.
+ALTER TABLE profile ADD COLUMN IF NOT EXISTS retirement_date TEXT DEFAULT '2041-08-12';
 
 CREATE TABLE IF NOT EXISTS goals (
   id                INTEGER PRIMARY KEY,

@@ -22,16 +22,16 @@ router.put('/', async (req, res) => {
   if (existing) {
     await db.query(
       `UPDATE profile SET name = ?, monthly_salary = ?, salary_updated_at = ?, date_of_birth = ?,
-         retirement_age = ?, updated_at = ? WHERE id = ?`,
-      [d.name, d.monthly_salary, now, d.date_of_birth || null, d.retirement_age || 60, now, existing.id]
+         retirement_age = ?, retirement_date = ?, updated_at = ? WHERE id = ?`,
+      [d.name, d.monthly_salary, now, d.date_of_birth || null, d.retirement_age || 60, d.retirement_date || null, now, existing.id]
     )
     return res.json({ id: existing.id })
   }
 
   const { rows } = await db.query(
-    `INSERT INTO profile (sync_id, name, monthly_salary, salary_updated_at, date_of_birth, retirement_age, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    [randomUUID(), d.name, d.monthly_salary, now, d.date_of_birth || null, d.retirement_age || 60, now]
+    `INSERT INTO profile (sync_id, name, monthly_salary, salary_updated_at, date_of_birth, retirement_age, retirement_date, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [randomUUID(), d.name, d.monthly_salary, now, d.date_of_birth || null, d.retirement_age || 60, d.retirement_date || null, now]
   )
   res.json({ id: rows[0].id })
 })

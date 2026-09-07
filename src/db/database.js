@@ -402,6 +402,10 @@ function migrateProfileV2() {
   try { db.exec('ALTER TABLE profile ADD COLUMN date_of_birth TEXT') } catch {}
   try { db.exec('ALTER TABLE profile ADD COLUMN retirement_age INTEGER DEFAULT 60') } catch {}
   db.exec("UPDATE profile SET retirement_age = 60 WHERE retirement_age IS NULL")
+  // Specific target retirement date — takes priority over DOB + retirement_age
+  // in the Retirement Countdown widget when set.
+  try { db.exec("ALTER TABLE profile ADD COLUMN retirement_date TEXT DEFAULT '2041-08-12'") } catch {}
+  db.exec("UPDATE profile SET retirement_date = '2041-08-12' WHERE retirement_date IS NULL")
 }
 
 function migrateRebalancingActions() {

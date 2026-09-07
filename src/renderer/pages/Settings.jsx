@@ -281,7 +281,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
   // My Profile (identity + financial + health, consolidated)
   const [profileForm, setProfileForm] = useState({
     name: '', mobile_number: '', monthly_salary: '', date_of_birth: '',
-    retirement_age: '60', height_cm: '', target_weight_kg: '',
+    retirement_age: '60', retirement_date: '2041-08-12', height_cm: '', target_weight_kg: '',
   })
   const [profileSaved, setProfileSaved] = useState(false)
 
@@ -407,6 +407,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
         monthly_salary: profile?.monthly_salary || '',
         date_of_birth: profile?.date_of_birth || me?.date_of_birth || '',
         retirement_age: String(profile?.retirement_age || 60),
+        retirement_date: profile?.retirement_date || '2041-08-12',
         height_cm: me?.height_cm || '',
         target_weight_kg: me?.target_weight_kg || '',
       })
@@ -470,6 +471,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
         monthly_salary: parseFloat(profileForm.monthly_salary) || 0,
         date_of_birth: profileForm.date_of_birth || null,
         retirement_age: parseInt(profileForm.retirement_age) || 60,
+        retirement_date: profileForm.retirement_date || null,
       })
       if (currentUser) {
         const result = await bridge.updateUser({
@@ -875,6 +877,16 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
               />
               <p className="text-xs text-gray-400 mt-1">Used in glide path chart</p>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Target Retirement Date</label>
+              <input
+                type="date"
+                value={profileForm.retirement_date}
+                onChange={e => setProfileForm(f => ({ ...f, retirement_date: e.target.value }))}
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              />
+              <p className="text-xs text-gray-400 mt-1">Drives the Retirement Countdown — overrides date of birth + age</p>
             </div>
           </div>
 
