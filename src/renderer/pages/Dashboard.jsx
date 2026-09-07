@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
+import RetirementCountdown from '../components/RetirementCountdown'
 import {
   BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts'
@@ -361,7 +362,8 @@ function Chip({ icon, label }) {
 }
 
 // ── Dashboard ─────────────────────────────────────────────────────────────
-export default function Dashboard({ onNavigate }) {
+export default function Dashboard({ onNavigate, currentUser }) {
+  const isTracker = currentUser?.role === 'tracker'
   const [profileName, setProfileName]     = useState('')
   const [currentUserId, setCurrentUserId] = useState(null)
   const [stats, setStats] = useState({
@@ -446,6 +448,11 @@ export default function Dashboard({ onNavigate }) {
           <span className="text-base leading-none">+</span> Log Weight
         </button>
       </div>
+
+      {/* Retirement Countdown — Admin only (Dashboard never renders for Tracker) */}
+      {!isTracker && (
+        <RetirementCountdown currentNetWorth={stats.netWorth} onNavigate={onNavigate} />
+      )}
 
       {loading ? (
         <div className="space-y-3 sm:space-y-4">

@@ -110,6 +110,15 @@ const bridge = {
     ? window.electronAPI.saveProfile(data)
     : webCall('PUT', '/profile', data),
 
+  // FIRE planner settings — Electron-only today (no web route yet); callers
+  // treat a rejection as "not set up".
+  getFireSettings: () => IS_ELECTRON
+    ? window.electronAPI.getFireSettings()
+    : webCall('GET', '/fire-settings'),
+  saveFireSettings: (data) => IS_ELECTRON
+    ? window.electronAPI.saveFireSettings(data)
+    : webCall('PUT', '/fire-settings', data),
+
   // Sync
   syncNow: () => IS_ELECTRON
     ? window.electronAPI.syncNow()

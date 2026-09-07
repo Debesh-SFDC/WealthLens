@@ -182,7 +182,7 @@ export default function App() {
         />
         <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           {activePage === 'dashboard'
-            ? <Dashboard onNavigate={setActivePage} />
+            ? <Dashboard onNavigate={setActivePage} currentUser={currentUser} />
             : <PageComponent onSyncRefresh={loadSyncStatus} currentUser={currentUser} onNavigate={setActivePage} />
           }
         </main>
