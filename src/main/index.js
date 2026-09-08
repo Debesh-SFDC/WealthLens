@@ -1451,12 +1451,13 @@ function setupIpcHandlers() {
     const now = new Date().toISOString()
     const info = db.prepare(`
       INSERT INTO wishlist_items (sync_id, user_id, name, brand, category, url, price, currency,
-        priority, status, purchase_timing, notes, group_name, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        priority, status, purchase_timing, notes, group_name, target_month, target_year, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       randomUUID(), currentUserSession?.id, d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null,
       d.price ?? null, d.currency ?? 'INR', d.priority ?? 'medium', d.status ?? 'wishlist',
-      d.purchase_timing ?? 'No Plan', d.notes ?? null, d.group_name ?? null, now, now
+      d.purchase_timing ?? 'No Plan', d.notes ?? null, d.group_name ?? null,
+      d.target_month ?? null, d.target_year ?? null, now, now
     )
     return { id: info.lastInsertRowid }
   })
@@ -1465,12 +1466,13 @@ function setupIpcHandlers() {
     const now = new Date().toISOString()
     const info = db.prepare(`
       UPDATE wishlist_items SET name = ?, brand = ?, category = ?, url = ?, price = ?, currency = ?,
-        priority = ?, status = ?, purchase_timing = ?, notes = ?, group_name = ?, updated_at = ?
+        priority = ?, status = ?, purchase_timing = ?, notes = ?, group_name = ?,
+        target_month = ?, target_year = ?, updated_at = ?
       WHERE id = ? AND user_id = ?
     `).run(
       d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null, d.price ?? null, d.currency ?? 'INR',
       d.priority ?? 'medium', d.status ?? 'wishlist', d.purchase_timing ?? 'No Plan', d.notes ?? null,
-      d.group_name ?? null, now, d.id, currentUserSession?.id
+      d.group_name ?? null, d.target_month ?? null, d.target_year ?? null, now, d.id, currentUserSession?.id
     )
     if (!info.changes) throw new Error('Item not found')
     return { success: true }

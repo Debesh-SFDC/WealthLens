@@ -375,6 +375,8 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
   purchase_timing TEXT DEFAULT 'No Plan',
   notes           TEXT,
   group_name      TEXT,
+  target_month    INTEGER,
+  target_year     INTEGER,
   deleted_at      TEXT,
   created_at      TEXT DEFAULT (now()::text),
   updated_at      TEXT DEFAULT (now()::text)
@@ -382,8 +384,10 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
 
 CREATE INDEX IF NOT EXISTS idx_wishlist_items_user ON wishlist_items(user_id);
 
--- Existing installs: add group_name if the table pre-dates it.
+-- Existing installs: add columns if the table pre-dates them.
 ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS group_name TEXT;
+ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS target_month INTEGER;
+ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS target_year INTEGER;
 
 -- Seed one example item for the admin account (id=1), once — guarded with
 -- WHERE NOT EXISTS rather than ON CONFLICT since there's no natural unique

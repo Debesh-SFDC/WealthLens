@@ -834,14 +834,18 @@ function createWishlistTable() {
       purchase_timing TEXT DEFAULT 'No Plan',
       notes           TEXT,
       group_name      TEXT,
+      target_month    INTEGER,
+      target_year     INTEGER,
       deleted_at      TEXT,
       created_at      TEXT DEFAULT (datetime('now')),
       updated_at      TEXT DEFAULT (datetime('now'))
     );
   `)
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_wishlist_items_user ON wishlist_items(user_id)') } catch {}
-  // Existing installs: add group_name if the table pre-dates it.
+  // Existing installs: add columns if the table pre-dates them.
   try { db.exec('ALTER TABLE wishlist_items ADD COLUMN group_name TEXT') } catch {}
+  try { db.exec('ALTER TABLE wishlist_items ADD COLUMN target_month INTEGER') } catch {}
+  try { db.exec('ALTER TABLE wishlist_items ADD COLUMN target_year INTEGER') } catch {}
 
   // Seed one example item for the admin account, once, so the tab isn't
   // empty on first run.

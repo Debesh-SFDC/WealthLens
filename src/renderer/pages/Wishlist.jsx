@@ -74,9 +74,38 @@ const TIME_SECTIONS = [
   { key: 'No Plan',                   emoji: '📋', label: 'No Plan',                   color: '#6B7280', tint: '#F9FAFB', kind: 'noplan' },
 ]
 const PURCHASED_SECTION = { key: 'Purchased', emoji: '✅', label: 'Purchased', color: '#22C55E', tint: '#F0FDF4' }
+const THIS_YEAR_SECTION = { key: 'This Year', emoji: '🗓️', label: `This Year (${new Date().getFullYear()})`, color: '#0EA5E9', tint: '#E0F2FE' }
 
 const CURRENT_YEAR = new Date().getFullYear()
 const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
+
+// Optional specific target date on an item — target_month (1–12) + target_year.
+const TARGET_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const TARGET_MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+const TARGET_YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR + i)
+
+// "Mar 2027" / "March 2027" — null unless both month and year are set.
+function targetDateLabel(item, style = 'short') {
+  const m = Number(item?.target_month), y = Number(item?.target_year)
+  if (!m || !y || m < 1 || m > 12) return null
+  return `${(style === 'long' ? TARGET_MONTHS : TARGET_MONTHS_SHORT)[m - 1]} ${y}`
+}
+// Sort key for chronological ordering: dated items first (by year then month),
+// year-only next, undated last.
+function targetSortKey(item) {
+  const m = Number(item?.target_month), y = Number(item?.target_year)
+  if (y && m) return y * 12 + m
+  if (y) return y * 12 + 13
+  return Number.POSITIVE_INFINITY
+}
+// Chronologically by target date, then most-recently-added within the same slot.
+function sortByTargetThenRecent(arr) {
+  return [...arr].sort((a, b) => {
+    const ka = targetSortKey(a), kb = targetSortKey(b)
+    if (ka !== kb) return ka - kb
+    return new Date(b.created_at) - new Date(a.created_at)
+  })
+}
 
 const VIEW_STORAGE_KEY = 'wealthlens_wishlist_view'
 function getStoredView() {
@@ -199,6 +228,7 @@ function WishlistModal({ item, onSave, onClose }) {
     : {
       name: '', category: WISHLIST_CATEGORIES[0], url: '', brand: '', price: '',
       priority: 'medium', status: 'wishlist', purchase_timing: 'No Plan', notes: '', group_name: '',
+      target_month: null, target_year: null,
     }
   )
   const [saving, setSaving] = useState(false)
@@ -214,6 +244,8 @@ function WishlistModal({ item, onSave, onClose }) {
         ...form,
         price: form.price === '' ? null : parseFloat(form.price),
         group_name: (form.group_name || '').trim() || null,
+        target_month: form.target_month ? Number(form.target_month) : null,
+        target_year: form.target_year ? Number(form.target_year) : null,
       }
       if (isEdit) await bridge.updateWishlistItem(data)
       else await bridge.createWishlistItem(data)
@@ -393,6 +425,27 @@ function WishlistModal({ item, onSave, onClose }) {
                 )
               })}
             </div>
+
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 mt-4 block">Set a target date (optional)</label>
+            <div className="flex gap-2">
+              <select
+                value={form.target_month || ''}
+                onChange={e => set('target_month', e.target.value ? Number(e.target.value) : null)}
+                className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              >
+                <option value="">Month</option>
+                {TARGET_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+              <select
+                value={form.target_year || ''}
+                onChange={e => set('target_year', e.target.value ? Number(e.target.value) : null)}
+                className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              >
+                <option value="">Year</option>
+                {TARGET_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
+            </div>
+            <p className="text-xs text-gray-400 mt-2">💡 A specific month/year shows on the card and sorts the item chronologically in Timeline view.</p>
           </section>
 
           {/* Section 5 — Notes & Group */}
@@ -486,6 +539,12 @@ function WishlistDetailModal({ item, onClose, onEdit, onMarkPurchased, onDelete 
               <dt className="w-20 shrink-0 font-semibold text-gray-400">Timing</dt>
               <dd className="text-gray-800">🕐 {item.purchase_timing || '—'}</dd>
             </div>
+            {targetDateLabel(item, 'long') && (
+              <div className="flex gap-3">
+                <dt className="w-20 shrink-0 font-semibold text-gray-400">Target</dt>
+                <dd className="font-semibold" style={{ color: '#2563EB' }}>📅 {targetDateLabel(item, 'long')}</dd>
+              </div>
+            )}
             {added && (
               <div className="flex gap-3">
                 <dt className="w-20 shrink-0 font-semibold text-gray-400">Added</dt>
@@ -547,6 +606,7 @@ function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPur
   const isPurchased = item.status === 'purchased'
   const accent = isPurchased ? '#22C55E' : cat.color
   const hasPrice = item.price != null && item.price !== ''
+  const tgtLabel = targetDateLabel(item)
 
   async function handleMarkPurchased() {
     setFlash(true)
@@ -593,12 +653,18 @@ function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPur
         </h3>
         {item.brand && <p className="text-xs text-gray-400 mt-0.5 truncate">by {item.brand}</p>}
 
-        <div className="mt-auto flex items-center gap-2 text-sm text-gray-600 min-w-0">
+        <div className="mt-auto flex items-center gap-1.5 text-sm text-gray-600 min-w-0">
           <span className="font-bold text-gray-900 shrink-0">{hasPrice ? INR.format(item.price) : '—'}</span>
+          {tgtLabel && (
+            <>
+              <span className="text-gray-300">•</span>
+              <span className="font-semibold shrink-0" style={{ color: '#2563EB' }}>📅 {tgtLabel}</span>
+            </>
+          )}
           {item.purchase_timing && (
             <>
               <span className="text-gray-300">•</span>
-              <span className="truncate">🕐 {item.purchase_timing}</span>
+              <span className="truncate">{tgtLabel ? '' : '🕐 '}{item.purchase_timing}</span>
             </>
           )}
         </div>
@@ -814,6 +880,9 @@ function TimelineCard({ item, onView, onEdit, onMarkPurchased, onDelete }) {
         {item.brand && <>{item.brand} • </>}
         {item.price != null && item.price !== '' ? INR.format(item.price) : 'Price not set'}
       </p>
+      {targetDateLabel(item) && (
+        <p className="text-xs font-semibold mt-1 truncate" style={{ color: '#2563EB' }}>📅 {targetDateLabel(item)}</p>
+      )}
 
       <div className="flex items-center justify-between gap-2 mt-2.5">
         <span
@@ -882,12 +951,27 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
     [selectedYear]
   )
 
+  // The default "current year" view surfaces items with a target date in this
+  // calendar year in their own section; every other view keeps them in their
+  // normal timing group so they never disappear.
+  const showThisYear = selectedYear === CURRENT_YEAR
+  const isThisYearTarget = (i) => Number(i.target_year) === CURRENT_YEAR
+
+  const thisYearItems = useMemo(
+    () => (showThisYear ? sortByTargetThenRecent(nonPurchased.filter(isThisYearTarget)) : []),
+    [nonPurchased, showThisYear]
+  )
+
   const groupedByKey = useMemo(() => {
     const groups = {}
     for (const def of TIME_SECTIONS) groups[def.key] = []
-    for (const item of nonPurchased) groups[timingSection(item.purchase_timing).key].push(item)
+    for (const item of nonPurchased) {
+      if (showThisYear && isThisYearTarget(item)) continue
+      groups[timingSection(item.purchase_timing).key].push(item)
+    }
+    for (const k of Object.keys(groups)) groups[k] = sortByTargetThenRecent(groups[k])
     return groups
-  }, [nonPurchased])
+  }, [nonPurchased, showThisYear])
 
   // Budget breakdown — planned (not-yet-purchased) items with a price set,
   // independent of the year pill so the totals always describe everything.
@@ -900,7 +984,9 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
 
   const toggleSection = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }))
 
-  const nothingToShow = visibleSections.every(def => groupedByKey[def.key].length === 0) && purchased.length === 0
+  const nothingToShow = thisYearItems.length === 0
+    && visibleSections.every(def => groupedByKey[def.key].length === 0)
+    && purchased.length === 0
 
   return (
     <div>
@@ -950,6 +1036,19 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
         </p>
       ) : (
         <>
+          {thisYearItems.length > 0 && (
+            <TimelineSection
+              def={THIS_YEAR_SECTION}
+              items={thisYearItems}
+              collapsed={Boolean(collapsed[THIS_YEAR_SECTION.key])}
+              onToggle={() => toggleSection(THIS_YEAR_SECTION.key)}
+              onView={onView}
+              onEdit={onEdit}
+              onMarkPurchased={onMarkPurchased}
+              onDelete={onDelete}
+            />
+          )}
+
           {visibleSections.map(def => (
             <TimelineSection
               key={def.key}
