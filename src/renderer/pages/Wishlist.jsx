@@ -116,13 +116,26 @@ const statusMeta = (s) => STATUSES.find(x => x.value === s) || STATUSES[0]
 // view, so unknown/blank values fall back to "No Plan").
 const timingSection = (timing) => TIME_SECTIONS.find(d => d.key === timing) || TIME_SECTIONS[TIME_SECTIONS.length - 1]
 
-// One-time keyframes for the "new card slides in" / "flash on purchase"
-// micro-interactions — a plain <style> tag needs no Tailwind config change.
+// One-time keyframes for the card micro-interactions — a plain <style> tag
+// needs no Tailwind config change.
 function WishlistAnimationStyles() {
   return (
     <style>{`
-      @keyframes wl-slide-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
-      .wl-card-enter { animation: wl-slide-in 0.35s ease-out; }
+      @keyframes wl-card-entrance { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      @keyframes wl-card-exit     { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.9); } }
+      @keyframes wl-results-in    { from { opacity: 0; } to { opacity: 1; } }
+      @keyframes wl-flash         { 0% { background: rgba(34,197,94,0); } 25% { background: rgba(34,197,94,0.22); } 100% { background: rgba(34,197,94,0); } }
+      @keyframes wl-pulse {
+        0%, 100% { transform: scale(1);    box-shadow: 0 10px 25px -5px rgba(108,99,255,0.40); }
+        50%      { transform: scale(1.04); box-shadow: 0 16px 32px -5px rgba(108,99,255,0.55); }
+      }
+      .wl-card-enter  { animation: wl-card-entrance 0.3s ease-out both; }
+      .wl-card-exit   { animation: wl-card-exit 0.24s ease-in forwards; pointer-events: none; }
+      .wl-results-in  { animation: wl-results-in 0.25s ease; }
+      .wl-pulse       { animation: wl-pulse 1.8s ease-in-out infinite; }
+      @media (prefers-reduced-motion: reduce) {
+        .wl-card-enter, .wl-card-exit, .wl-results-in, .wl-pulse { animation: none !important; }
+      }
     `}</style>
   )
 }
@@ -418,14 +431,19 @@ function WishlistModal({ item, onSave, onClose }) {
   )
 }
 
-// ── Item card ────────────────────────────────────────────────────────────
-function ItemCard({ item, onEdit, onMarkPurchased, onDelete }) {
-  const [menuOpen, setMenuOpen] = useState(false)
+// ── Compact item card ────────────────────────────────────────────────────
+// Fixed ~172px height, 3px accent bar, notes hidden behind an inline "•••"
+// toggle, and a quick-action row that slides up from the bottom on hover
+// (always visible on touch / small screens where there is no hover).
+function ItemCard({ item, index = 0, removing = false, onEdit, onMarkPurchased, onDelete }) {
   const [flash, setFlash] = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const pr = priorityMeta(item.priority)
   const st = statusMeta(item.status)
   const cat = categoryMeta(item.category)
   const isPurchased = item.status === 'purchased'
+  const accent = isPurchased ? '#22C55E' : cat.color
+  const hasPrice = item.price != null && item.price !== ''
 
   async function handleMarkPurchased() {
     setFlash(true)
@@ -435,198 +453,202 @@ function ItemCard({ item, onEdit, onMarkPurchased, onDelete }) {
 
   return (
     <div
-      className={`wl-card-enter relative bg-white rounded-2xl shadow-md hover:shadow-xl hover:scale-[1.02] transition-all duration-200 p-5 ${isPurchased ? 'opacity-75' : ''}`}
-      style={{ borderLeft: `4px solid ${isPurchased ? '#22C55E' : cat.color}` }}
+      className={`group relative flex flex-col rounded-xl bg-white border border-gray-100 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${removing ? 'wl-card-exit' : 'wl-card-enter'} ${expanded ? '' : 'md:h-[172px]'} ${isPurchased ? 'opacity-80' : ''}`}
+      style={removing ? undefined : { animationDelay: `${Math.min(index, 10) * 50}ms` }}
     >
-      {/* Purchase flash overlay */}
-      <div
-        className="absolute inset-0 rounded-2xl pointer-events-none transition-opacity duration-700"
-        style={{ backgroundColor: '#22C55E', opacity: flash ? 0.18 : 0 }}
+      <span
+        className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl opacity-70 group-hover:opacity-100 transition-opacity"
+        style={{ background: accent }}
       />
+      <div className="absolute inset-0 rounded-xl pointer-events-none" style={{ animation: flash ? 'wl-flash 0.9s ease-out' : 'none' }} />
 
-      <div className="flex items-start justify-between gap-2">
-        <span
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold"
-          style={{ backgroundColor: `${cat.color}1A`, color: cat.color }}
-        >
-          <span>{cat.emoji}</span>{item.category}
-        </span>
-
-        <div className="relative shrink-0">
-          <button
-            onClick={() => setMenuOpen(o => !o)}
-            className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
+      <div className="flex flex-col flex-1 min-h-0 p-4 pl-5">
+        <div className="flex items-start justify-between gap-2">
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold"
+            style={{ backgroundColor: `${cat.color}1A`, color: cat.color }}
           >
-            <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-              <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
-            </svg>
-          </button>
-          {menuOpen && (
-            <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-10 z-20 w-48 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden py-1">
-                <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                  ✏️ Edit
-                </button>
-                {!isPurchased && (
-                  <button onClick={() => { setMenuOpen(false); handleMarkPurchased() }} className="w-full text-left px-4 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    ✅ Mark Purchased
-                  </button>
-                )}
-                <button onClick={() => { setMenuOpen(false); onDelete(item) }} className="w-full text-left px-4 py-3 text-sm font-medium text-red-600 hover:bg-red-50">
-                  🗑️ Delete
-                </button>
-              </div>
-            </>
-          )}
+            <span>{cat.emoji}</span>{item.category}
+          </span>
+          <span
+            className="mt-1 w-2 h-2 rounded-full shrink-0"
+            style={{ background: pr.color }}
+            title={`${pr.label} priority`}
+          />
         </div>
-      </div>
 
-      <div className="flex items-center gap-2 mt-2.5">
-        <span className="text-sm font-semibold text-gray-600">{pr.emoji} {pr.label}</span>
-        <span
-          className="text-xs font-bold px-2.5 py-1 rounded-full transition-colors duration-200"
-          style={{ backgroundColor: st.bg, color: st.fg, textDecoration: st.strike ? 'line-through' : 'none' }}
-        >
-          {st.label}
-        </span>
-      </div>
-
-      <h3 className="text-lg font-extrabold text-gray-900 mt-3 leading-snug line-clamp-2">{item.name}</h3>
-      {item.brand && <p className="text-sm text-gray-500 mt-0.5">by {item.brand}</p>}
-
-      <p className="mt-3">
-        {item.price != null && item.price !== ''
-          ? <span className="text-xl font-extrabold text-gray-900">{INR.format(item.price)}</span>
-          : <span className="text-sm text-gray-400 italic">Price not set</span>}
-      </p>
-
-      {item.purchase_timing && (
-        <p className="mt-2 flex items-center gap-1.5 text-sm text-gray-500">
-          <span>🕐</span>{item.purchase_timing}
-        </p>
-      )}
-
-      {item.notes && <p className="text-sm text-gray-500 italic mt-3 line-clamp-2">"{item.notes}"</p>}
-
-      <div className="mt-4 pt-3 border-t border-gray-100 flex items-center justify-between">
-        {item.url ? (
-          <a
-            href={item.url} target="_blank" rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 text-sm font-bold"
-            style={{ color: '#6C63FF' }}
-          >
-            Open Product
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
-              <line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" />
-            </svg>
-          </a>
-        ) : <span />}
-        {isPurchased && <span className="text-sm font-bold text-green-600">✅ Purchased</span>}
-      </div>
-    </div>
-  )
-}
-
-// ── One row inside an expanded group ───────────────────────────────────
-function GroupItemRow({ item, onEdit, onMarkPurchased, onDelete }) {
-  const [menuOpen, setMenuOpen] = useState(false)
-  const st = statusMeta(item.status)
-  const isPurchased = item.status === 'purchased'
-
-  return (
-    <div className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
-      <span className="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <p
-          className="text-sm font-semibold text-gray-800 truncate"
+        <h3
+          className="mt-2 text-base font-semibold text-gray-900 leading-snug line-clamp-1"
           style={{ textDecoration: st.strike ? 'line-through' : 'none' }}
         >
           {item.name}
-        </p>
-        {item.brand && <p className="text-xs text-gray-400 truncate">{item.brand}</p>}
-      </div>
-      {item.url && (
-        <a
-          href={item.url} target="_blank" rel="noopener noreferrer"
-          className="text-xs font-bold shrink-0" style={{ color: '#6C63FF' }}
-        >
-          Open ↗
-        </a>
-      )}
-      <span className="text-sm font-bold text-gray-900 shrink-0 tabular-nums">
-        {item.price != null && item.price !== '' ? INR.format(item.price) : '—'}
-      </span>
-      <div className="relative shrink-0">
-        <button
-          onClick={() => setMenuOpen(o => !o)}
-          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
-        >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-            <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
-          </svg>
-        </button>
-        {menuOpen && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-            <div className="absolute right-0 top-9 z-20 w-44 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
-              <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                ✏️ Edit
+        </h3>
+        {item.brand && <p className="text-xs text-gray-400 mt-0.5 truncate">by {item.brand}</p>}
+
+        <div className="mt-auto flex items-center gap-2 text-sm text-gray-600 min-w-0">
+          <span className="font-bold text-gray-900 shrink-0">{hasPrice ? INR.format(item.price) : '—'}</span>
+          {item.purchase_timing && (
+            <>
+              <span className="text-gray-300">•</span>
+              <span className="truncate">🕐 {item.purchase_timing}</span>
+            </>
+          )}
+        </div>
+
+        <div className="mt-2 pt-2 border-t border-gray-100 flex items-center justify-between gap-2">
+          {item.url ? (
+            <a
+              href={item.url} target="_blank" rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: '#6C63FF' }}
+            >
+              Open <span className="text-[10px]">↗</span>
+            </a>
+          ) : <span className="text-xs text-gray-300">No link</span>}
+
+          <div className="flex items-center gap-1">
+            {item.notes && (
+              <button
+                onClick={() => setExpanded(e => !e)}
+                className="px-1.5 h-7 rounded-md text-xs font-bold text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+                title={expanded ? 'Hide notes' : 'Show notes'}
+              >
+                {expanded ? '×' : '•••'}
               </button>
-              {!isPurchased && (
-                <button onClick={() => { setMenuOpen(false); onMarkPurchased(item) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                  ✅ Mark Purchased
-                </button>
-              )}
-              <button onClick={() => { setMenuOpen(false); onDelete(item) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50">
-                🗑️ Delete
-              </button>
-            </div>
-          </>
+            )}
+            <span
+              className="text-[11px] font-bold px-2 py-0.5 rounded-full"
+              style={{ backgroundColor: st.bg, color: st.fg }}
+            >
+              {st.label}
+            </span>
+          </div>
+        </div>
+
+        {expanded && item.notes && (
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <p className="text-xs text-gray-500 whitespace-pre-wrap">{item.notes}</p>
+          </div>
         )}
+      </div>
+
+      {/* Quick-action row — clipped to a 36px strip so it never overflows the
+          card when hidden; slides up on hover, static on touch/mobile. */}
+      <div className="absolute inset-x-0 bottom-0 h-9 overflow-hidden pointer-events-none max-md:hidden">
+        <div className="absolute inset-x-0 bottom-0 h-9 flex translate-y-full group-hover:translate-y-0 transition-transform duration-200 border-t border-gray-100 bg-white/95 backdrop-blur-sm pointer-events-auto">
+          {!isPurchased && (
+            <button onClick={handleMarkPurchased} className="flex-1 text-xs font-bold text-green-600 hover:bg-green-50 transition-colors">✓ Purchased</button>
+          )}
+          <button onClick={() => onEdit(item)} className="flex-1 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors border-l border-gray-100">✏️ Edit</button>
+          <button onClick={() => onDelete(item)} className="flex-1 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors border-l border-gray-100">🗑️ Delete</button>
+        </div>
+      </div>
+
+      {/* Touch / mobile: the same actions, always visible */}
+      <div className="md:hidden flex border-t border-gray-100">
+        {!isPurchased && (
+          <button onClick={handleMarkPurchased} className="flex-1 py-2.5 text-xs font-bold text-green-600 active:bg-green-50">✓ Purchased</button>
+        )}
+        <button onClick={() => onEdit(item)} className="flex-1 py-2.5 text-xs font-bold text-gray-600 active:bg-gray-50 border-l border-gray-100">✏️ Edit</button>
+        <button onClick={() => onDelete(item)} className="flex-1 py-2.5 text-xs font-bold text-red-600 active:bg-red-50 border-l border-gray-100">🗑️ Delete</button>
       </div>
     </div>
   )
 }
 
-// ── Collapsible card for a set of items sharing a group_name ───────────
-function WishlistGroup({ name, items, onEdit, onMarkPurchased, onDelete }) {
-  const [open, setOpen] = useState(false)
-  const total = items.reduce(
-    (s, i) => s + (i.price != null && i.price !== '' ? Number(i.price) : 0), 0
-  )
+// ── Grouped card — one card standing in for every item sharing a
+// group_name. "View All" toggles the individual component cards, which the
+// parent renders in the grid directly below this card. ───────────────────
+function WishlistGroup({ name, items, index = 0, expanded, onToggleExpand, onMarkGroupPurchased, onDeleteGroup }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const total = items.reduce((s, i) => s + (i.price != null && i.price !== '' ? Number(i.price) : 0), 0)
   const meta = categoryMeta(items[0]?.category)
+  const pr = priorityMeta(
+    items.some(i => i.priority === 'high') ? 'high'
+      : items.some(i => i.priority === 'medium') ? 'medium' : 'low'
+  )
+  const quoteUrl = items.find(i => i.url)?.url
+  const preview = items.slice(0, 3).map(i => i.name).join('  •  ')
+  const moreCount = items.length - 3
+  const allPurchased = items.every(i => i.status === 'purchased')
 
   return (
     <div
-      className="md:col-span-2 wl-card-enter bg-white rounded-2xl shadow-md overflow-hidden"
-      style={{ borderLeft: `4px solid ${meta.color}` }}
+      className="group md:col-span-2 lg:col-span-3 relative flex flex-col rounded-xl bg-white border border-gray-100 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg wl-card-enter"
+      style={{ animationDelay: `${Math.min(index, 10) * 50}ms` }}
     >
-      <button
-        type="button" onClick={() => setOpen(o => !o)}
-        className="w-full flex items-center gap-3 p-5 text-left hover:bg-gray-50 transition-colors"
-      >
-        <span className="text-2xl shrink-0">{meta.emoji}</span>
-        <div className="flex-1 min-w-0">
-          <h3 className="text-base font-extrabold text-gray-900 truncate">{name}</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {items.length} item{items.length === 1 ? '' : 's'} •{' '}
-            <span className="font-bold text-gray-700">{INR.format(total)}</span> total
-          </p>
+      <span
+        className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl opacity-70 group-hover:opacity-100 transition-opacity"
+        style={{ background: meta.color }}
+      />
+      <div className="p-4 pl-5">
+        <div className="flex items-start justify-between gap-3">
+          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2 min-w-0">
+            <span className="text-lg shrink-0">{meta.emoji}</span>
+            <span className="truncate">{name}</span>
+          </h3>
+          <span className="text-xs font-semibold text-gray-400 shrink-0 whitespace-nowrap">{items.length} items</span>
         </div>
-        <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform shrink-0 ${open ? '' : '-rotate-90'}`} />
-      </button>
 
-      {open && (
-        <div className="border-t border-gray-100 divide-y divide-gray-50">
-          {items.map(item => (
-            <GroupItemRow
-              key={item.id} item={item}
-              onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete}
-            />
-          ))}
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <p className="text-sm">
+            <span className="font-bold text-gray-900">{INR.format(total)}</span> <span className="text-gray-400">total</span>
+          </p>
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500">
+            {pr.label} <span className="w-2 h-2 rounded-full" style={{ background: pr.color }} />
+          </span>
         </div>
-      )}
+
+        <p className="mt-3 text-xs text-gray-500 line-clamp-1">{preview}</p>
+        {moreCount > 0 && (
+          <p className="text-xs text-gray-400 mt-0.5">+ {moreCount} more component{moreCount === 1 ? '' : 's'}</p>
+        )}
+
+        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
+          <button
+            onClick={onToggleExpand}
+            className="px-3 h-8 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90"
+            style={{ background: '#6C63FF' }}
+          >
+            {expanded ? 'Hide' : 'View All'}
+          </button>
+          {quoteUrl && (
+            <a
+              href={quoteUrl} target="_blank" rel="noopener noreferrer"
+              className="px-3 h-8 inline-flex items-center rounded-lg text-xs font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+            >
+              Open Quote ↗
+            </a>
+          )}
+          <div className="relative ml-auto">
+            <button
+              onClick={() => setMenuOpen(o => !o)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+                <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+              </svg>
+            </button>
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                <div className="absolute right-0 top-9 z-20 w-52 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
+                  <button onClick={() => { setMenuOpen(false); onToggleExpand() }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                    {expanded ? '🙈 Hide components' : '👁️ View all components'}
+                  </button>
+                  {!allPurchased && (
+                    <button onClick={() => { setMenuOpen(false); onMarkGroupPurchased(items) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                      ✅ Mark all purchased
+                    </button>
+                  )}
+                  <button onClick={() => { setMenuOpen(false); onDeleteGroup(name, items) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50">
+                    🗑️ Delete group
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -933,6 +955,8 @@ export default function Wishlist() {
   const [showModal, setShowModal] = useState(false)
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
   const [view, setView] = useState(getStoredView)
+  const [removingId, setRemovingId] = useState(null)
+  const [expandedGroups, setExpandedGroups] = useState({})
 
   function changeView(v) {
     setView(v)
@@ -1000,8 +1024,34 @@ export default function Wishlist() {
 
   const activeItems = useMemo(() => visibleItems.filter(i => i.status !== 'purchased'), [visibleItems])
   const purchasedItems = useMemo(() => visibleItems.filter(i => i.status === 'purchased'), [visibleItems])
-  const activeEntries = useMemo(() => toGroupedEntries(activeItems), [activeItems])
-  const purchasedEntries = useMemo(() => toGroupedEntries(purchasedItems), [purchasedItems])
+
+  const totalValue = useMemo(
+    () => items.filter(i => i.price != null && i.price !== '').reduce((s, i) => s + Number(i.price), 0),
+    [items]
+  )
+
+  const toggleGroup = (name) => setExpandedGroups(g => ({ ...g, [name]: !g[name] }))
+
+  // Flatten grouped entries into a flat list of grid nodes: a group card,
+  // optionally followed by its component item cards when "View All" is on.
+  const buildGridNodes = (list) => {
+    const nodes = []
+    for (const entry of toGroupedEntries(list)) {
+      if (entry.type === 'item') {
+        nodes.push({ kind: 'item', key: entry.key, item: entry.item })
+        continue
+      }
+      nodes.push({ kind: 'group', key: entry.key, name: entry.name, items: entry.items })
+      if (expandedGroups[entry.name]) {
+        for (const it of entry.items) nodes.push({ kind: 'item', key: `g-${it.id}`, item: it })
+      }
+    }
+    return nodes
+  }
+  const activeNodes = useMemo(() => buildGridNodes(activeItems), [activeItems, expandedGroups])
+  const purchasedNodes = useMemo(() => buildGridNodes(purchasedItems), [purchasedItems, expandedGroups])
+
+  const filterSig = `${activeChip}|${categoryFilter}|${search}|${sortBy}|${view}`
 
   function openAdd() { setModalItem(null); setShowModal(true) }
   function openEdit(item) { setModalItem(item); setShowModal(true) }
@@ -1015,7 +1065,29 @@ export default function Wishlist() {
 
   async function handleDelete(item) {
     if (!confirm(`Remove "${item.name}" from wishlist?`)) return
-    await bridge.deleteWishlistItem(item.id)
+    // Play the card's scale-down/fade-out before it leaves the DOM.
+    setRemovingId(item.id)
+    setTimeout(async () => {
+      try {
+        await bridge.deleteWishlistItem(item.id)
+        await load()
+      } finally {
+        setRemovingId(null)
+      }
+    }, 240)
+  }
+
+  async function handleMarkGroupPurchased(groupItems) {
+    for (const it of groupItems.filter(i => i.status !== 'purchased')) {
+      await bridge.updateWishlistItem({ ...it, status: 'purchased' })
+    }
+    await load()
+  }
+
+  async function handleDeleteGroup(name, groupItems) {
+    if (!confirm(`Delete all ${groupItems.length} items in "${name}"?`)) return
+    for (const it of groupItems) await bridge.deleteWishlistItem(it.id)
+    setExpandedGroups(g => { const n = { ...g }; delete n[name]; return n })
     await load()
   }
 
@@ -1080,25 +1152,32 @@ export default function Wishlist() {
         </div>
       </div>
 
-      {/* Stats pill row */}
-      <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
-        {CHIP_DEFS.map(c => {
-          const active = activeChip === c.id
-          return (
-            <button
-              key={c.id}
-              onClick={() => applyChip(c.id)}
-              className="shrink-0 inline-flex items-center gap-1.5 px-4 py-2.5 rounded-full text-sm font-bold border transition-colors whitespace-nowrap"
-              style={{
-                backgroundColor: active ? c.fill : '#fff',
-                borderColor: active ? c.fill : '#E5E7EB',
-                color: active ? '#fff' : '#4B5563',
-              }}
-            >
-              <span>{c.emoji}</span>{c.label} <span style={{ opacity: 0.85 }}>({c.count})</span>
-            </button>
-          )
-        })}
+      {/* Stats pill row — compact */}
+      <div className="mb-4">
+        <div className="flex gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1">
+          {CHIP_DEFS.map(c => {
+            const active = activeChip === c.id
+            return (
+              <button
+                key={c.id}
+                onClick={() => applyChip(c.id)}
+                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap"
+                style={{
+                  backgroundColor: active ? c.fill : '#fff',
+                  borderColor: active ? c.fill : '#E5E7EB',
+                  color: active ? '#fff' : '#4B5563',
+                }}
+              >
+                <span>{c.emoji}</span>{c.label} <span style={{ opacity: 0.85 }}>({c.count})</span>
+              </button>
+            )
+          })}
+        </div>
+        {totalValue > 0 && (
+          <p className="text-xs text-gray-400 mt-1.5 px-1">
+            {INR.format(totalValue)} total across {counts.all} item{counts.all === 1 ? '' : 's'}
+          </p>
+        )}
       </div>
 
       {/* Search + filter bar — desktop */}
@@ -1192,7 +1271,7 @@ export default function Wishlist() {
           </p>
           <button
             onClick={openAdd}
-            className="px-6 py-3.5 rounded-full text-white text-sm font-bold shadow-lg hover:opacity-90 transition-opacity min-h-[48px]"
+            className="wl-pulse px-6 py-3.5 rounded-full text-white text-sm font-bold hover:opacity-90 transition-opacity min-h-[48px]"
             style={{ backgroundColor: '#6C63FF' }}
           >
             + Add Your First Item
@@ -1208,23 +1287,29 @@ export default function Wishlist() {
           onDelete={handleDelete}
         />
       ) : (
-        <>
-          {activeItems.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {activeEntries.map(entry =>
-                entry.type === 'group' ? (
+        // key forces a remount on filter change → the results crossfade in and
+        // the cards re-run their staggered entrance.
+        <div key={filterSig} className="wl-results-in">
+          {activeNodes.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {activeNodes.map((node, i) =>
+                node.kind === 'group' ? (
                   <WishlistGroup
-                    key={entry.key}
-                    name={entry.name}
-                    items={entry.items}
-                    onEdit={openEdit}
-                    onMarkPurchased={markPurchased}
-                    onDelete={handleDelete}
+                    key={node.key}
+                    index={i}
+                    name={node.name}
+                    items={node.items}
+                    expanded={Boolean(expandedGroups[node.name])}
+                    onToggleExpand={() => toggleGroup(node.name)}
+                    onMarkGroupPurchased={handleMarkGroupPurchased}
+                    onDeleteGroup={handleDeleteGroup}
                   />
                 ) : (
                   <ItemCard
-                    key={entry.key}
-                    item={entry.item}
+                    key={node.key}
+                    index={i}
+                    item={node.item}
+                    removing={removingId === node.item.id}
                     onEdit={openEdit}
                     onMarkPurchased={markPurchased}
                     onDelete={handleDelete}
@@ -1234,28 +1319,32 @@ export default function Wishlist() {
             </div>
           )}
 
-          {purchasedItems.length > 0 && (
-            <div className={activeItems.length > 0 ? 'mt-10' : ''}>
+          {purchasedNodes.length > 0 && (
+            <div className={activeNodes.length > 0 ? 'mt-10' : ''}>
               <div className="flex items-center gap-3 mb-5">
                 <div className="h-px flex-1 bg-gray-200" />
                 <span className="text-sm font-bold text-gray-500 flex items-center gap-1.5">✅ Purchased ({purchasedItems.length})</span>
                 <div className="h-px flex-1 bg-gray-200" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {purchasedEntries.map(entry =>
-                  entry.type === 'group' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {purchasedNodes.map((node, i) =>
+                  node.kind === 'group' ? (
                     <WishlistGroup
-                      key={entry.key}
-                      name={entry.name}
-                      items={entry.items}
-                      onEdit={openEdit}
-                      onMarkPurchased={markPurchased}
-                      onDelete={handleDelete}
+                      key={node.key}
+                      index={i}
+                      name={node.name}
+                      items={node.items}
+                      expanded={Boolean(expandedGroups[node.name])}
+                      onToggleExpand={() => toggleGroup(node.name)}
+                      onMarkGroupPurchased={handleMarkGroupPurchased}
+                      onDeleteGroup={handleDeleteGroup}
                     />
                   ) : (
                     <ItemCard
-                      key={entry.key}
-                      item={entry.item}
+                      key={node.key}
+                      index={i}
+                      item={node.item}
+                      removing={removingId === node.item.id}
                       onEdit={openEdit}
                       onMarkPurchased={markPurchased}
                       onDelete={handleDelete}
@@ -1265,7 +1354,7 @@ export default function Wishlist() {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {showModal && <WishlistModal item={modalItem} onSave={handleSaved} onClose={closeModal} />}
