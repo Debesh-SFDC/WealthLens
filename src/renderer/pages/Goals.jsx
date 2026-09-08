@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import bridge from '../lib/bridge'
 
+// Goal↔investment linking, contribution history and investment-sync are
+// Electron-only (no web routes). In web mode every window.electronAPI.* call
+// below is skipped so goal CRUD still works and nothing throws.
+const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
+
 function fmtCr(v) {
   const n = v || 0
   const sign = n < 0 ? '-' : ''
@@ -562,7 +567,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
   const [showPicker, setShowPicker] = useState(false)
 
   useEffect(() => {
-    if (initial?.id) {
+    if (initial?.id && IS_ELECTRON) {
       window.electronAPI.getGoalInvestments(initial.id)
         .then(rows => setLinkedIds((rows || []).map(r => r.id)))
         .catch(() => {})
@@ -1372,7 +1377,7 @@ export default function Goals() {
       const [g, inv, links] = await Promise.all([
         bridge.getAllGoals(),
         bridge.getAllInvestments(),
-        window.electronAPI.getAllGoalInvestmentLinks(),
+        IS_ELECTRON ? window.electronAPI.getAllGoalInvestmentLinks() : Promise.resolve([]),
       ])
       setGoals(g || [])
       setInvestments(inv || [])
@@ -1395,6 +1400,7 @@ export default function Goals() {
     setSelectedGoal(goal)
     setContributions([])
     setDetailInvestments([])
+    if (!IS_ELECTRON) return
     try {
       const res = await window.electronAPI.syncGoalInvestment(goal.id)
       if (res?.synced) {
@@ -1430,10 +1436,12 @@ export default function Goals() {
       const { id } = await bridge.createGoal(goalData)
       goalId = id
     }
-    await window.electronAPI.setGoalInvestments(goalId, linkedInvestmentIds || [])
+    if (IS_ELECTRON) {
+      await window.electronAPI.setGoalInvestments(goalId, linkedInvestmentIds || [])
+    }
     closeWizard()
     await load()
-    if (selectedGoal && goalId === selectedGoal.id) {
+    if (IS_ELECTRON && selectedGoal && goalId === selectedGoal.id) {
       const [fresh, inv] = await Promise.all([
         bridge.getAllGoals(),
         window.electronAPI.getGoalInvestments(goalId),
@@ -1445,6 +1453,7 @@ export default function Goals() {
 
   const handleSyncAll = async () => {
     if (!selectedGoal) return
+    if (!IS_ELECTRON) { showToast('Investment sync is available in the desktop app', 'warn'); return }
     setSyncing(true)
     try {
       const result = await window.electronAPI.syncGoalInvestment(selectedGoal.id)
@@ -1481,6 +1490,11 @@ export default function Goals() {
   }
 
   const handleAddContribution = async (payload) => {
+    if (!IS_ELECTRON) {
+      showToast('Logging contributions is available in the desktop app', 'warn')
+      closeContribution()
+      return
+    }
     await window.electronAPI.addGoalContribution(payload)
     closeContribution()
     await load()

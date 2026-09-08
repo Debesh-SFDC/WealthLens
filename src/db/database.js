@@ -41,6 +41,7 @@ export function initDatabase() {
   createWishlistTable()
   createWishlistCollectionsTable()
   seedFordEcoSportCollection()
+  seedPlanningGoals()
   return db
 }
 
@@ -1027,6 +1028,41 @@ function seedFordEcoSportCollection() {
       'Change current Mars Red color to Red Black dual tone finish. Get quotes from multiple body shops before finalizing. Check if factory dual tone is available as vinyl wrap alternative.',
       now, now
     )
+  }
+}
+
+// Seed six planning goals for the admin account. Guarded by title so each is
+// added at most once and not recreated after the user edits/deletes it. Adds
+// the optional user_id/status columns first (informational — the app scopes
+// goals globally and tracks completion via is_achieved).
+function seedPlanningGoals() {
+  try { db.exec('ALTER TABLE goals ADD COLUMN user_id INTEGER') } catch {}
+  try { db.exec("ALTER TABLE goals ADD COLUMN status TEXT DEFAULT 'active'") } catch {}
+
+  const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+  if (!admin) return
+  const uid = admin.id
+
+  const planningGoals = [
+    ['Opportunity Fund', 'opportunity_fund', 'need', 500000, 150000, '2027-12-31', 'Arbitrage Mutual Fund', '💼', '#8B5CF6', 'Build opportunity fund to ₹5L by end of 2027. Currently at ₹1.5L in Arbitrage MF.'],
+    ['Moving Fund', 'emergency_fund', 'need', 200000, 37000, '2026-12-31', 'Savings Account', '🏠', '#3B82F6', 'Need ₹2L for moving expenses by end of 2026. Currently have ₹37K.'],
+    ['EcoSport Repainting', 'life_goal', 'want', 90000, 0, '2027-03-31', 'Savings Account', '🚗', '#EF4444', 'Mars Red to Red Black dual tone repainting. Need ₹90K before March 2027.'],
+    ['Work + Gaming Setup', 'life_goal', 'want', 225000, 0, '2027-12-31', 'Savings Account', '🖥️', '#6366F1', 'Complete work and gaming PC setup. Total budget ₹2.25L by end of 2027.'],
+    ["Mom's Jewellery", 'life_goal', 'need', 250000, 0, '2028-03-31', 'Savings Account', '💍', '#EC4899', 'Buy jewellery for Mom. Need ₹2.5L before March 2028.'],
+    ["Father's Bike", 'life_goal', 'need', 200000, 0, '2027-09-30', 'Savings Account', '🏍️', '#F97316', 'Buy a bike for Father. Need ₹2L by next year end (Sep 2027).'],
+  ]
+  const exists = db.prepare('SELECT 1 FROM goals WHERE title = ?')
+  const insert = db.prepare(`
+    INSERT INTO goals
+      (user_id, title, type, category, target_amount, current_amount, target_date,
+       bank_or_provider, emoji, color, status, notes, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)
+  `)
+  const now = new Date().toISOString()
+  for (const [title, type, category, targetAmt, currentAmt, targetDate, bank, emoji, color, notes] of planningGoals) {
+    if (!exists.get(title)) {
+      insert.run(uid, title, type, category, targetAmt, currentAmt, targetDate, bank, emoji, color, notes, now, now)
+    }
   }
 }
 

@@ -91,6 +91,36 @@ CREATE SEQUENCE IF NOT EXISTS goals_id_seq OWNED BY goals.id;
 ALTER TABLE goals ALTER COLUMN id SET DEFAULT nextval('goals_id_seq');
 SELECT setval('goals_id_seq', COALESCE((SELECT MAX(id) FROM goals), 1));
 
+-- Optional bookkeeping columns (the app scopes goals globally and tracks
+-- completion via is_achieved; these are informational only).
+ALTER TABLE goals ADD COLUMN IF NOT EXISTS user_id INTEGER;
+ALTER TABLE goals ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+
+-- Seed six planning goals for the admin account. Guarded by title so they are
+-- added at most once and not recreated after the user edits/deletes them.
+INSERT INTO goals
+  (sync_id, user_id, title, type, category, target_amount, current_amount, target_date,
+   bank_or_provider, emoji, color, status, notes, created_at, updated_at)
+SELECT NULL, 1, v.title, v.type, v.category, v.target_amount, v.current_amount,
+       v.target_date, v.bank_or_provider, v.emoji, v.color, 'active', v.notes,
+       now()::text, now()::text
+FROM (VALUES
+  ('Opportunity Fund', 'opportunity_fund', 'need', 500000, 150000, '2027-12-31', 'Arbitrage Mutual Fund', '💼', '#8B5CF6',
+   'Build opportunity fund to ₹5L by end of 2027. Currently at ₹1.5L in Arbitrage MF.'),
+  ('Moving Fund', 'emergency_fund', 'need', 200000, 37000, '2026-12-31', 'Savings Account', '🏠', '#3B82F6',
+   'Need ₹2L for moving expenses by end of 2026. Currently have ₹37K.'),
+  ('EcoSport Repainting', 'life_goal', 'want', 90000, 0, '2027-03-31', 'Savings Account', '🚗', '#EF4444',
+   'Mars Red to Red Black dual tone repainting. Need ₹90K before March 2027.'),
+  ('Work + Gaming Setup', 'life_goal', 'want', 225000, 0, '2027-12-31', 'Savings Account', '🖥️', '#6366F1',
+   'Complete work and gaming PC setup. Total budget ₹2.25L by end of 2027.'),
+  ('Mom''s Jewellery', 'life_goal', 'need', 250000, 0, '2028-03-31', 'Savings Account', '💍', '#EC4899',
+   'Buy jewellery for Mom. Need ₹2.5L before March 2028.'),
+  ('Father''s Bike', 'life_goal', 'need', 200000, 0, '2027-09-30', 'Savings Account', '🏍️', '#F97316',
+   'Buy a bike for Father. Need ₹2L by next year end (Sep 2027).')
+) AS v(title, type, category, target_amount, current_amount, target_date, bank_or_provider, emoji, color, notes)
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
+  AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.title = v.title);
+
 CREATE TABLE IF NOT EXISTS investments (
   id                   INTEGER PRIMARY KEY,
   sync_id              TEXT UNIQUE,
