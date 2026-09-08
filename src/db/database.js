@@ -833,12 +833,15 @@ function createWishlistTable() {
       status          TEXT DEFAULT 'wishlist' CHECK (status IN ('wishlist','shortlisted','planned','purchased','dropped')),
       purchase_timing TEXT DEFAULT 'No Plan',
       notes           TEXT,
+      group_name      TEXT,
       deleted_at      TEXT,
       created_at      TEXT DEFAULT (datetime('now')),
       updated_at      TEXT DEFAULT (datetime('now'))
     );
   `)
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_wishlist_items_user ON wishlist_items(user_id)') } catch {}
+  // Existing installs: add group_name if the table pre-dates it.
+  try { db.exec('ALTER TABLE wishlist_items ADD COLUMN group_name TEXT') } catch {}
 
   // Seed one example item for the admin account, once, so the tab isn't
   // empty on first run.
@@ -857,18 +860,28 @@ function createWishlistTable() {
         'After I Buy a House', 'wishlist', 'medium',
         'Buy this or something similar depending on the new home available wall/storage space.'
       )
-      db.prepare(`
+      // Gaming PC build (MD Computers quote #969081) — seeded as its 8
+      // individual components sharing a group_name, so the Wishlist UI shows
+      // them collapsed under one group header.
+      const PC_BUILD_GROUP = 'Gaming PC Build — Quote #969081'
+      const pcComponents = [
+        ['Intel Core i5-14400 Processor', 'Intel', 23600, 'Model: BX8071514400 | Part of Gaming PC Build Quote #969081'],
+        ['Arctic Freezer 36 ARGB CPU Air Cooler', 'Arctic', 4050, 'Model: ACFRE00124A | Part of Gaming PC Build Quote #969081'],
+        ['MSI B760M Gaming Plus WiFi6E DDR4 M-ATX Motherboard', 'MSI', 16600, 'Model: B760M-GAMING-PLUS-WIFI-DDR4 | Part of Gaming PC Build Quote #969081'],
+        ['Corsair Vengeance LPX 16GB (8GBx2) 3600MHz RAM', 'Corsair', 14999, 'Model: CMK16GX4M2D3600C18 | Part of Gaming PC Build Quote #969081'],
+        ['Crucial E100 1TB NVMe Gen4 SSD', 'Crucial', 14980, 'Model: CT1000E100SSD8 | Part of Gaming PC Build Quote #969081'],
+        ['Asus Dual RTX 3050 OC Edition 6GB Gaming GPU', 'Asus', 29386, 'Model: DUAL-RTX3050-O6G | Part of Gaming PC Build Quote #969081'],
+        ['Corsair RM750e ATX 3.1 Gold Fully Modular PSU', 'Corsair', 10400, 'Model: CP-9020292-IN | Part of Gaming PC Build Quote #969081'],
+        ['Lian Li A3-mATX Wood Black Mini Tower Cabinet', 'Lian Li', 8800, 'Model: G99-A3X-WDG-IN | Part of Gaming PC Build Quote #969081'],
+      ]
+      const insertPcComponent = db.prepare(`
         INSERT INTO wishlist_items
-          (user_id, name, brand, category, url, price, currency, purchase_timing, status, priority, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        admin.id,
-        'Custom Gaming PC Build', 'MD Computers', 'PC',
-        'https://www.mdcomputers.in',
-        122815, 'INR',
-        'Later', 'wishlist', 'high',
-        'Quote #969081 dated 08/09/2026 from MD Computers PVT LTD. Components: Intel Core i5-14400 (₹23,600) + Arctic Freezer 36 ARGB Cooler (₹4,050) + MSI B760M Gaming Plus WiFi6E DDR4 M-ATX (₹16,600) + Corsair Vengeance LPX 16GB DDR4 3600MHz (₹14,999) + Crucial E100 1TB NVMe Gen4 SSD (₹14,980) + Asus Dual RTX 3050 OC 6GB (₹29,386) + Corsair RM750e ATX 3.1 Gold PSU (₹10,400) + Lian Li A3-mATX Wood Black Mini Tower (₹8,800). Total: ₹1,22,815. Estimated wattage: 254W. Contact: 033-40-550-550, info@mdcomputers.in'
-      )
+          (user_id, name, brand, category, url, price, currency, purchase_timing, status, priority, notes, group_name)
+        VALUES (?, ?, ?, 'PC', 'https://www.mdcomputers.in', ?, 'INR', 'Later', 'wishlist', 'high', ?, ?)
+      `)
+      for (const [name, brand, price, notes] of pcComponents) {
+        insertPcComponent.run(admin.id, name, brand, price, notes, PC_BUILD_GROUP)
+      }
     }
   }
 }

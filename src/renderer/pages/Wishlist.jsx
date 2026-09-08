@@ -89,6 +89,26 @@ function getStoredView() {
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
+// Collapse items sharing a group_name into a single group entry, keeping the
+// sort order of the surrounding standalone items (a group takes the slot of
+// its first member). Items with no group_name stay as plain item entries.
+function toGroupedEntries(list) {
+  const entries = []
+  const groups = new Map()
+  for (const item of list) {
+    const g = (item.group_name || '').trim()
+    if (!g) { entries.push({ type: 'item', key: `item-${item.id}`, item }); continue }
+    let entry = groups.get(g)
+    if (!entry) {
+      entry = { type: 'group', key: `group-${g}`, name: g, items: [] }
+      groups.set(g, entry)
+      entries.push(entry)
+    }
+    entry.items.push(item)
+  }
+  return entries
+}
+
 const priorityMeta = (p) => PRIORITIES.find(x => x.value === p) || PRIORITIES[1]
 const statusMeta = (s) => STATUSES.find(x => x.value === s) || STATUSES[0]
 // Any purchase_timing that doesn't match a known section (shouldn't happen —
@@ -165,7 +185,7 @@ function WishlistModal({ item, onSave, onClose }) {
     ? { ...item, price: item.price != null ? String(item.price) : '' }
     : {
       name: '', category: WISHLIST_CATEGORIES[0], url: '', brand: '', price: '',
-      priority: 'medium', status: 'wishlist', purchase_timing: 'No Plan', notes: '',
+      priority: 'medium', status: 'wishlist', purchase_timing: 'No Plan', notes: '', group_name: '',
     }
   )
   const [saving, setSaving] = useState(false)
@@ -177,7 +197,11 @@ function WishlistModal({ item, onSave, onClose }) {
     if (!form.name.trim() || !form.category) return
     setSaving(true)
     try {
-      const data = { ...form, price: form.price === '' ? null : parseFloat(form.price) }
+      const data = {
+        ...form,
+        price: form.price === '' ? null : parseFloat(form.price),
+        group_name: (form.group_name || '').trim() || null,
+      }
       if (isEdit) await bridge.updateWishlistItem(data)
       else await bridge.createWishlistItem(data)
       onSave()
@@ -358,7 +382,7 @@ function WishlistModal({ item, onSave, onClose }) {
             </div>
           </section>
 
-          {/* Section 5 — Notes */}
+          {/* Section 5 — Notes & Group */}
           <section>
             <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>📝 Notes</h3>
             <textarea
@@ -366,7 +390,14 @@ function WishlistModal({ item, onSave, onClose }) {
               value={form.notes || ''} onChange={e => set('notes', e.target.value)}
               className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 resize-none"
             />
-            <p className="text-xs text-gray-400 mt-2">💡 Just a name and category is enough — everything else is optional.</p>
+
+            <label className="text-sm font-semibold text-gray-700 mb-1.5 mt-4 block">Group (optional)</label>
+            <input
+              type="text" placeholder="e.g. Gaming PC Build — Quote #969081"
+              value={form.group_name || ''} onChange={e => set('group_name', e.target.value)}
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+            />
+            <p className="text-xs text-gray-400 mt-2">💡 Items sharing a group name are shown collapsed together. Just a name and category is enough — everything else is optional.</p>
           </section>
 
           <div className="flex gap-3 pt-2 pb-1 sticky bottom-0 bg-white">
@@ -493,6 +524,109 @@ function ItemCard({ item, onEdit, onMarkPurchased, onDelete }) {
         ) : <span />}
         {isPurchased && <span className="text-sm font-bold text-green-600">✅ Purchased</span>}
       </div>
+    </div>
+  )
+}
+
+// ── One row inside an expanded group ───────────────────────────────────
+function GroupItemRow({ item, onEdit, onMarkPurchased, onDelete }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const st = statusMeta(item.status)
+  const isPurchased = item.status === 'purchased'
+
+  return (
+    <div className="flex items-center gap-3 px-5 py-3 hover:bg-gray-50 transition-colors">
+      <span className="w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0" />
+      <div className="flex-1 min-w-0">
+        <p
+          className="text-sm font-semibold text-gray-800 truncate"
+          style={{ textDecoration: st.strike ? 'line-through' : 'none' }}
+        >
+          {item.name}
+        </p>
+        {item.brand && <p className="text-xs text-gray-400 truncate">{item.brand}</p>}
+      </div>
+      {item.url && (
+        <a
+          href={item.url} target="_blank" rel="noopener noreferrer"
+          className="text-xs font-bold shrink-0" style={{ color: '#6C63FF' }}
+        >
+          Open ↗
+        </a>
+      )}
+      <span className="text-sm font-bold text-gray-900 shrink-0 tabular-nums">
+        {item.price != null && item.price !== '' ? INR.format(item.price) : '—'}
+      </span>
+      <div className="relative shrink-0">
+        <button
+          onClick={() => setMenuOpen(o => !o)}
+          className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+            <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+          </svg>
+        </button>
+        {menuOpen && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+            <div className="absolute right-0 top-9 z-20 w-44 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
+              <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                ✏️ Edit
+              </button>
+              {!isPurchased && (
+                <button onClick={() => { setMenuOpen(false); onMarkPurchased(item) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                  ✅ Mark Purchased
+                </button>
+              )}
+              <button onClick={() => { setMenuOpen(false); onDelete(item) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50">
+                🗑️ Delete
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Collapsible card for a set of items sharing a group_name ───────────
+function WishlistGroup({ name, items, onEdit, onMarkPurchased, onDelete }) {
+  const [open, setOpen] = useState(false)
+  const total = items.reduce(
+    (s, i) => s + (i.price != null && i.price !== '' ? Number(i.price) : 0), 0
+  )
+  const meta = categoryMeta(items[0]?.category)
+
+  return (
+    <div
+      className="md:col-span-2 wl-card-enter bg-white rounded-2xl shadow-md overflow-hidden"
+      style={{ borderLeft: `4px solid ${meta.color}` }}
+    >
+      <button
+        type="button" onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-3 p-5 text-left hover:bg-gray-50 transition-colors"
+      >
+        <span className="text-2xl shrink-0">{meta.emoji}</span>
+        <div className="flex-1 min-w-0">
+          <h3 className="text-base font-extrabold text-gray-900 truncate">{name}</h3>
+          <p className="text-sm text-gray-500 mt-0.5">
+            {items.length} item{items.length === 1 ? '' : 's'} •{' '}
+            <span className="font-bold text-gray-700">{INR.format(total)}</span> total
+          </p>
+        </div>
+        <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform shrink-0 ${open ? '' : '-rotate-90'}`} />
+      </button>
+
+      {open && (
+        <div className="border-t border-gray-100 divide-y divide-gray-50">
+          {items.map(item => (
+            <GroupItemRow
+              key={item.id} item={item}
+              onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete}
+            />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -866,6 +1000,8 @@ export default function Wishlist() {
 
   const activeItems = useMemo(() => visibleItems.filter(i => i.status !== 'purchased'), [visibleItems])
   const purchasedItems = useMemo(() => visibleItems.filter(i => i.status === 'purchased'), [visibleItems])
+  const activeEntries = useMemo(() => toGroupedEntries(activeItems), [activeItems])
+  const purchasedEntries = useMemo(() => toGroupedEntries(purchasedItems), [purchasedItems])
 
   function openAdd() { setModalItem(null); setShowModal(true) }
   function openEdit(item) { setModalItem(item); setShowModal(true) }
@@ -1075,15 +1211,26 @@ export default function Wishlist() {
         <>
           {activeItems.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {activeItems.map(item => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  onEdit={openEdit}
-                  onMarkPurchased={markPurchased}
-                  onDelete={handleDelete}
-                />
-              ))}
+              {activeEntries.map(entry =>
+                entry.type === 'group' ? (
+                  <WishlistGroup
+                    key={entry.key}
+                    name={entry.name}
+                    items={entry.items}
+                    onEdit={openEdit}
+                    onMarkPurchased={markPurchased}
+                    onDelete={handleDelete}
+                  />
+                ) : (
+                  <ItemCard
+                    key={entry.key}
+                    item={entry.item}
+                    onEdit={openEdit}
+                    onMarkPurchased={markPurchased}
+                    onDelete={handleDelete}
+                  />
+                )
+              )}
             </div>
           )}
 
@@ -1095,15 +1242,26 @@ export default function Wishlist() {
                 <div className="h-px flex-1 bg-gray-200" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {purchasedItems.map(item => (
-                  <ItemCard
-                    key={item.id}
-                    item={item}
-                    onEdit={openEdit}
-                    onMarkPurchased={markPurchased}
-                    onDelete={handleDelete}
-                  />
-                ))}
+                {purchasedEntries.map(entry =>
+                  entry.type === 'group' ? (
+                    <WishlistGroup
+                      key={entry.key}
+                      name={entry.name}
+                      items={entry.items}
+                      onEdit={openEdit}
+                      onMarkPurchased={markPurchased}
+                      onDelete={handleDelete}
+                    />
+                  ) : (
+                    <ItemCard
+                      key={entry.key}
+                      item={entry.item}
+                      onEdit={openEdit}
+                      onMarkPurchased={markPurchased}
+                      onDelete={handleDelete}
+                    />
+                  )
+                )}
               </div>
             </div>
           )}

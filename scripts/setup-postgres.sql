@@ -374,12 +374,16 @@ CREATE TABLE IF NOT EXISTS wishlist_items (
   status          TEXT DEFAULT 'wishlist' CHECK (status IN ('wishlist','shortlisted','planned','purchased','dropped')),
   purchase_timing TEXT DEFAULT 'No Plan',
   notes           TEXT,
+  group_name      TEXT,
   deleted_at      TEXT,
   created_at      TEXT DEFAULT (now()::text),
   updated_at      TEXT DEFAULT (now()::text)
 );
 
 CREATE INDEX IF NOT EXISTS idx_wishlist_items_user ON wishlist_items(user_id);
+
+-- Existing installs: add group_name if the table pre-dates it.
+ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS group_name TEXT;
 
 -- Seed one example item for the admin account (id=1), once — guarded with
 -- WHERE NOT EXISTS rather than ON CONFLICT since there's no natural unique
@@ -392,15 +396,29 @@ SELECT 1, 'AutoEngina Helmet & Jacket Hanger', 'AutoEngina', 'Home',
   'Buy this or something similar depending on the new home available wall/storage space.'
 WHERE NOT EXISTS (SELECT 1 FROM wishlist_items) AND EXISTS (SELECT 1 FROM users WHERE id = 1);
 
--- Gaming PC build quote for the admin account (id=1). Guarded by name+user_id
--- so this stays safe to re-run.
+-- Gaming PC build (MD Computers quote #969081) for the admin account (id=1),
+-- as its 8 individual components sharing group_name so the Wishlist UI shows
+-- them collapsed under one group header. Replaces the earlier single
+-- "Custom Gaming PC Build" line-item. Guarded by group_name so it is safe
+-- to re-run.
+DELETE FROM wishlist_items WHERE user_id = 1 AND name = 'Custom Gaming PC Build';
+
 INSERT INTO wishlist_items
-  (user_id, name, brand, category, url, price, currency, purchase_timing, status, priority, notes)
-SELECT 1, 'Custom Gaming PC Build', 'MD Computers', 'PC',
-  'https://www.mdcomputers.in',
-  122815, 'INR',
-  'Later', 'wishlist', 'high',
-  'Quote #969081 dated 08/09/2026 from MD Computers PVT LTD. Components: Intel Core i5-14400 (₹23,600) + Arctic Freezer 36 ARGB Cooler (₹4,050) + MSI B760M Gaming Plus WiFi6E DDR4 M-ATX (₹16,600) + Corsair Vengeance LPX 16GB DDR4 3600MHz (₹14,999) + Crucial E100 1TB NVMe Gen4 SSD (₹14,980) + Asus Dual RTX 3050 OC 6GB (₹29,386) + Corsair RM750e ATX 3.1 Gold PSU (₹10,400) + Lian Li A3-mATX Wood Black Mini Tower (₹8,800). Total: ₹1,22,815. Estimated wattage: 254W. Contact: 033-40-550-550, info@mdcomputers.in'
-WHERE NOT EXISTS (
-  SELECT 1 FROM wishlist_items WHERE user_id = 1 AND name = 'Custom Gaming PC Build'
-) AND EXISTS (SELECT 1 FROM users WHERE id = 1);
+  (user_id, name, brand, category, url, price, currency, purchase_timing, status, priority, notes, group_name)
+SELECT 1, v.name, v.brand, 'PC', 'https://www.mdcomputers.in', v.price, 'INR',
+  'Later', 'wishlist', 'high', v.notes, 'Gaming PC Build — Quote #969081'
+FROM (VALUES
+  ('Intel Core i5-14400 Processor', 'Intel', 23600, 'Model: BX8071514400 | Part of Gaming PC Build Quote #969081'),
+  ('Arctic Freezer 36 ARGB CPU Air Cooler', 'Arctic', 4050, 'Model: ACFRE00124A | Part of Gaming PC Build Quote #969081'),
+  ('MSI B760M Gaming Plus WiFi6E DDR4 M-ATX Motherboard', 'MSI', 16600, 'Model: B760M-GAMING-PLUS-WIFI-DDR4 | Part of Gaming PC Build Quote #969081'),
+  ('Corsair Vengeance LPX 16GB (8GBx2) 3600MHz RAM', 'Corsair', 14999, 'Model: CMK16GX4M2D3600C18 | Part of Gaming PC Build Quote #969081'),
+  ('Crucial E100 1TB NVMe Gen4 SSD', 'Crucial', 14980, 'Model: CT1000E100SSD8 | Part of Gaming PC Build Quote #969081'),
+  ('Asus Dual RTX 3050 OC Edition 6GB Gaming GPU', 'Asus', 29386, 'Model: DUAL-RTX3050-O6G | Part of Gaming PC Build Quote #969081'),
+  ('Corsair RM750e ATX 3.1 Gold Fully Modular PSU', 'Corsair', 10400, 'Model: CP-9020292-IN | Part of Gaming PC Build Quote #969081'),
+  ('Lian Li A3-mATX Wood Black Mini Tower Cabinet', 'Lian Li', 8800, 'Model: G99-A3X-WDG-IN | Part of Gaming PC Build Quote #969081')
+) AS v(name, brand, price, notes)
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
+  AND NOT EXISTS (
+    SELECT 1 FROM wishlist_items
+    WHERE user_id = 1 AND group_name = 'Gaming PC Build — Quote #969081'
+  );

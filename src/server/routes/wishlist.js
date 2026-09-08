@@ -36,13 +36,13 @@ router.post('/', async (req, res) => {
   const now = new Date().toISOString()
   const { rows } = await db.query(
     `INSERT INTO wishlist_items (sync_id, user_id, name, brand, category, url, price, currency,
-       priority, status, purchase_timing, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       priority, status, purchase_timing, notes, group_name, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING id`,
     [
       randomUUID(), req.user.id, d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null,
       d.price ?? null, d.currency ?? 'INR', d.priority ?? 'medium', d.status ?? 'wishlist',
-      d.purchase_timing ?? 'No Plan', d.notes ?? null, now, now,
+      d.purchase_timing ?? 'No Plan', d.notes ?? null, d.group_name ?? null, now, now,
     ]
   )
   res.json({ id: rows[0].id })
@@ -56,12 +56,12 @@ router.put('/:id', async (req, res) => {
   const now = new Date().toISOString()
   const { rowCount } = await db.query(
     `UPDATE wishlist_items SET name = ?, brand = ?, category = ?, url = ?, price = ?, currency = ?,
-       priority = ?, status = ?, purchase_timing = ?, notes = ?, updated_at = ?
+       priority = ?, status = ?, purchase_timing = ?, notes = ?, group_name = ?, updated_at = ?
      WHERE id = ? AND user_id = ?`,
     [
       d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null, d.price ?? null, d.currency ?? 'INR',
       d.priority ?? 'medium', d.status ?? 'wishlist', d.purchase_timing ?? 'No Plan', d.notes ?? null,
-      now, req.params.id, req.user.id,
+      d.group_name ?? null, now, req.params.id, req.user.id,
     ]
   )
   if (!rowCount) return res.status(404).json({ error: 'Item not found' })
