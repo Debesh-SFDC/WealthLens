@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { Fragment, useState, useEffect, useMemo } from 'react'
 import bridge from '../lib/bridge'
 
 // Wishlist is private per-user — every bridge call below is scoped to the
@@ -748,8 +748,8 @@ function WishlistGroup({ name, items, index = 0, expanded, onToggleExpand, onMar
 
   return (
     <div
-      className="group md:col-span-2 lg:col-span-3 relative flex flex-col rounded-xl bg-white border border-gray-100 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg wl-card-enter"
-      style={{ animationDelay: `${Math.min(index, 10) * 50}ms` }}
+      className="group col-span-full relative flex flex-col rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md wl-card-enter"
+      style={{ animationDelay: `${Math.min(index, 10) * 50}ms`, background: `${meta.color}0A`, borderColor: `${meta.color}33` }}
     >
       <span
         className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl opacity-70 group-hover:opacity-100 transition-opacity"
@@ -1240,31 +1240,22 @@ export default function Wishlist() {
   const activeItems = useMemo(() => visibleItems.filter(i => i.status !== 'purchased'), [visibleItems])
   const purchasedItems = useMemo(() => visibleItems.filter(i => i.status === 'purchased'), [visibleItems])
 
-  const totalValue = useMemo(
-    () => items.filter(i => i.price != null && i.price !== '').reduce((s, i) => s + Number(i.price), 0),
+  // One value per item, counted exactly once. A grouped item contributes the
+  // same as any other — the group card shows its own subtotal separately and
+  // is never added on top. Items with no price are excluded entirely.
+  const pricedItems = useMemo(
+    () => items.filter(i => i.price != null && i.price !== ''),
     [items]
+  )
+  const totalValue = useMemo(
+    () => pricedItems.reduce((s, i) => s + Number(i.price), 0),
+    [pricedItems]
   )
 
   const toggleGroup = (name) => setExpandedGroups(g => ({ ...g, [name]: !g[name] }))
 
-  // Flatten grouped entries into a flat list of grid nodes: a group card,
-  // optionally followed by its component item cards when "View All" is on.
-  const buildGridNodes = (list) => {
-    const nodes = []
-    for (const entry of toGroupedEntries(list)) {
-      if (entry.type === 'item') {
-        nodes.push({ kind: 'item', key: entry.key, item: entry.item })
-        continue
-      }
-      nodes.push({ kind: 'group', key: entry.key, name: entry.name, items: entry.items })
-      if (expandedGroups[entry.name]) {
-        for (const it of entry.items) nodes.push({ kind: 'item', key: `g-${it.id}`, item: it })
-      }
-    }
-    return nodes
-  }
-  const activeNodes = useMemo(() => buildGridNodes(activeItems), [activeItems, expandedGroups])
-  const purchasedNodes = useMemo(() => buildGridNodes(purchasedItems), [purchasedItems, expandedGroups])
+  const activeEntries = useMemo(() => toGroupedEntries(activeItems), [activeItems])
+  const purchasedEntries = useMemo(() => toGroupedEntries(purchasedItems), [purchasedItems])
 
   const filterSig = `${activeChip}|${categoryFilter}|${search}|${sortBy}|${view}`
 
@@ -1320,6 +1311,59 @@ export default function Wishlist() {
   ]
 
   const activeFilterCount = (categoryFilter ? 1 : 0) + (sortBy !== 'recent' ? 1 : 0)
+
+  // Grid renderer shared by the active and purchased sections. Group cards
+  // span the full row (col-span-full); when expanded, their component cards
+  // render in an indented sub-grid on the next rows. Everything else is a
+  // normal 1/2/3-column card.
+  function renderEntries(entries) {
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {entries.map((entry, i) =>
+          entry.type === 'group' ? (
+            <Fragment key={entry.key}>
+              <WishlistGroup
+                index={i}
+                name={entry.name}
+                items={entry.items}
+                expanded={Boolean(expandedGroups[entry.name])}
+                onToggleExpand={() => toggleGroup(entry.name)}
+                onMarkGroupPurchased={handleMarkGroupPurchased}
+                onDeleteGroup={handleDeleteGroup}
+              />
+              {expandedGroups[entry.name] && (
+                <div className="col-span-full ml-1 pl-4 sm:pl-6 border-l-2 border-gray-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {entry.items.map((it, j) => (
+                    <ItemCard
+                      key={`g-${it.id}`}
+                      index={j}
+                      item={it}
+                      removing={removingId === it.id}
+                      onView={openView}
+                      onEdit={openEdit}
+                      onMarkPurchased={markPurchased}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </div>
+              )}
+            </Fragment>
+          ) : (
+            <ItemCard
+              key={entry.key}
+              index={i}
+              item={entry.item}
+              removing={removingId === entry.item.id}
+              onView={openView}
+              onEdit={openEdit}
+              onMarkPurchased={markPurchased}
+              onDelete={handleDelete}
+            />
+          )
+        )}
+      </div>
+    )
+  }
 
   return (
     <div className="p-4 lg:p-8 max-w-5xl mx-auto pb-24 sm:pb-8">
@@ -1395,7 +1439,8 @@ export default function Wishlist() {
         </div>
         {totalValue > 0 && (
           <p className="text-xs text-gray-400 mt-1.5 px-1">
-            {INR.format(totalValue)} total across {counts.all} item{counts.all === 1 ? '' : 's'}
+            {INR.format(totalValue)} total across {pricedItems.length} priced item{pricedItems.length === 1 ? '' : 's'}
+            {pricedItems.length < counts.all && <span className="text-gray-300"> · {counts.all - pricedItems.length} without a price</span>}
           </p>
         )}
       </div>
@@ -1511,70 +1556,16 @@ export default function Wishlist() {
         // key forces a remount on filter change → the results crossfade in and
         // the cards re-run their staggered entrance.
         <div key={filterSig} className="wl-results-in">
-          {activeNodes.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {activeNodes.map((node, i) =>
-                node.kind === 'group' ? (
-                  <WishlistGroup
-                    key={node.key}
-                    index={i}
-                    name={node.name}
-                    items={node.items}
-                    expanded={Boolean(expandedGroups[node.name])}
-                    onToggleExpand={() => toggleGroup(node.name)}
-                    onMarkGroupPurchased={handleMarkGroupPurchased}
-                    onDeleteGroup={handleDeleteGroup}
-                  />
-                ) : (
-                  <ItemCard
-                    key={node.key}
-                    index={i}
-                    item={node.item}
-                    removing={removingId === node.item.id}
-                    onView={openView}
-                    onEdit={openEdit}
-                    onMarkPurchased={markPurchased}
-                    onDelete={handleDelete}
-                  />
-                )
-              )}
-            </div>
-          )}
+          {activeEntries.length > 0 && renderEntries(activeEntries)}
 
-          {purchasedNodes.length > 0 && (
-            <div className={activeNodes.length > 0 ? 'mt-10' : ''}>
+          {purchasedEntries.length > 0 && (
+            <div className={activeEntries.length > 0 ? 'mt-10' : ''}>
               <div className="flex items-center gap-3 mb-5">
                 <div className="h-px flex-1 bg-gray-200" />
                 <span className="text-sm font-bold text-gray-500 flex items-center gap-1.5">✅ Purchased ({purchasedItems.length})</span>
                 <div className="h-px flex-1 bg-gray-200" />
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {purchasedNodes.map((node, i) =>
-                  node.kind === 'group' ? (
-                    <WishlistGroup
-                      key={node.key}
-                      index={i}
-                      name={node.name}
-                      items={node.items}
-                      expanded={Boolean(expandedGroups[node.name])}
-                      onToggleExpand={() => toggleGroup(node.name)}
-                      onMarkGroupPurchased={handleMarkGroupPurchased}
-                      onDeleteGroup={handleDeleteGroup}
-                    />
-                  ) : (
-                    <ItemCard
-                      key={node.key}
-                      index={i}
-                      item={node.item}
-                      removing={removingId === node.item.id}
-                      onView={openView}
-                      onEdit={openEdit}
-                      onMarkPurchased={markPurchased}
-                      onDelete={handleDelete}
-                    />
-                  )
-                )}
-              </div>
+              {renderEntries(purchasedEntries)}
             </div>
           )}
         </div>
