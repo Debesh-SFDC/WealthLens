@@ -255,6 +255,23 @@ const bridge = {
   deleteWishlistItem: (id) => IS_ELECTRON
     ? window.electronAPI.deleteWishlistItem(id)
     : webCall('DELETE', `/wishlist/${id}`),
+  moveWishlistItem: (itemId, collectionId) => IS_ELECTRON
+    ? window.electronAPI.moveWishlistItem(itemId, collectionId)
+    : webCall('PUT', `/wishlist/${itemId}/move`, { collection_id: collectionId }),
+
+  // Wishlist collections — folder-style grouping, scoped to the caller
+  getWishlistCollections: () => IS_ELECTRON
+    ? window.electronAPI.getWishlistCollections()
+    : webCall('GET', '/wishlist/collections'),
+  createWishlistCollection: (data) => IS_ELECTRON
+    ? window.electronAPI.createWishlistCollection(data)
+    : webCall('POST', '/wishlist/collections', data),
+  updateWishlistCollection: (data) => IS_ELECTRON
+    ? window.electronAPI.updateWishlistCollection(data)
+    : webCall('PUT', `/wishlist/collections/${data.id}`, data),
+  deleteWishlistCollection: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteWishlistCollection(id)
+    : webCall('DELETE', `/wishlist/collections/${id}`),
 }
 
 export default bridge

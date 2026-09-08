@@ -1435,12 +1435,17 @@ function setupIpcHandlers() {
   // Always scoped to currentUserSession.id (never a renderer-supplied userId)
   // so one signed-in user can never read or edit another's wishlist items.
   ipcMain.handle('wishlist:getAll', (_, filters = {}) => {
-    const { status, priority, category, search } = filters || {}
+    const { status, priority, category, collection_id, search } = filters || {}
     let query = 'SELECT * FROM wishlist_items WHERE user_id = ? AND deleted_at IS NULL'
     const params = [currentUserSession?.id]
     if (status)   { query += ' AND status = ?';   params.push(status) }
     if (priority) { query += ' AND priority = ?'; params.push(priority) }
     if (category) { query += ' AND category = ?'; params.push(category) }
+    if (collection_id === 'none' || collection_id === 'null') {
+      query += ' AND collection_id IS NULL'
+    } else if (collection_id) {
+      query += ' AND collection_id = ?'; params.push(collection_id)
+    }
     if (search)   { query += ' AND (name LIKE ? OR brand LIKE ?)'; params.push(`%${search}%`, `%${search}%`) }
     query += ' ORDER BY created_at DESC'
     return db.prepare(query).all(...params)
@@ -1451,13 +1456,13 @@ function setupIpcHandlers() {
     const now = new Date().toISOString()
     const info = db.prepare(`
       INSERT INTO wishlist_items (sync_id, user_id, name, brand, category, url, price, currency,
-        priority, status, purchase_timing, notes, group_name, target_month, target_year, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        priority, status, purchase_timing, notes, group_name, target_month, target_year, collection_id, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       randomUUID(), currentUserSession?.id, d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null,
       d.price ?? null, d.currency ?? 'INR', d.priority ?? 'medium', d.status ?? 'wishlist',
       d.purchase_timing ?? 'No Plan', d.notes ?? null, d.group_name ?? null,
-      d.target_month ?? null, d.target_year ?? null, now, now
+      d.target_month ?? null, d.target_year ?? null, d.collection_id ?? null, now, now
     )
     return { id: info.lastInsertRowid }
   })
@@ -1467,12 +1472,13 @@ function setupIpcHandlers() {
     const info = db.prepare(`
       UPDATE wishlist_items SET name = ?, brand = ?, category = ?, url = ?, price = ?, currency = ?,
         priority = ?, status = ?, purchase_timing = ?, notes = ?, group_name = ?,
-        target_month = ?, target_year = ?, updated_at = ?
+        target_month = ?, target_year = ?, collection_id = ?, updated_at = ?
       WHERE id = ? AND user_id = ?
     `).run(
       d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null, d.price ?? null, d.currency ?? 'INR',
       d.priority ?? 'medium', d.status ?? 'wishlist', d.purchase_timing ?? 'No Plan', d.notes ?? null,
-      d.group_name ?? null, d.target_month ?? null, d.target_year ?? null, now, d.id, currentUserSession?.id
+      d.group_name ?? null, d.target_month ?? null, d.target_year ?? null, d.collection_id ?? null,
+      now, d.id, currentUserSession?.id
     )
     if (!info.changes) throw new Error('Item not found')
     return { success: true }
@@ -1484,6 +1490,67 @@ function setupIpcHandlers() {
       'UPDATE wishlist_items SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ?'
     ).run(now, now, id, currentUserSession?.id)
     if (!info.changes) throw new Error('Item not found')
+    return { success: true }
+  })
+
+  ipcMain.handle('wishlist:moveItem', (_, { itemId, collectionId } = {}) => {
+    const now = new Date().toISOString()
+    const info = db.prepare(
+      'UPDATE wishlist_items SET collection_id = ?, updated_at = ? WHERE id = ? AND user_id = ?'
+    ).run(collectionId ?? null, now, itemId, currentUserSession?.id)
+    if (!info.changes) throw new Error('Item not found')
+    return { success: true }
+  })
+
+  // ── Wishlist collections ───────────────────────────────────────────────────
+  ipcMain.handle('wishlist:getCollections', () => {
+    return db.prepare(`
+      SELECT c.*,
+        (SELECT COUNT(*) FROM wishlist_items i
+           WHERE i.collection_id = c.id AND i.deleted_at IS NULL) AS item_count,
+        (SELECT COALESCE(SUM(i.price), 0) FROM wishlist_items i
+           WHERE i.collection_id = c.id AND i.deleted_at IS NULL AND i.price IS NOT NULL) AS total_value
+      FROM wishlist_collections c
+      WHERE c.user_id = ? AND c.deleted_at IS NULL
+      ORDER BY c.sort_order ASC, c.id ASC
+    `).all(currentUserSession?.id)
+  })
+
+  ipcMain.handle('wishlist:createCollection', (_, d = {}) => {
+    if (!d.name || !String(d.name).trim()) throw new Error('name is required')
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      INSERT INTO wishlist_collections (sync_id, user_id, name, description, emoji, color, sort_order, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(), currentUserSession?.id, String(d.name).trim(), d.description ?? null,
+      d.emoji || '📦', d.color || '#6C63FF', d.sort_order ?? 0, now, now
+    )
+    return { id: info.lastInsertRowid }
+  })
+
+  ipcMain.handle('wishlist:updateCollection', (_, d = {}) => {
+    if (!d.name || !String(d.name).trim()) throw new Error('name is required')
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      UPDATE wishlist_collections SET name = ?, description = ?, emoji = ?, color = ?, sort_order = ?, updated_at = ?
+      WHERE id = ? AND user_id = ?
+    `).run(
+      String(d.name).trim(), d.description ?? null, d.emoji || '📦', d.color || '#6C63FF',
+      d.sort_order ?? 0, now, d.id, currentUserSession?.id
+    )
+    if (!info.changes) throw new Error('Collection not found')
+    return { success: true }
+  })
+
+  ipcMain.handle('wishlist:deleteCollection', (_, id) => {
+    const now = new Date().toISOString()
+    const info = db.prepare(
+      'UPDATE wishlist_collections SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ?'
+    ).run(now, now, id, currentUserSession?.id)
+    if (!info.changes) throw new Error('Collection not found')
+    db.prepare('UPDATE wishlist_items SET collection_id = NULL, updated_at = ? WHERE collection_id = ? AND user_id = ?')
+      .run(now, id, currentUserSession?.id)
     return { success: true }
   })
 

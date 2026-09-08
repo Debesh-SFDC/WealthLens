@@ -39,6 +39,7 @@ export function initDatabase() {
   createFirePlannerTable()
   createTravelTables()
   createWishlistTable()
+  createWishlistCollectionsTable()
   return db
 }
 
@@ -886,6 +887,110 @@ function createWishlistTable() {
       for (const [name, brand, price, notes] of pcComponents) {
         insertPcComponent.run(admin.id, name, brand, price, notes, PC_BUILD_GROUP)
       }
+    }
+  }
+}
+
+// Collections — folder-style grouping for wishlist items (like Reminders lists
+// or Pinterest boards). Every item optionally belongs to one collection;
+// collection_id NULL means "Uncategorized". Scoped per-user like everything
+// else in the wishlist.
+function createWishlistCollectionsTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS wishlist_collections (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id     TEXT UNIQUE,
+      user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      name        TEXT NOT NULL,
+      description TEXT,
+      emoji       TEXT DEFAULT '📦',
+      color       TEXT DEFAULT '#6C63FF',
+      sort_order  INTEGER DEFAULT 0,
+      deleted_at  TEXT,
+      created_at  TEXT DEFAULT (datetime('now')),
+      updated_at  TEXT DEFAULT (datetime('now'))
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_wishlist_collections_user ON wishlist_collections(user_id)') } catch {}
+  // wishlist_items.collection_id — nullable, cleared (not cascaded) when a
+  // collection is removed so the items fall back to Uncategorized.
+  try { db.exec('ALTER TABLE wishlist_items ADD COLUMN collection_id INTEGER REFERENCES wishlist_collections(id) ON DELETE SET NULL') } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_wishlist_items_collection ON wishlist_items(collection_id)') } catch {}
+
+  migrateWishlistCollections()
+}
+
+// One-time per-user migration: seed the four default collections, sort the
+// existing items into them, and add the Scrambler 400X accessory list. Runs
+// only while the user still has zero collections, so it never disturbs
+// collections/assignments the user changes later.
+function migrateWishlistCollections() {
+  const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+  if (!admin) return
+  const uid = admin.id
+  const { c } = db.prepare('SELECT COUNT(*) c FROM wishlist_collections WHERE user_id = ?').get(uid)
+  if (c > 0) return
+
+  const insertCollection = db.prepare(
+    'INSERT INTO wishlist_collections (user_id, name, emoji, color, sort_order) VALUES (?, ?, ?, ?, ?)'
+  )
+  const defaults = [
+    ['Scrambler 400X', '🏍️', '#f97316', 1],
+    ['Gaming PC', '🖥️', '#6366f1', 2],
+    ['Home Setup', '🏠', '#22c55e', 3],
+    ['Life & Misc', '✨', '#ec4899', 4],
+  ]
+  for (const [name, emoji, color, order] of defaults) insertCollection.run(uid, name, emoji, color, order)
+
+  const collId = (name) =>
+    db.prepare('SELECT id FROM wishlist_collections WHERE user_id = ? AND name = ? AND deleted_at IS NULL').get(uid, name)?.id
+  const gamingId = collId('Gaming PC')
+  const homeId = collId('Home Setup')
+  const miscId = collId('Life & Misc')
+  const scramblerId = collId('Scrambler 400X')
+
+  // Step 2 — sort every currently-uncategorised item into a collection.
+  if (gamingId) {
+    db.prepare(`
+      UPDATE wishlist_items SET collection_id = ?
+      WHERE user_id = ? AND collection_id IS NULL AND deleted_at IS NULL
+        AND (group_name LIKE '%Gaming PC%' OR category = 'PC')
+    `).run(gamingId, uid)
+  }
+  if (homeId) {
+    db.prepare(`
+      UPDATE wishlist_items SET collection_id = ?
+      WHERE user_id = ? AND collection_id IS NULL AND deleted_at IS NULL
+        AND (name LIKE '%Helmet%' OR name LIKE '%Hanger%' OR category = 'Home')
+    `).run(homeId, uid)
+  }
+  if (miscId) {
+    db.prepare(`
+      UPDATE wishlist_items SET collection_id = ?
+      WHERE user_id = ? AND collection_id IS NULL AND deleted_at IS NULL
+    `).run(miscId, uid)
+  }
+
+  // Step 3 — Scrambler 400X accessory shortlist (guarded by name so re-running
+  // a fresh install after manual edits won't duplicate).
+  if (scramblerId) {
+    const scramblerItems = [
+      ['Engine Guard', 'Triumph', 'Protect engine casing from tip-over damage'],
+      ['Knuckle Guard / Hand Guard', 'Triumph', 'Protect hands from wind, debris and tip-overs'],
+      ['Mirror Replacement', 'Triumph', 'Stock mirrors vibrate at highway speeds, replace with bar-end or aftermarket'],
+      ['Saddle Stay / Luggage Rack', 'Triumph', 'Required to mount saddle bags properly'],
+      ['Saddle Bags', 'Triumph', 'For touring — soft panniers preferred, fits 20-30L each side'],
+      ['Side Stand Extender', 'Triumph', 'Prevents bike sinking into soft ground when parked on gravel or mud'],
+    ]
+    const exists = db.prepare('SELECT 1 FROM wishlist_items WHERE user_id = ? AND collection_id = ? AND name = ?')
+    const insertItem = db.prepare(`
+      INSERT INTO wishlist_items
+        (sync_id, user_id, collection_id, name, brand, category, priority, status, purchase_timing, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'Motorcycle', 'high', 'wishlist', 'Later', ?, ?, ?)
+    `)
+    const now = new Date().toISOString()
+    for (const [name, brand, notes] of scramblerItems) {
+      if (!exists.get(uid, scramblerId, name)) insertItem.run(randomUUID(), uid, scramblerId, name, brand, notes, now, now)
     }
   }
 }

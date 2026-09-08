@@ -10,15 +10,20 @@ const router = express.Router()
 // always scoped to req.user.id — there is no query or param that can read or
 // modify another user's items, admin included.
 
-// GET /api/wishlist?status=&priority=&category=&search= — caller's own items
+// GET /api/wishlist?status=&priority=&category=&collection_id=&search= — caller's own items
 router.get('/', async (req, res) => {
-  const { status, priority, category, search } = req.query || {}
+  const { status, priority, category, collection_id, search } = req.query || {}
   const db = getDb()
   let query = 'SELECT * FROM wishlist_items WHERE user_id = ? AND deleted_at IS NULL'
   const params = [req.user.id]
   if (status)   { query += ' AND status = ?';   params.push(status) }
   if (priority) { query += ' AND priority = ?'; params.push(priority) }
   if (category) { query += ' AND category = ?'; params.push(category) }
+  if (collection_id === 'none' || collection_id === 'null') {
+    query += ' AND collection_id IS NULL'
+  } else if (collection_id) {
+    query += ' AND collection_id = ?'; params.push(collection_id)
+  }
   if (search)   { query += ' AND (name LIKE ? OR brand LIKE ?)'; params.push(`%${search}%`, `%${search}%`) }
   query += ' ORDER BY created_at DESC'
   const { rows } = await db.query(query, params)
@@ -36,17 +41,32 @@ router.post('/', async (req, res) => {
   const now = new Date().toISOString()
   const { rows } = await db.query(
     `INSERT INTO wishlist_items (sync_id, user_id, name, brand, category, url, price, currency,
-       priority, status, purchase_timing, notes, group_name, target_month, target_year, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       priority, status, purchase_timing, notes, group_name, target_month, target_year, collection_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING id`,
     [
       randomUUID(), req.user.id, d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null,
       d.price ?? null, d.currency ?? 'INR', d.priority ?? 'medium', d.status ?? 'wishlist',
       d.purchase_timing ?? 'No Plan', d.notes ?? null, d.group_name ?? null,
-      d.target_month ?? null, d.target_year ?? null, now, now,
+      d.target_month ?? null, d.target_year ?? null, d.collection_id ?? null, now, now,
     ]
   )
   res.json({ id: rows[0].id })
+})
+
+// PUT /api/wishlist/:id/move — move an item to a different collection (or to
+// Uncategorized with collection_id null). Kept separate from the full update
+// so the UI can move an item without resending every field.
+router.put('/:id/move', async (req, res) => {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const target = req.body?.collection_id ?? null
+  const { rowCount } = await db.query(
+    'UPDATE wishlist_items SET collection_id = ?, updated_at = ? WHERE id = ? AND user_id = ?',
+    [target, now, req.params.id, req.user.id]
+  )
+  if (!rowCount) return res.status(404).json({ error: 'Item not found' })
+  res.json({ success: true })
 })
 
 // PUT /api/wishlist/:id — updates the item, scoped to req.user.id so one
@@ -58,12 +78,13 @@ router.put('/:id', async (req, res) => {
   const { rowCount } = await db.query(
     `UPDATE wishlist_items SET name = ?, brand = ?, category = ?, url = ?, price = ?, currency = ?,
        priority = ?, status = ?, purchase_timing = ?, notes = ?, group_name = ?,
-       target_month = ?, target_year = ?, updated_at = ?
+       target_month = ?, target_year = ?, collection_id = ?, updated_at = ?
      WHERE id = ? AND user_id = ?`,
     [
       d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null, d.price ?? null, d.currency ?? 'INR',
       d.priority ?? 'medium', d.status ?? 'wishlist', d.purchase_timing ?? 'No Plan', d.notes ?? null,
-      d.group_name ?? null, d.target_month ?? null, d.target_year ?? null, now, req.params.id, req.user.id,
+      d.group_name ?? null, d.target_month ?? null, d.target_year ?? null, d.collection_id ?? null,
+      now, req.params.id, req.user.id,
     ]
   )
   if (!rowCount) return res.status(404).json({ error: 'Item not found' })

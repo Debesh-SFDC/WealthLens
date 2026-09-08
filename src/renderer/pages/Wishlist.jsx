@@ -1,9 +1,9 @@
-import { Fragment, useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import bridge from '../lib/bridge'
 
 // Wishlist is private per-user — every bridge call below is scoped to the
 // signed-in caller server-side (JWT / Electron session), so admin and
-// tracker each only ever see their own items.
+// tracker each only ever see their own items and collections.
 
 export const WISHLIST_CATEGORIES = [
   'Motorcycle', 'Riding Gear', 'Electronics', 'PC', 'Watches',
@@ -11,8 +11,6 @@ export const WISHLIST_CATEGORIES = [
   'Fitness', 'Accessories', 'Other',
 ]
 
-// Emoji + accent color per category — drives the card's left border, the
-// category chip tint, and the pill selector in the add/edit modal.
 const CATEGORY_META = {
   'Motorcycle':        { emoji: '🏍️', color: '#F97316' },
   'Riding Gear':        { emoji: '🪖', color: '#EF4444' },
@@ -50,18 +48,24 @@ const STATUSES = [
   { value: 'dropped',     label: 'Dropped',     bg: '#F3F4F6', fg: '#6B7280', strike: true },
 ]
 
-const SORT_OPTIONS = [
-  { value: 'recent',   label: 'Recently Added', emoji: '🕒' },
-  { value: 'priority', label: 'Priority',        emoji: '🔥' },
-  { value: 'price',    label: 'Price',           emoji: '💰' },
-  { value: 'name',     label: 'Name',            emoji: '🔤' },
+// Preset palette + emoji set for collections.
+const COLLECTION_COLORS = [
+  { name: 'Orange', value: '#f97316' },
+  { name: 'Indigo', value: '#6366f1' },
+  { name: 'Green',  value: '#22c55e' },
+  { name: 'Pink',   value: '#ec4899' },
+  { name: 'Blue',   value: '#3b82f6' },
+  { name: 'Red',    value: '#ef4444' },
+  { name: 'Amber',  value: '#f59e0b' },
+  { name: 'Purple', value: '#6C63FF' },
 ]
+const COLLECTION_EMOJIS = [
+  '📦', '🏍️', '🖥️', '🏠', '✨', '📱', '👕', '📚', '🧳', '💪', '⌚', '👟',
+  '🎒', '🎮', '🛠️', '🪑', '🚗', '🎸', '📷', '🎧', '⌨️', '🖼️', '🌱', '🍳',
+  '🧴', '💡', '🔧', '🎯', '⛺', '🏕️', '🔩', '🪛',
+]
+const UNCATEGORIZED = { id: null, name: 'Uncategorized', emoji: '📥', color: '#9CA3AF', uncategorized: true }
 
-// Timeline view — one section per purchase_timing value, in display order.
-// `kind: 'current-year'` sections are inferred to belong to the current
-// calendar year (there's no real target date on the item, just this label),
-// so they're hidden when a different specific year is selected. `conditional`
-// and `noplan` sections have no year at all — only "All Time" shows them.
 const TIME_SECTIONS = [
   { key: 'Now',                       emoji: '🔥', label: 'Now',                       color: '#EF4444', tint: '#FEF2F2', kind: 'current-year' },
   { key: 'This Month',                emoji: '📅', label: 'This Month',                color: '#F97316', tint: '#FFF7ED', kind: 'current-year' },
@@ -79,26 +83,21 @@ const THIS_YEAR_SECTION = { key: 'This Year', emoji: '🗓️', label: `This Yea
 const CURRENT_YEAR = new Date().getFullYear()
 const YEAR_OPTIONS = [CURRENT_YEAR - 1, CURRENT_YEAR, CURRENT_YEAR + 1]
 
-// Optional specific target date on an item — target_month (1–12) + target_year.
 const TARGET_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 const TARGET_MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 const TARGET_YEARS = Array.from({ length: 10 }, (_, i) => CURRENT_YEAR + i)
 
-// "Mar 2027" / "March 2027" — null unless both month and year are set.
 function targetDateLabel(item, style = 'short') {
   const m = Number(item?.target_month), y = Number(item?.target_year)
   if (!m || !y || m < 1 || m > 12) return null
   return `${(style === 'long' ? TARGET_MONTHS : TARGET_MONTHS_SHORT)[m - 1]} ${y}`
 }
-// Sort key for chronological ordering: dated items first (by year then month),
-// year-only next, undated last.
 function targetSortKey(item) {
   const m = Number(item?.target_month), y = Number(item?.target_year)
   if (y && m) return y * 12 + m
   if (y) return y * 12 + 13
   return Number.POSITIVE_INFINITY
 }
-// Chronologically by target date, then most-recently-added within the same slot.
 function sortByTargetThenRecent(arr) {
   return [...arr].sort((a, b) => {
     const ka = targetSortKey(a), kb = targetSortKey(b)
@@ -110,43 +109,29 @@ function sortByTargetThenRecent(arr) {
 const VIEW_STORAGE_KEY = 'wealthlens_wishlist_view'
 function getStoredView() {
   try {
-    return localStorage.getItem(VIEW_STORAGE_KEY) === 'timeline' ? 'timeline' : 'grid'
+    return localStorage.getItem(VIEW_STORAGE_KEY) === 'timeline' ? 'timeline' : 'collections'
   } catch {
-    return 'grid'
+    return 'collections'
   }
 }
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 
-// Collapse items sharing a group_name into a single group entry, keeping the
-// sort order of the surrounding standalone items (a group takes the slot of
-// its first member). Items with no group_name stay as plain item entries.
-function toGroupedEntries(list) {
-  const entries = []
-  const groups = new Map()
-  for (const item of list) {
-    const g = (item.group_name || '').trim()
-    if (!g) { entries.push({ type: 'item', key: `item-${item.id}`, item }); continue }
-    let entry = groups.get(g)
-    if (!entry) {
-      entry = { type: 'group', key: `group-${g}`, name: g, items: [] }
-      groups.set(g, entry)
-      entries.push(entry)
-    }
-    entry.items.push(item)
-  }
-  return entries
-}
-
 const priorityMeta = (p) => PRIORITIES.find(x => x.value === p) || PRIORITIES[1]
 const statusMeta = (s) => STATUSES.find(x => x.value === s) || STATUSES[0]
-// Any purchase_timing that doesn't match a known section (shouldn't happen —
-// the modal only offers these 9 values — but items are never dropped from
-// view, so unknown/blank values fall back to "No Plan").
 const timingSection = (timing) => TIME_SECTIONS.find(d => d.key === timing) || TIME_SECTIONS[TIME_SECTIONS.length - 1]
+const priceOf = (i) => (i.price != null && i.price !== '' ? Number(i.price) : 0)
+const hasPriceSet = (i) => i.price != null && i.price !== ''
+const topPriority = (its) =>
+  its.some(i => i.priority === 'high') ? 'high' : its.some(i => i.priority === 'medium') ? 'medium' : 'low'
 
-// One-time keyframes for the card micro-interactions — a plain <style> tag
-// needs no Tailwind config change.
+// Resolve an item's collection object (or the synthetic Uncategorized one).
+function collectionOf(item, collections) {
+  if (item.collection_id == null) return UNCATEGORIZED
+  return collections.find(c => c.id === item.collection_id) || UNCATEGORIZED
+}
+
+// One-time keyframes for the card micro-interactions.
 function WishlistAnimationStyles() {
   return (
     <style>{`
@@ -185,55 +170,34 @@ function CloseIcon(props) {
   )
 }
 
-// ── Generic pop-over dropdown (button + panel) — used instead of native
-// <select> elements so the filter bar doesn't look like an HTML form. ──────
-function PopDropdown({ trigger, children, align = 'left' }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="relative">
-      <button type="button" onClick={() => setOpen(o => !o)}>{trigger(open)}</button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
-          <div
-            className={`absolute z-40 mt-2 min-w-[200px] bg-white rounded-2xl shadow-xl border border-gray-100 py-2 overflow-hidden ${align === 'right' ? 'right-0' : 'left-0'}`}
-            onClick={() => setOpen(false)}
-          >
-            {children}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
-function DropdownRow({ active, onClick, children }) {
+function KebabButton({ onClick, className = '' }) {
   return (
     <button
-      type="button"
       onClick={onClick}
-      className="w-full flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-left hover:bg-gray-50 transition-colors"
-      style={{ color: active ? '#6C63FF' : '#374151', backgroundColor: active ? '#F5F4FF' : 'transparent' }}
+      className={`w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors ${className}`}
     >
-      {children}
+      <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
+        <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
+      </svg>
     </button>
   )
 }
 
-// ── Add/Edit modal ──────────────────────────────────────────────────────────
-function WishlistModal({ item, onSave, onClose }) {
+// ── Add/Edit item modal ─────────────────────────────────────────────────────
+function WishlistModal({ item, collections, lockedCollectionId, collectionLocked, onSave, onClose }) {
   const isEdit = Boolean(item?.id)
   const [form, setForm] = useState(item
-    ? { ...item, price: item.price != null ? String(item.price) : '' }
+    ? { ...item, price: item.price != null ? String(item.price) : '', collection_id: item.collection_id ?? '' }
     : {
       name: '', category: WISHLIST_CATEGORIES[0], url: '', brand: '', price: '',
-      priority: 'medium', status: 'wishlist', purchase_timing: 'No Plan', notes: '', group_name: '',
+      priority: 'medium', status: 'wishlist', purchase_timing: 'No Plan', notes: '',
       target_month: null, target_year: null,
+      collection_id: lockedCollectionId ?? '',
     }
   )
   const [saving, setSaving] = useState(false)
-
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const lockCollection = collectionLocked && !isEdit
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -246,6 +210,7 @@ function WishlistModal({ item, onSave, onClose }) {
         group_name: (form.group_name || '').trim() || null,
         target_month: form.target_month ? Number(form.target_month) : null,
         target_year: form.target_year ? Number(form.target_year) : null,
+        collection_id: form.collection_id === '' || form.collection_id == null ? null : Number(form.collection_id),
       }
       if (isEdit) await bridge.updateWishlistItem(data)
       else await bridge.createWishlistItem(data)
@@ -277,6 +242,21 @@ function WishlistModal({ item, onSave, onClose }) {
           <section>
             <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>🎯 The Item</h3>
             <div className="space-y-4">
+              <div>
+                <label className="text-sm font-semibold text-gray-700 mb-1.5 block">Collection</label>
+                <select
+                  value={form.collection_id ?? ''}
+                  onChange={e => set('collection_id', e.target.value)}
+                  disabled={lockCollection}
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 disabled:bg-gray-50 disabled:text-gray-500"
+                >
+                  <option value="">📥 Uncategorized</option>
+                  {collections.map(c => (
+                    <option key={c.id} value={c.id}>{c.emoji} {c.name}</option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="text-sm font-semibold text-gray-700 mb-1.5 block">What do you want?</label>
                 <input
@@ -390,10 +370,7 @@ function WishlistModal({ item, onSave, onClose }) {
                       <button
                         key={s.value} type="button" onClick={() => set('status', s.value)}
                         className="px-3.5 py-2 rounded-full text-sm font-semibold transition-colors"
-                        style={{
-                          backgroundColor: active ? s.fg : s.bg,
-                          color: active ? '#fff' : s.fg,
-                        }}
+                        style={{ backgroundColor: active ? s.fg : s.bg, color: active ? '#fff' : s.fg }}
                       >
                         {s.label}
                       </button>
@@ -448,7 +425,7 @@ function WishlistModal({ item, onSave, onClose }) {
             <p className="text-xs text-gray-400 mt-2">💡 A specific month/year shows on the card and sorts the item chronologically in Timeline view.</p>
           </section>
 
-          {/* Section 5 — Notes & Group */}
+          {/* Section 5 — Notes */}
           <section>
             <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>📝 Notes</h3>
             <textarea
@@ -456,14 +433,7 @@ function WishlistModal({ item, onSave, onClose }) {
               value={form.notes || ''} onChange={e => set('notes', e.target.value)}
               className="w-full min-h-[120px] px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 leading-relaxed focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 resize-y"
             />
-
-            <label className="text-sm font-semibold text-gray-700 mb-1.5 mt-4 block">Group (optional)</label>
-            <input
-              type="text" placeholder="e.g. Gaming PC Build — Quote #969081"
-              value={form.group_name || ''} onChange={e => set('group_name', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-            />
-            <p className="text-xs text-gray-400 mt-2">💡 Items sharing a group name are shown collapsed together. Just a name and category is enough — everything else is optional.</p>
+            <p className="text-xs text-gray-400 mt-2">💡 Just a name and category is enough — everything else is optional.</p>
           </section>
 
           <div className="flex gap-3 pt-2 pb-1 sticky bottom-0 bg-white">
@@ -484,13 +454,146 @@ function WishlistModal({ item, onSave, onClose }) {
   )
 }
 
+// ── New / Edit collection modal ─────────────────────────────────────────────
+function CollectionModal({ collection, onSave, onClose }) {
+  const isEdit = Boolean(collection?.id)
+  const [name, setName] = useState(collection?.name || '')
+  const [emoji, setEmoji] = useState(collection?.emoji || '📦')
+  const [color, setColor] = useState(collection?.color || '#6C63FF')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!name.trim()) return
+    setSaving(true)
+    try {
+      const data = { name: name.trim(), emoji, color }
+      if (isEdit) await bridge.updateWishlistCollection({ ...collection, ...data })
+      else await bridge.createWishlistCollection(data)
+      onSave()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm sm:flex sm:items-center sm:justify-center sm:p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[440px] sm:rounded-3xl overflow-y-auto shadow-2xl">
+        <div className="px-5 sm:px-7 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+          <h2 className="text-xl font-extrabold text-gray-900">{isEdit ? 'Edit Collection' : 'New Collection'}</h2>
+          <button onClick={onClose} className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
+            <CloseIcon className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 sm:p-7 space-y-6">
+          <div className="flex items-center gap-3">
+            <div
+              className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0"
+              style={{ background: `${color}1A` }}
+            >
+              {emoji}
+            </div>
+            <input
+              autoFocus required type="text" placeholder="Collection name"
+              value={name} onChange={e => setName(e.target.value)}
+              className="flex-1 min-w-0 px-4 py-3 rounded-xl border-2 border-gray-100 bg-gray-50 text-lg font-bold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:bg-white transition-colors"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-2 block">Emoji</label>
+            <div className="grid grid-cols-8 gap-1.5">
+              {COLLECTION_EMOJIS.map(e => (
+                <button
+                  key={e} type="button" onClick={() => setEmoji(e)}
+                  className="aspect-square rounded-lg text-xl flex items-center justify-center border-2 transition-colors"
+                  style={{ borderColor: emoji === e ? color : 'transparent', background: emoji === e ? `${color}14` : '#F9FAFB' }}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-sm font-semibold text-gray-700 mb-2 block">Color</label>
+            <div className="flex flex-wrap gap-2.5">
+              {COLLECTION_COLORS.map(c => (
+                <button
+                  key={c.value} type="button" onClick={() => setColor(c.value)} title={c.name}
+                  className="w-9 h-9 rounded-full transition-transform hover:scale-110"
+                  style={{ background: c.value, outline: color === c.value ? `3px solid ${c.value}55` : 'none', outlineOffset: 2 }}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="flex-1 py-3.5 rounded-2xl border border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[48px]">
+              Cancel
+            </button>
+            <button
+              type="submit" disabled={saving}
+              className="flex-1 py-3.5 rounded-2xl text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-60 min-h-[48px]"
+              style={{ backgroundColor: color }}
+            >
+              {saving ? 'Saving…' : isEdit ? 'Save' : 'Create Collection'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
+// ── Move-item-to-collection picker ─────────────────────────────────────────
+function MovePicker({ item, collections, onMove, onClose }) {
+  const currentId = item.collection_id ?? null
+  return (
+    <div
+      className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-end sm:items-center sm:justify-center sm:p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white w-full sm:max-w-[420px] rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl max-h-[80vh] flex flex-col">
+        <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <h3 className="text-base font-extrabold text-gray-900 truncate pr-2">Move "{item.name}"</h3>
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-gray-100 shrink-0">
+            <CloseIcon className="w-5 h-5 text-gray-500" />
+          </button>
+        </div>
+        <div className="overflow-y-auto py-1">
+          {[...collections, UNCATEGORIZED].map(c => {
+            const active = (c.id ?? null) === currentId
+            return (
+              <button
+                key={c.id ?? 'uncat'}
+                disabled={active}
+                onClick={() => onMove(item, c.id ?? null)}
+                className="w-full flex items-center gap-3 px-5 py-3 text-left hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-default"
+              >
+                <span className="text-xl">{c.emoji}</span>
+                <span className="flex-1 text-sm font-semibold text-gray-800">{c.name}</span>
+                {active && <span className="text-xs font-bold text-gray-400">Current</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Read-only item detail view ──────────────────────────────────────────
-function WishlistDetailModal({ item, onClose, onEdit, onMarkPurchased, onDelete }) {
+function WishlistDetailModal({ item, collection, onClose, onEdit, onMove, onMarkPurchased, onDelete }) {
   const pr = priorityMeta(item.priority)
   const st = statusMeta(item.status)
   const cat = categoryMeta(item.category)
   const isPurchased = item.status === 'purchased'
-  const hasPrice = item.price != null && item.price !== ''
+  const hasPrice = hasPriceSet(item)
   const added = item.created_at
     ? new Date(item.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     : null
@@ -507,6 +610,7 @@ function WishlistDetailModal({ item, onClose, onEdit, onMarkPurchased, onDelete 
           </button>
           <div className="flex items-center gap-2">
             <button onClick={() => onEdit(item)} className="px-3 h-8 rounded-lg text-xs font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">✏️ Edit</button>
+            <button onClick={() => onMove(item)} className="px-3 h-8 rounded-lg text-xs font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">↔ Move</button>
             <button onClick={() => onDelete(item)} className="px-3 h-8 rounded-lg text-xs font-bold border border-red-200 text-red-600 hover:bg-red-50 transition-colors">🗑️ Delete</button>
           </div>
         </div>
@@ -531,6 +635,12 @@ function WishlistDetailModal({ item, onClose, onEdit, onMarkPurchased, onDelete 
           </p>
 
           <dl className="mt-5 space-y-2 text-sm">
+            {collection && (
+              <div className="flex gap-3">
+                <dt className="w-20 shrink-0 font-semibold text-gray-400">Collection</dt>
+                <dd className="font-semibold" style={{ color: collection.color }}>{collection.emoji} {collection.name}</dd>
+              </div>
+            )}
             <div className="flex gap-3">
               <dt className="w-20 shrink-0 font-semibold text-gray-400">Status</dt>
               <dd><span className="font-bold px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: st.bg, color: st.fg }}>{st.label}</span></dd>
@@ -549,12 +659,6 @@ function WishlistDetailModal({ item, onClose, onEdit, onMarkPurchased, onDelete 
               <div className="flex gap-3">
                 <dt className="w-20 shrink-0 font-semibold text-gray-400">Added</dt>
                 <dd className="text-gray-800">{added}</dd>
-              </div>
-            )}
-            {item.group_name && (
-              <div className="flex gap-3">
-                <dt className="w-20 shrink-0 font-semibold text-gray-400">Group</dt>
-                <dd className="text-gray-800">{item.group_name}</dd>
               </div>
             )}
           </dl>
@@ -594,10 +698,7 @@ function WishlistDetailModal({ item, onClose, onEdit, onMarkPurchased, onDelete 
 }
 
 // ── Compact item card ────────────────────────────────────────────────────
-// Fixed ~172px height, 3px accent bar, notes hidden behind an inline "•••"
-// toggle, and a quick-action row that slides up from the bottom on hover
-// (always visible on touch / small screens where there is no hover).
-function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPurchased, onDelete }) {
+function ItemCard({ item, index = 0, removing = false, collectionChip, onView, onEdit, onMove, onMarkPurchased, onDelete }) {
   const [flash, setFlash] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const pr = priorityMeta(item.priority)
@@ -605,8 +706,9 @@ function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPur
   const cat = categoryMeta(item.category)
   const isPurchased = item.status === 'purchased'
   const accent = isPurchased ? '#22C55E' : cat.color
-  const hasPrice = item.price != null && item.price !== ''
+  const hasPrice = hasPriceSet(item)
   const tgtLabel = targetDateLabel(item)
+  const stop = (fn) => (e) => { e.stopPropagation(); fn() }
 
   async function handleMarkPurchased() {
     setFlash(true)
@@ -614,14 +716,10 @@ function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPur
     setTimeout(() => setFlash(false), 900)
   }
 
-  // Stop a click on an action control from also triggering the card's
-  // "open detail view" handler.
-  const stop = (fn) => (e) => { e.stopPropagation(); fn() }
-
   return (
     <div
       onClick={() => onView?.(item)}
-      className={`group relative flex flex-col rounded-xl bg-white border border-gray-100 shadow-sm transition-all duration-200 cursor-pointer hover:-translate-y-1 hover:shadow-lg ${removing ? 'wl-card-exit' : 'wl-card-enter'} ${expanded ? '' : 'md:h-[172px]'} ${isPurchased ? 'opacity-80' : ''}`}
+      className={`group relative flex flex-col rounded-xl bg-white border border-gray-100 shadow-sm transition-all duration-200 cursor-pointer hover:-translate-y-1 hover:shadow-lg ${removing ? 'wl-card-exit' : 'wl-card-enter'} ${expanded ? '' : 'md:h-[176px]'} ${isPurchased ? 'opacity-80' : ''}`}
       style={removing ? undefined : { animationDelay: `${Math.min(index, 10) * 50}ms` }}
     >
       <span
@@ -638,11 +736,7 @@ function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPur
           >
             <span>{cat.emoji}</span>{item.category}
           </span>
-          <span
-            className="mt-1 w-2 h-2 rounded-full shrink-0"
-            style={{ background: pr.color }}
-            title={`${pr.label} priority`}
-          />
+          <span className="mt-1 w-2 h-2 rounded-full shrink-0" style={{ background: pr.color }} title={`${pr.label} priority`} />
         </div>
 
         <h3
@@ -651,7 +745,13 @@ function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPur
         >
           {item.name}
         </h3>
-        {item.brand && <p className="text-xs text-gray-400 mt-0.5 truncate">by {item.brand}</p>}
+        {collectionChip ? (
+          <p className="text-xs mt-0.5 truncate font-semibold" style={{ color: collectionChip.color }}>
+            {collectionChip.emoji} {collectionChip.name}{item.brand ? <span className="text-gray-400 font-normal"> · {item.brand}</span> : null}
+          </p>
+        ) : item.brand ? (
+          <p className="text-xs text-gray-400 mt-0.5 truncate">by {item.brand}</p>
+        ) : null}
 
         <div className="mt-auto flex items-center gap-1.5 text-sm text-gray-600 min-w-0">
           <span className="font-bold text-gray-900 shrink-0">{hasPrice ? INR.format(item.price) : '—'}</span>
@@ -690,10 +790,7 @@ function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPur
                 {expanded ? '×' : '•••'}
               </button>
             )}
-            <span
-              className="text-[11px] font-bold px-2 py-0.5 rounded-full"
-              style={{ backgroundColor: st.bg, color: st.fg }}
-            >
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ backgroundColor: st.bg, color: st.fg }}>
               {st.label}
             </span>
           </div>
@@ -706,130 +803,228 @@ function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPur
         )}
       </div>
 
-      {/* Quick-action row — clipped to a 36px strip so it never overflows the
-          card when hidden; slides up on hover, static on touch/mobile. */}
+      {/* Quick-action row — hover-reveal on desktop, static on touch/mobile. */}
       <div className="absolute inset-x-0 bottom-0 h-9 overflow-hidden pointer-events-none max-md:hidden">
         <div className="absolute inset-x-0 bottom-0 h-9 flex translate-y-full group-hover:translate-y-0 transition-transform duration-200 border-t border-gray-100 bg-white/95 backdrop-blur-sm pointer-events-auto">
           {!isPurchased && (
-            <button onClick={stop(handleMarkPurchased)} className="flex-1 text-xs font-bold text-green-600 hover:bg-green-50 transition-colors">✓ Purchased</button>
+            <button onClick={stop(handleMarkPurchased)} className="flex-1 text-[11px] font-bold text-green-600 hover:bg-green-50 transition-colors">✓ Buy</button>
           )}
-          <button onClick={stop(() => onEdit(item))} className="flex-1 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors border-l border-gray-100">✏️ Edit</button>
-          <button onClick={stop(() => onDelete(item))} className="flex-1 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors border-l border-gray-100">🗑️ Delete</button>
+          <button onClick={stop(() => onEdit(item))} className="flex-1 text-[11px] font-bold text-gray-600 hover:bg-gray-50 transition-colors border-l border-gray-100">Edit</button>
+          <button onClick={stop(() => onMove(item))} className="flex-1 text-[11px] font-bold text-gray-600 hover:bg-gray-50 transition-colors border-l border-gray-100">Move</button>
+          <button onClick={stop(() => onDelete(item))} className="flex-1 text-[11px] font-bold text-red-600 hover:bg-red-50 transition-colors border-l border-gray-100">Delete</button>
         </div>
       </div>
 
-      {/* Touch / mobile: the same actions, always visible */}
       <div className="md:hidden flex border-t border-gray-100">
         {!isPurchased && (
-          <button onClick={stop(handleMarkPurchased)} className="flex-1 py-2.5 text-xs font-bold text-green-600 active:bg-green-50">✓ Purchased</button>
+          <button onClick={stop(handleMarkPurchased)} className="flex-1 py-2.5 text-[11px] font-bold text-green-600 active:bg-green-50">✓ Buy</button>
         )}
-        <button onClick={stop(() => onEdit(item))} className="flex-1 py-2.5 text-xs font-bold text-gray-600 active:bg-gray-50 border-l border-gray-100">✏️ Edit</button>
-        <button onClick={stop(() => onDelete(item))} className="flex-1 py-2.5 text-xs font-bold text-red-600 active:bg-red-50 border-l border-gray-100">🗑️ Delete</button>
+        <button onClick={stop(() => onEdit(item))} className="flex-1 py-2.5 text-[11px] font-bold text-gray-600 active:bg-gray-50 border-l border-gray-100">Edit</button>
+        <button onClick={stop(() => onMove(item))} className="flex-1 py-2.5 text-[11px] font-bold text-gray-600 active:bg-gray-50 border-l border-gray-100">Move</button>
+        <button onClick={stop(() => onDelete(item))} className="flex-1 py-2.5 text-[11px] font-bold text-red-600 active:bg-red-50 border-l border-gray-100">Delete</button>
       </div>
     </div>
   )
 }
 
-// ── Grouped card — one card standing in for every item sharing a
-// group_name. "View All" toggles the individual component cards, which the
-// parent renders in the grid directly below this card. ───────────────────
-function WishlistGroup({ name, items, index = 0, expanded, onToggleExpand, onMarkGroupPurchased, onDeleteGroup }) {
+// ── Collection card on the overview grid ───────────────────────────────────
+function CollectionCard({ collection, items, index = 0, onOpen, onEdit, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const total = items.reduce((s, i) => s + (i.price != null && i.price !== '' ? Number(i.price) : 0), 0)
-  const meta = categoryMeta(items[0]?.category)
-  const pr = priorityMeta(
-    items.some(i => i.priority === 'high') ? 'high'
-      : items.some(i => i.priority === 'medium') ? 'medium' : 'low'
-  )
-  const quoteUrl = items.find(i => i.url)?.url
-  const preview = items.slice(0, 3).map(i => i.name).join('  •  ')
-  const moreCount = items.length - 3
-  const allPurchased = items.every(i => i.status === 'purchased')
+  const editable = !collection.uncategorized
+  const count = items.length
+  const value = items.filter(hasPriceSet).reduce((s, i) => s + priceOf(i), 0)
+  const highCount = items.filter(i => i.priority === 'high').length
+  const highPct = count ? Math.round((highCount / count) * 100) : 0
+  const prio = priorityMeta(topPriority(items))
+  const preview = items.slice(0, 3)
+  const more = count - preview.length
 
   return (
     <div
-      className="group col-span-full relative flex flex-col rounded-xl border shadow-sm transition-all duration-200 hover:shadow-md wl-card-enter"
-      style={{ animationDelay: `${Math.min(index, 10) * 50}ms`, background: `${meta.color}0A`, borderColor: `${meta.color}33` }}
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpen(collection)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(collection) } }}
+      className="wl-card-enter group relative text-left rounded-2xl border p-5 transition-all duration-200 cursor-pointer hover:-translate-y-1 hover:shadow-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6C63FF]/40"
+      style={{ animationDelay: `${Math.min(index, 10) * 50}ms`, background: `${collection.color}0D`, borderColor: `${collection.color}33` }}
     >
-      <span
-        className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l-xl opacity-70 group-hover:opacity-100 transition-opacity"
-        style={{ background: meta.color }}
-      />
-      <div className="p-4 pl-5">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2 min-w-0">
-            <span className="text-lg shrink-0">{meta.emoji}</span>
-            <span className="truncate">{name}</span>
-          </h3>
-          <span className="text-xs font-semibold text-gray-400 shrink-0 whitespace-nowrap">{items.length} items</span>
-        </div>
+      <span className="absolute left-0 top-4 bottom-4 w-1 rounded-r" style={{ background: collection.color }} />
 
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <p className="text-sm">
-            <span className="font-bold text-gray-900">{INR.format(total)}</span> <span className="text-gray-400">total</span>
-          </p>
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-gray-500">
-            {pr.label} <span className="w-2 h-2 rounded-full" style={{ background: pr.color }} />
-          </span>
-        </div>
-
-        <p className="mt-3 text-xs text-gray-500 line-clamp-1">{preview}</p>
-        {moreCount > 0 && (
-          <p className="text-xs text-gray-400 mt-0.5">+ {moreCount} more component{moreCount === 1 ? '' : 's'}</p>
-        )}
-
-        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center gap-2">
-          <button
-            onClick={onToggleExpand}
-            className="px-3 h-8 rounded-lg text-xs font-bold text-white transition-opacity hover:opacity-90"
-            style={{ background: '#6C63FF' }}
-          >
-            {expanded ? 'Hide' : 'View All'}
-          </button>
-          {quoteUrl && (
-            <a
-              href={quoteUrl} target="_blank" rel="noopener noreferrer"
-              className="px-3 h-8 inline-flex items-center rounded-lg text-xs font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
-            >
-              Open Quote ↗
-            </a>
-          )}
-          <div className="relative ml-auto">
-            <button
-              onClick={() => setMenuOpen(o => !o)}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-colors"
-            >
-              <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4">
-                <circle cx="12" cy="5" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="12" cy="19" r="1.5" />
-              </svg>
-            </button>
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-4xl leading-none">{collection.emoji}</div>
+        {editable && (
+          <div className="relative shrink-0" onClick={e => e.stopPropagation()}>
+            <KebabButton onClick={() => setMenuOpen(o => !o)} />
             {menuOpen && (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-                <div className="absolute right-0 top-9 z-20 w-52 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
-                  <button onClick={() => { setMenuOpen(false); onToggleExpand() }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                    {expanded ? '🙈 Hide components' : '👁️ View all components'}
-                  </button>
-                  {!allPurchased && (
-                    <button onClick={() => { setMenuOpen(false); onMarkGroupPurchased(items) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                      ✅ Mark all purchased
-                    </button>
-                  )}
-                  <button onClick={() => { setMenuOpen(false); onDeleteGroup(name, items) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50">
-                    🗑️ Delete group
-                  </button>
+                <div className="absolute right-0 top-9 z-20 w-44 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
+                  <button onClick={() => { setMenuOpen(false); onEdit(collection) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">✏️ Edit</button>
+                  <button onClick={() => { setMenuOpen(false); onDelete(collection) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50">🗑️ Delete</button>
                 </div>
               </>
             )}
           </div>
-        </div>
+        )}
       </div>
+
+      <h3 className="mt-3 text-xl font-bold text-gray-900 truncate">{collection.name}</h3>
+      <p className="text-sm text-gray-500 mt-0.5">
+        {count} item{count === 1 ? '' : 's'} • {value > 0 ? `${INR.format(value)} budgeted` : 'no budget yet'}
+      </p>
+
+      {preview.length > 0 ? (
+        <ul className="mt-3 space-y-0.5">
+          {preview.map(i => (
+            <li key={i.id} className="text-sm text-gray-600 truncate">• {i.name}</li>
+          ))}
+          {more > 0 && <li className="text-sm text-gray-400">• +{more} more</li>}
+        </ul>
+      ) : (
+        <p className="mt-3 text-sm text-gray-400 italic">Empty — tap to add items</p>
+      )}
+
+      {count > 0 && (
+        <div className="mt-4 flex items-center gap-2.5">
+          <div className="h-1.5 flex-1 rounded-full bg-gray-200/70 overflow-hidden">
+            <div className="h-full rounded-full" style={{ width: `${Math.max(highPct, 6)}%`, background: collection.color }} />
+          </div>
+          <span className="text-xs font-semibold shrink-0" style={{ color: prio.color }}>{prio.label} priority</span>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── Compact card used inside timeline sections ──────────────────────────
-function TimelineCard({ item, onView, onEdit, onMarkPurchased, onDelete }) {
+// ── Grid of item cards (active + purchased sections) ───────────────────────
+function ItemGrid({ items, collections, showChips, removingId, onView, onEdit, onMove, onMarkPurchased, onDelete }) {
+  const active = items.filter(i => i.status !== 'purchased')
+  const purchased = items.filter(i => i.status === 'purchased')
+
+  const renderCard = (item, i) => (
+    <ItemCard
+      key={item.id}
+      index={i}
+      item={item}
+      removing={removingId === item.id}
+      collectionChip={showChips ? collectionOf(item, collections) : undefined}
+      onView={onView}
+      onEdit={onEdit}
+      onMove={onMove}
+      onMarkPurchased={onMarkPurchased}
+      onDelete={onDelete}
+    />
+  )
+
+  return (
+    <>
+      {active.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {active.map(renderCard)}
+        </div>
+      )}
+      {purchased.length > 0 && (
+        <div className={active.length > 0 ? 'mt-10' : ''}>
+          <div className="flex items-center gap-3 mb-5">
+            <div className="h-px flex-1 bg-gray-200" />
+            <span className="text-sm font-bold text-gray-500">✅ Purchased ({purchased.length})</span>
+            <div className="h-px flex-1 bg-gray-200" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {purchased.map(renderCard)}
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
+// ── Collection detail "page" ──────────────────────────────────────────────
+function CollectionDetail({ collection, items, collections, removingId, onBack, onAddItem, onEditCollection, onDeleteCollection, ...handlers }) {
+  const [menuOpen, setMenuOpen] = useState(false)
+  const editable = !collection.uncategorized
+  const count = items.length
+  const value = items.filter(hasPriceSet).reduce((s, i) => s + priceOf(i), 0)
+  const prio = priorityMeta(topPriority(items))
+
+  const ordered = useMemo(() => {
+    const rank = { high: 0, medium: 1, low: 2 }
+    return [...items].sort((a, b) => {
+      if ((a.status === 'purchased') !== (b.status === 'purchased')) return a.status === 'purchased' ? 1 : -1
+      if (rank[a.priority] !== rank[b.priority]) return rank[a.priority] - rank[b.priority]
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
+  }, [items])
+
+  return (
+    <div className="wl-results-in">
+      <div
+        className="rounded-3xl p-5 md:p-7 mb-6 border"
+        style={{ background: `${collection.color}0D`, borderColor: `${collection.color}33` }}
+      >
+        <button onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-500 hover:text-gray-800 transition-colors mb-3">
+          <ChevronDown className="w-4 h-4 rotate-90" /> Back to collections
+        </button>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl md:text-3xl font-extrabold text-gray-900 flex items-center gap-2.5">
+              <span className="text-3xl md:text-4xl">{collection.emoji}</span>
+              <span className="truncate">{collection.name}</span>
+            </h1>
+            <p className="text-sm text-gray-600 mt-1 font-medium">
+              {count} item{count === 1 ? '' : 's'}
+              {count > 0 && <> • <span style={{ color: prio.color }}>{prio.label} priority</span></>}
+              {value > 0 && <> • {INR.format(value)} budgeted</>}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => onAddItem(collection)}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full bg-white text-sm font-bold shadow-sm hover:shadow-md transition-all"
+              style={{ color: collection.color }}
+            >
+              + Add Item
+            </button>
+            {editable && (
+              <div className="relative">
+                <KebabButton onClick={() => setMenuOpen(o => !o)} className="bg-white/70" />
+                {menuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
+                    <div className="absolute right-0 top-10 z-20 w-48 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
+                      <button onClick={() => { setMenuOpen(false); onEditCollection(collection) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50">✏️ Edit collection</button>
+                      <button onClick={() => { setMenuOpen(false); onDeleteCollection(collection) }} className="w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50">🗑️ Delete collection</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {count === 0 ? (
+        <div className="flex flex-col items-center justify-center text-center py-16 px-4">
+          <div style={{ fontSize: 56, lineHeight: 1 }} className="mb-3">{collection.emoji}</div>
+          <p className="text-lg font-extrabold text-gray-900">Nothing here yet</p>
+          <p className="text-sm text-gray-500 mt-1.5 mb-5">Add the first thing you want for this collection.</p>
+          <button
+            onClick={() => onAddItem(collection)}
+            className="wl-pulse px-6 py-3.5 rounded-full text-white text-sm font-bold min-h-[48px]"
+            style={{ backgroundColor: collection.color }}
+          >
+            + Add Item
+          </button>
+        </div>
+      ) : (
+        <ItemGrid items={ordered} collections={collections} showChips={false} removingId={removingId} {...handlers} />
+      )}
+    </div>
+  )
+}
+
+// ── Timeline pieces ───────────────────────────────────────────────────────
+function TimelineCard({ item, collectionChip, onView, onEdit, onMarkPurchased, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const cat = categoryMeta(item.category)
   const st = statusMeta(item.status)
@@ -855,30 +1050,27 @@ function TimelineCard({ item, onView, onEdit, onMarkPurchased, onDelete }) {
           {menuOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false) }} />
-              <div
-                className="absolute right-0 top-8 z-20 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                  ✏️ Edit
-                </button>
+              <div className="absolute right-0 top-8 z-20 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1" onClick={(e) => e.stopPropagation()}>
+                <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">✏️ Edit</button>
                 {!isPurchased && (
-                  <button onClick={() => { setMenuOpen(false); onMarkPurchased(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                    ✅ Mark Purchased
-                  </button>
+                  <button onClick={() => { setMenuOpen(false); onMarkPurchased(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">✅ Mark Purchased</button>
                 )}
-                <button onClick={() => { setMenuOpen(false); onDelete(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50">
-                  🗑️ Delete
-                </button>
+                <button onClick={() => { setMenuOpen(false); onDelete(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-red-600 hover:bg-red-50">🗑️ Delete</button>
               </div>
             </>
           )}
         </div>
       </div>
 
+      {collectionChip && (
+        <p className="text-[11px] font-semibold mt-1 truncate" style={{ color: collectionChip.color }}>
+          {collectionChip.emoji} {collectionChip.name}
+        </p>
+      )}
+
       <p className="text-xs text-gray-500 mt-0.5 truncate">
         {item.brand && <>{item.brand} • </>}
-        {item.price != null && item.price !== '' ? INR.format(item.price) : 'Price not set'}
+        {hasPriceSet(item) ? INR.format(item.price) : 'Price not set'}
       </p>
       {targetDateLabel(item) && (
         <p className="text-xs font-semibold mt-1 truncate" style={{ color: '#2563EB' }}>📅 {targetDateLabel(item)}</p>
@@ -901,10 +1093,20 @@ function TimelineCard({ item, onView, onEdit, onMarkPurchased, onDelete }) {
   )
 }
 
-// ── One collapsible timeline section (header + its cards) ──────────────
-function TimelineSection({ def, monthLabel, items, collapsed, onToggle, onView, onEdit, onMarkPurchased, onDelete }) {
+function TimelineSection({ def, monthLabel, items, collections, collapsed, onToggle, onView, onEdit, onMarkPurchased, onDelete }) {
   if (items.length === 0) return null
   const label = def.key === 'This Month' && monthLabel ? `${def.label} — ${monthLabel}` : def.label
+  const cardsFor = (extraClass) => (
+    <div className={extraClass}>
+      {items.map(item => (
+        <TimelineCard
+          key={item.id} item={item}
+          collectionChip={collectionOf(item, collections)}
+          onView={onView} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete}
+        />
+      ))}
+    </div>
+  )
 
   return (
     <div className="mb-7">
@@ -917,33 +1119,22 @@ function TimelineSection({ def, monthLabel, items, collapsed, onToggle, onView, 
         <div className="h-px flex-1 bg-gray-100" />
         <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform shrink-0 ${collapsed ? '-rotate-90' : ''}`} />
       </button>
-
       {!collapsed && (
         <>
-          <div className="flex md:hidden gap-3 overflow-x-auto pb-1 -mx-1 px-1">
-            {items.map(item => (
-              <TimelineCard key={item.id} item={item} onView={onView} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete} />
-            ))}
-          </div>
-          <div className="hidden md:grid grid-cols-2 lg:grid-cols-3 gap-3">
-            {items.map(item => (
-              <TimelineCard key={item.id} item={item} onView={onView} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete} />
-            ))}
-          </div>
+          {cardsFor('flex md:hidden gap-3 overflow-x-auto pb-1 -mx-1 px-1')}
+          {cardsFor('hidden md:grid grid-cols-2 lg:grid-cols-3 gap-3')}
         </>
       )}
     </div>
   )
 }
 
-// ── Timeline view — items grouped by purchase timing ────────────────────
-function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
+function TimelineView({ items, collections, onView, onEdit, onMarkPurchased, onDelete }) {
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR)
   const [collapsed, setCollapsed] = useState({})
 
   const nonPurchased = useMemo(() => items.filter(i => i.status !== 'purchased'), [items])
   const purchased = useMemo(() => items.filter(i => i.status === 'purchased'), [items])
-
   const monthLabel = useMemo(() => new Date().toLocaleDateString('en-IN', { month: 'long', year: 'numeric' }), [])
 
   const visibleSections = useMemo(
@@ -951,9 +1142,6 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
     [selectedYear]
   )
 
-  // The default "current year" view surfaces items with a target date in this
-  // calendar year in their own section; every other view keeps them in their
-  // normal timing group so they never disappear.
   const showThisYear = selectedYear === CURRENT_YEAR
   const isThisYearTarget = (i) => Number(i.target_year) === CURRENT_YEAR
 
@@ -973,9 +1161,7 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
     return groups
   }, [nonPurchased, showThisYear])
 
-  // Budget breakdown — planned (not-yet-purchased) items with a price set,
-  // independent of the year pill so the totals always describe everything.
-  const priced = useMemo(() => nonPurchased.filter(i => i.price != null && i.price !== ''), [nonPurchased])
+  const priced = useMemo(() => nonPurchased.filter(hasPriceSet), [nonPurchased])
   const sumByKind = (kind) => priced.filter(i => timingSection(i.purchase_timing).kind === kind).reduce((s, i) => s + Number(i.price), 0)
   const thisYearTotal = sumByKind('current-year')
   const conditionalTotal = sumByKind('conditional')
@@ -983,14 +1169,12 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
   const totalSpend = thisYearTotal + conditionalTotal + noPlanTotal
 
   const toggleSection = (key) => setCollapsed(c => ({ ...c, [key]: !c[key] }))
-
   const nothingToShow = thisYearItems.length === 0
     && visibleSections.every(def => groupedByKey[def.key].length === 0)
     && purchased.length === 0
 
   return (
     <div>
-      {/* Budget summary */}
       <div className="rounded-2xl p-4 mb-5" style={{ backgroundColor: '#F5F4FF' }}>
         <p className="text-sm font-bold text-gray-800">
           💰 Planned spend: <span style={{ color: '#6C63FF' }}>{INR.format(totalSpend)}</span> across {priced.length} item{priced.length === 1 ? '' : 's'}
@@ -1002,9 +1186,8 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
         </p>
       </div>
 
-      {/* Year selector */}
       <div className="flex gap-2 mb-6 overflow-x-auto pb-1 -mx-1 px-1">
-        {YEAR_OPTIONS.map(y => (
+        {[...YEAR_OPTIONS, 'all'].map(y => (
           <button
             key={y} onClick={() => setSelectedYear(y)}
             className="shrink-0 px-4 py-2 rounded-full text-sm font-bold border transition-colors"
@@ -1014,20 +1197,9 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
               color: selectedYear === y ? '#fff' : '#4B5563',
             }}
           >
-            {y}
+            {y === 'all' ? 'All Time' : y}
           </button>
         ))}
-        <button
-          onClick={() => setSelectedYear('all')}
-          className="shrink-0 px-4 py-2 rounded-full text-sm font-bold border transition-colors"
-          style={{
-            backgroundColor: selectedYear === 'all' ? '#6C63FF' : '#fff',
-            borderColor: selectedYear === 'all' ? '#6C63FF' : '#E5E7EB',
-            color: selectedYear === 'all' ? '#fff' : '#4B5563',
-          }}
-        >
-          All Time
-        </button>
       </div>
 
       {nothingToShow ? (
@@ -1038,42 +1210,27 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
         <>
           {thisYearItems.length > 0 && (
             <TimelineSection
-              def={THIS_YEAR_SECTION}
-              items={thisYearItems}
+              def={THIS_YEAR_SECTION} items={thisYearItems} collections={collections}
               collapsed={Boolean(collapsed[THIS_YEAR_SECTION.key])}
               onToggle={() => toggleSection(THIS_YEAR_SECTION.key)}
-              onView={onView}
-              onEdit={onEdit}
-              onMarkPurchased={onMarkPurchased}
-              onDelete={onDelete}
+              onView={onView} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete}
             />
           )}
-
           {visibleSections.map(def => (
             <TimelineSection
-              key={def.key}
-              def={def}
-              monthLabel={monthLabel}
-              items={groupedByKey[def.key]}
+              key={def.key} def={def} monthLabel={monthLabel}
+              items={groupedByKey[def.key]} collections={collections}
               collapsed={Boolean(collapsed[def.key])}
               onToggle={() => toggleSection(def.key)}
-              onView={onView}
-              onEdit={onEdit}
-              onMarkPurchased={onMarkPurchased}
-              onDelete={onDelete}
+              onView={onView} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete}
             />
           ))}
-
           {purchased.length > 0 && (
             <TimelineSection
-              def={PURCHASED_SECTION}
-              items={purchased}
+              def={PURCHASED_SECTION} items={purchased} collections={collections}
               collapsed={Boolean(collapsed[PURCHASED_SECTION.key])}
               onToggle={() => toggleSection(PURCHASED_SECTION.key)}
-              onView={onView}
-              onEdit={onEdit}
-              onMarkPurchased={onMarkPurchased}
-              onDelete={onDelete}
+              onView={onView} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete}
             />
           )}
         </>
@@ -1082,190 +1239,93 @@ function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
   )
 }
 
-// ── Mobile filter bottom sheet ──────────────────────────────────────────
-function MobileFilterSheet({ categoryFilter, setCategoryFilter, sortBy, setSortBy, onClose }) {
-  return (
-    <div className="fixed inset-0 z-50 sm:hidden" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="absolute inset-0 bg-black/40" />
-      <div className="absolute bottom-0 left-0 right-0 bg-white rounded-t-3xl shadow-2xl max-h-[80vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-lg font-extrabold text-gray-900">Filter & Sort</h3>
-          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-gray-100">
-            <CloseIcon className="w-5 h-5 text-gray-500" />
-          </button>
-        </div>
-
-        <div className="p-5 space-y-6">
-          <div>
-            <h4 className="text-sm font-bold text-gray-700 mb-2.5">Category</h4>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => setCategoryFilter('')}
-                className="px-3.5 py-2.5 rounded-full text-sm font-semibold border-2 min-h-[44px]"
-                style={{
-                  backgroundColor: categoryFilter === '' ? '#6C63FF' : '#fff',
-                  borderColor: categoryFilter === '' ? '#6C63FF' : '#E5E7EB',
-                  color: categoryFilter === '' ? '#fff' : '#374151',
-                }}
-              >
-                All Categories
-              </button>
-              {WISHLIST_CATEGORIES.map(c => {
-                const meta = categoryMeta(c)
-                const active = categoryFilter === c
-                return (
-                  <button
-                    key={c} onClick={() => setCategoryFilter(c)}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-full text-sm font-semibold border-2 min-h-[44px]"
-                    style={{
-                      backgroundColor: active ? '#6C63FF' : '#fff',
-                      borderColor: active ? '#6C63FF' : '#E5E7EB',
-                      color: active ? '#fff' : '#374151',
-                    }}
-                  >
-                    <span>{meta.emoji}</span>{c}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <div>
-            <h4 className="text-sm font-bold text-gray-700 mb-2.5">Sort by</h4>
-            <div className="space-y-1.5">
-              {SORT_OPTIONS.map(o => {
-                const active = sortBy === o.value
-                return (
-                  <button
-                    key={o.value} onClick={() => setSortBy(o.value)}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-semibold text-left min-h-[48px]"
-                    style={{ backgroundColor: active ? '#F5F4FF' : 'transparent', color: active ? '#6C63FF' : '#374151' }}
-                  >
-                    <span>{o.emoji}</span>{o.label}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-
-          <button
-            onClick={onClose}
-            className="w-full py-3.5 rounded-2xl text-white text-sm font-bold min-h-[48px]"
-            style={{ backgroundColor: '#6C63FF' }}
-          >
-            Done
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ── Main page ────────────────────────────────────────────────────────────
 export default function Wishlist() {
   const [items, setItems] = useState([])
+  const [collections, setCollections] = useState([])
   const [loading, setLoading] = useState(true)
+  const [view, setView] = useState(getStoredView)
+  const [openCollectionId, setOpenCollectionId] = useState(undefined) // undefined = overview
+  const [search, setSearch] = useState('')
+
   const [modalItem, setModalItem] = useState(null)
   const [showModal, setShowModal] = useState(false)
-  const [mobileFilterOpen, setMobileFilterOpen] = useState(false)
-  const [view, setView] = useState(getStoredView)
-  const [removingId, setRemovingId] = useState(null)
-  const [expandedGroups, setExpandedGroups] = useState({})
+  const [modalLockCollection, setModalLockCollection] = useState(null) // { id } | null
   const [detailItem, setDetailItem] = useState(null)
+  const [moveItem, setMoveItem] = useState(null)
+  const [collectionModal, setCollectionModal] = useState(null) // { editing?: collection } | null
+  const [removingId, setRemovingId] = useState(null)
 
   function changeView(v) {
     setView(v)
     try { localStorage.setItem(VIEW_STORAGE_KEY, v) } catch {}
   }
 
-  const [search, setSearch] = useState('')
-  const [categoryFilter, setCategoryFilter] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState('')
-  const [sortBy, setSortBy] = useState('recent')
-
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true)
     try {
-      const rows = await bridge.getWishlistItems()
+      const [rows, cols] = await Promise.all([
+        bridge.getWishlistItems(),
+        bridge.getWishlistCollections().catch(() => []),
+      ])
       setItems(rows || [])
+      setCollections(cols || [])
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [load])
 
-  const counts = useMemo(() => ({
-    all: items.length,
-    high: items.filter(i => i.priority === 'high').length,
-    shortlisted: items.filter(i => i.status === 'shortlisted').length,
-    planned: items.filter(i => i.status === 'planned').length,
-    purchased: items.filter(i => i.status === 'purchased').length,
-  }), [items])
+  const hasUncategorized = useMemo(() => items.some(i => i.collection_id == null), [items])
 
-  function applyChip(chip) {
-    if (chip === 'all') { setStatusFilter(''); setPriorityFilter('') }
-    else if (chip === 'high') { setPriorityFilter('high'); setStatusFilter('') }
-    else { setStatusFilter(chip); setPriorityFilter('') }
-  }
+  const allCollections = useMemo(
+    () => (hasUncategorized ? [...collections, UNCATEGORIZED] : collections),
+    [collections, hasUncategorized]
+  )
 
-  const activeChip = priorityFilter === 'high'
-    ? 'high'
-    : ['shortlisted', 'planned', 'purchased'].includes(statusFilter) ? statusFilter : 'all'
-
-  const visibleItems = useMemo(() => {
-    let list = items
-    if (categoryFilter) list = list.filter(i => i.category === categoryFilter)
-    if (statusFilter)   list = list.filter(i => i.status === statusFilter)
-    if (priorityFilter) list = list.filter(i => i.priority === priorityFilter)
-    if (search.trim()) {
-      const q = search.trim().toLowerCase()
-      list = list.filter(i => i.name.toLowerCase().includes(q) || (i.brand || '').toLowerCase().includes(q))
-    }
-    const sorted = [...list]
-    if (sortBy === 'priority') {
-      const rank = { high: 0, medium: 1, low: 2 }
-      sorted.sort((a, b) => rank[a.priority] - rank[b.priority])
-    } else if (sortBy === 'price') {
-      sorted.sort((a, b) => (b.price || 0) - (a.price || 0))
-    } else if (sortBy === 'name') {
-      sorted.sort((a, b) => a.name.localeCompare(b.name))
-    } else {
-      sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
-    }
-    return sorted
-  }, [items, categoryFilter, statusFilter, priorityFilter, search, sortBy])
-
-  const activeItems = useMemo(() => visibleItems.filter(i => i.status !== 'purchased'), [visibleItems])
-  const purchasedItems = useMemo(() => visibleItems.filter(i => i.status === 'purchased'), [visibleItems])
-
-  // One value per item, counted exactly once. A grouped item contributes the
-  // same as any other — the group card shows its own subtotal separately and
-  // is never added on top. Items with no price are excluded entirely.
-  const pricedItems = useMemo(
-    () => items.filter(i => i.price != null && i.price !== ''),
+  const itemsInCollection = useCallback(
+    (colId) => items.filter(i => (i.collection_id ?? null) === (colId ?? null)),
     [items]
   )
-  const totalValue = useMemo(
-    () => pricedItems.reduce((s, i) => s + Number(i.price), 0),
-    [pricedItems]
-  )
 
-  const toggleGroup = (name) => setExpandedGroups(g => ({ ...g, [name]: !g[name] }))
+  const openCollection = useMemo(() => {
+    if (openCollectionId === undefined) return null
+    if (openCollectionId === null) return UNCATEGORIZED
+    return collections.find(c => c.id === openCollectionId) || null
+  }, [openCollectionId, collections])
 
-  const activeEntries = useMemo(() => toGroupedEntries(activeItems), [activeItems])
-  const purchasedEntries = useMemo(() => toGroupedEntries(purchasedItems), [purchasedItems])
+  // If the open collection was deleted, fall back to the overview.
+  useEffect(() => {
+    if (openCollectionId !== undefined && openCollectionId !== null && !openCollection && !loading) {
+      setOpenCollectionId(undefined)
+    }
+  }, [openCollectionId, openCollection, loading])
 
-  const filterSig = `${activeChip}|${categoryFilter}|${search}|${sortBy}|${view}`
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return null
+    return items.filter(i =>
+      i.name.toLowerCase().includes(q) || (i.brand || '').toLowerCase().includes(q)
+    )
+  }, [items, search])
 
-  function openAdd() { setModalItem(null); setShowModal(true) }
-  function openEdit(item) { setDetailItem(null); setModalItem(item); setShowModal(true) }
-  function closeModal() { setShowModal(false); setModalItem(null) }
-  async function handleSaved() { closeModal(); await load() }
-
+  // ── item mutations ──
   function openView(item) { setDetailItem(item) }
   function closeView() { setDetailItem(null) }
+  function openAddItem(collection) {
+    setModalItem(null)
+    setModalLockCollection(collection ? { id: collection.id ?? null } : null)
+    setShowModal(true)
+  }
+  function openEdit(item) {
+    setDetailItem(null)
+    setModalItem(item)
+    setModalLockCollection(null)
+    setShowModal(true)
+  }
+  function closeModal() { setShowModal(false); setModalItem(null); setModalLockCollection(null) }
+  async function handleSaved() { closeModal(); await load() }
 
   async function markPurchased(item) {
     await bridge.updateWishlistItem({ ...item, status: 'purchased' })
@@ -1273,10 +1333,16 @@ export default function Wishlist() {
     await load()
   }
 
+  async function handleMove(item, collectionId) {
+    await bridge.moveWishlistItem(item.id, collectionId ?? null)
+    setMoveItem(null)
+    setDetailItem(d => (d && d.id === item.id ? null : d))
+    await load()
+  }
+
   async function handleDelete(item) {
     if (!confirm(`Remove "${item.name}" from wishlist?`)) return
     setDetailItem(d => (d && d.id === item.id ? null : d))
-    // Play the card's scale-down/fade-out before it leaves the DOM.
     setRemovingId(item.id)
     setTimeout(async () => {
       try {
@@ -1288,82 +1354,24 @@ export default function Wishlist() {
     }, 240)
   }
 
-  async function handleMarkGroupPurchased(groupItems) {
-    for (const it of groupItems.filter(i => i.status !== 'purchased')) {
-      await bridge.updateWishlistItem({ ...it, status: 'purchased' })
-    }
+  // ── collection mutations ──
+  async function handleCollectionSaved() { setCollectionModal(null); await load() }
+
+  async function handleDeleteCollection(collection) {
+    const n = itemsInCollection(collection.id).length
+    if (!confirm(`Delete "${collection.name}"?${n ? ` Its ${n} item${n === 1 ? '' : 's'} will move to Uncategorized.` : ''}`)) return
+    await bridge.deleteWishlistCollection(collection.id)
+    if (openCollectionId === collection.id) setOpenCollectionId(undefined)
     await load()
   }
 
-  async function handleDeleteGroup(name, groupItems) {
-    if (!confirm(`Delete all ${groupItems.length} items in "${name}"?`)) return
-    for (const it of groupItems) await bridge.deleteWishlistItem(it.id)
-    setExpandedGroups(g => { const n = { ...g }; delete n[name]; return n })
-    await load()
+  const itemHandlers = {
+    onView: openView, onEdit: openEdit, onMove: setMoveItem,
+    onMarkPurchased: markPurchased, onDelete: handleDelete,
   }
 
-  const CHIP_DEFS = [
-    { id: 'all', emoji: '🛍️', label: 'All', count: counts.all, fill: '#6C63FF', tint: '#F5F4FF', text: '#4F46E5' },
-    { id: 'high', emoji: '🔴', label: 'High Priority', count: counts.high, fill: '#EF4444', tint: '#FEF2F2', text: '#DC2626' },
-    { id: 'shortlisted', emoji: '⭐', label: 'Shortlisted', count: counts.shortlisted, fill: '#F59E0B', tint: '#FFFBEB', text: '#B45309' },
-    { id: 'planned', emoji: '📋', label: 'Planned', count: counts.planned, fill: '#3B82F6', tint: '#EFF6FF', text: '#1D4ED8' },
-    { id: 'purchased', emoji: '✅', label: 'Purchased', count: counts.purchased, fill: '#22C55E', tint: '#F0FDF4', text: '#15803D' },
-  ]
-
-  const activeFilterCount = (categoryFilter ? 1 : 0) + (sortBy !== 'recent' ? 1 : 0)
-
-  // Grid renderer shared by the active and purchased sections. Group cards
-  // span the full row (col-span-full); when expanded, their component cards
-  // render in an indented sub-grid on the next rows. Everything else is a
-  // normal 1/2/3-column card.
-  function renderEntries(entries) {
-    return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {entries.map((entry, i) =>
-          entry.type === 'group' ? (
-            <Fragment key={entry.key}>
-              <WishlistGroup
-                index={i}
-                name={entry.name}
-                items={entry.items}
-                expanded={Boolean(expandedGroups[entry.name])}
-                onToggleExpand={() => toggleGroup(entry.name)}
-                onMarkGroupPurchased={handleMarkGroupPurchased}
-                onDeleteGroup={handleDeleteGroup}
-              />
-              {expandedGroups[entry.name] && (
-                <div className="col-span-full ml-1 pl-4 sm:pl-6 border-l-2 border-gray-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {entry.items.map((it, j) => (
-                    <ItemCard
-                      key={`g-${it.id}`}
-                      index={j}
-                      item={it}
-                      removing={removingId === it.id}
-                      onView={openView}
-                      onEdit={openEdit}
-                      onMarkPurchased={markPurchased}
-                      onDelete={handleDelete}
-                    />
-                  ))}
-                </div>
-              )}
-            </Fragment>
-          ) : (
-            <ItemCard
-              key={entry.key}
-              index={i}
-              item={entry.item}
-              removing={removingId === entry.item.id}
-              onView={openView}
-              onEdit={openEdit}
-              onMarkPurchased={markPurchased}
-              onDelete={handleDelete}
-            />
-          )
-        )}
-      </div>
-    )
-  }
+  const totalItems = items.length
+  const detailCollection = detailItem ? collectionOf(detailItem, collections) : null
 
   return (
     <div className="p-4 lg:p-8 max-w-5xl mx-auto pb-24 sm:pb-8">
@@ -1380,18 +1388,17 @@ export default function Wishlist() {
               <span className="text-3xl md:text-4xl">🛍️</span> My Wishlist
             </h1>
             <p className="text-sm text-gray-600 mt-1 font-medium">
-              {counts.all} item{counts.all === 1 ? '' : 's'}
-              {counts.high > 0 && <> • {counts.high} high priority</>}
+              {totalItems} item{totalItems === 1 ? '' : 's'} across {collections.length} collection{collections.length === 1 ? '' : 's'}
             </p>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-white/70 backdrop-blur rounded-full p-1 shadow-sm border border-white">
               <button
-                onClick={() => changeView('grid')}
+                onClick={() => changeView('collections')}
                 className="flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-bold transition-colors min-h-[40px]"
-                style={{ backgroundColor: view === 'grid' ? '#6C63FF' : 'transparent', color: view === 'grid' ? '#fff' : '#6B7280' }}
+                style={{ backgroundColor: view === 'collections' ? '#6C63FF' : 'transparent', color: view === 'collections' ? '#fff' : '#6B7280' }}
               >
-                ⊞ Grid
+                🗂️ Collections
               </button>
               <button
                 onClick={() => changeView('timeline')}
@@ -1401,182 +1408,120 @@ export default function Wishlist() {
                 📅 Timeline
               </button>
             </div>
-
             <button
-              onClick={openAdd}
+              onClick={() => setCollectionModal({})}
               className="flex items-center gap-2 px-5 py-3 rounded-full bg-white text-sm font-bold shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all min-h-[48px]"
               style={{ color: '#6C63FF' }}
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                 <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
               </svg>
-              Add Item
+              New Collection
             </button>
           </div>
         </div>
       </div>
 
-      {/* Stats pill row — compact */}
-      <div className="mb-4">
-        <div className="flex gap-1.5 overflow-x-auto pb-1.5 -mx-1 px-1">
-          {CHIP_DEFS.map(c => {
-            const active = activeChip === c.id
-            return (
-              <button
-                key={c.id}
-                onClick={() => applyChip(c.id)}
-                className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold border transition-colors whitespace-nowrap"
-                style={{
-                  backgroundColor: active ? c.fill : '#fff',
-                  borderColor: active ? c.fill : '#E5E7EB',
-                  color: active ? '#fff' : '#4B5563',
-                }}
-              >
-                <span>{c.emoji}</span>{c.label} <span style={{ opacity: 0.85 }}>({c.count})</span>
-              </button>
-            )
-          })}
-        </div>
-        {totalValue > 0 && (
-          <p className="text-xs text-gray-400 mt-1.5 px-1">
-            {INR.format(totalValue)} total across {pricedItems.length} priced item{pricedItems.length === 1 ? '' : 's'}
-            {pricedItems.length < counts.all && <span className="text-gray-300"> · {counts.all - pricedItems.length} without a price</span>}
-          </p>
-        )}
-      </div>
-
-      {/* Search + filter bar — desktop */}
-      <div className="hidden sm:flex items-center gap-2 mb-6">
-        <div className="relative flex-1 min-w-[200px]">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-          <input
-            type="text" placeholder="Search by name or brand…"
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-full border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-          />
-        </div>
-
-        <PopDropdown
-          trigger={(open) => (
-            <span
-              className="flex items-center gap-1.5 px-4 py-2.5 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:border-gray-300 transition-colors"
-            >
-              {categoryFilter ? <>{categoryMeta(categoryFilter).emoji} {categoryFilter}</> : 'Category'}
-              <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
-            </span>
-          )}
-        >
-          <DropdownRow active={!categoryFilter} onClick={() => setCategoryFilter('')}>All Categories</DropdownRow>
-          {WISHLIST_CATEGORIES.map(c => (
-            <DropdownRow key={c} active={categoryFilter === c} onClick={() => setCategoryFilter(c)}>
-              {categoryMeta(c).emoji} {c}
-            </DropdownRow>
-          ))}
-        </PopDropdown>
-
-        <PopDropdown
-          align="right"
-          trigger={(open) => (
-            <span className="flex items-center gap-1.5 px-4 py-2.5 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 hover:border-gray-300 transition-colors">
-              {SORT_OPTIONS.find(o => o.value === sortBy)?.emoji} Sort
-              <ChevronDown className={`w-4 h-4 transition-transform ${open ? 'rotate-180' : ''}`} />
-            </span>
-          )}
-        >
-          {SORT_OPTIONS.map(o => (
-            <DropdownRow key={o.value} active={sortBy === o.value} onClick={() => setSortBy(o.value)}>
-              {o.emoji} {o.label}
-            </DropdownRow>
-          ))}
-        </PopDropdown>
-      </div>
-
-      {/* Search + filter bar — mobile */}
-      <div className="flex sm:hidden items-center gap-2 mb-6">
-        <div className="relative flex-1 min-w-0">
-          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
-          <input
-            type="text" placeholder="Search…"
-            value={search} onChange={e => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-3 rounded-full border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 min-h-[48px]"
-          />
-        </div>
-        <button
-          onClick={() => setMobileFilterOpen(true)}
-          className="relative shrink-0 flex items-center gap-1.5 px-4 py-3 rounded-full border border-gray-200 bg-white text-sm font-semibold text-gray-700 min-h-[48px]"
-        >
-          Filter <ChevronDown className="w-4 h-4" />
-          {activeFilterCount > 0 && (
-            <span
-              className="absolute -top-1 -right-1 w-4 h-4 rounded-full text-[10px] font-bold text-white flex items-center justify-center"
-              style={{ backgroundColor: '#6C63FF' }}
-            >
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
-      </div>
-
-      {mobileFilterOpen && (
-        <MobileFilterSheet
-          categoryFilter={categoryFilter} setCategoryFilter={setCategoryFilter}
-          sortBy={sortBy} setSortBy={setSortBy}
-          onClose={() => setMobileFilterOpen(false)}
+      {/* Search */}
+      <div className="relative mb-6">
+        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">🔍</span>
+        <input
+          type="text" placeholder="Search all collections…"
+          value={search} onChange={e => setSearch(e.target.value)}
+          className="w-full pl-10 pr-4 py-3 rounded-full border border-gray-200 bg-white text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
         />
-      )}
+      </div>
 
       {loading ? (
         <p className="text-sm text-gray-400 py-14 text-center">Loading your wishlist…</p>
-      ) : items.length === 0 ? (
+      ) : searchResults ? (
+        <div className="wl-results-in">
+          <p className="text-sm font-bold text-gray-500 mb-4">
+            {searchResults.length} result{searchResults.length === 1 ? '' : 's'} for “{search.trim()}”
+          </p>
+          {searchResults.length === 0 ? (
+            <p className="text-sm text-gray-400 py-10 text-center">Nothing matches — try a different word.</p>
+          ) : (
+            <ItemGrid items={searchResults} collections={collections} showChips removingId={removingId} {...itemHandlers} />
+          )}
+        </div>
+      ) : view === 'timeline' ? (
+        <TimelineView items={items} collections={collections} onView={openView} onEdit={openEdit} onMarkPurchased={markPurchased} onDelete={handleDelete} />
+      ) : openCollection ? (
+        <CollectionDetail
+          collection={openCollection}
+          items={itemsInCollection(openCollection.id)}
+          collections={collections}
+          removingId={removingId}
+          onBack={() => setOpenCollectionId(undefined)}
+          onAddItem={openAddItem}
+          onEditCollection={(c) => setCollectionModal({ editing: c })}
+          onDeleteCollection={handleDeleteCollection}
+          {...itemHandlers}
+        />
+      ) : collections.length === 0 && !hasUncategorized ? (
         <div className="flex flex-col items-center justify-center text-center py-16 px-4">
-          <div style={{ fontSize: 64, lineHeight: 1 }} className="mb-4">🛍️</div>
-          <p className="text-xl font-extrabold text-gray-900">Your wishlist is empty</p>
+          <div style={{ fontSize: 64, lineHeight: 1 }} className="mb-4">🗂️</div>
+          <p className="text-xl font-extrabold text-gray-900">Start with a collection</p>
           <p className="text-sm text-gray-500 mt-1.5 mb-6 max-w-xs">
-            Save things you want to buy — from gadgets to gear to everyday essentials.
+            Collections keep your wishlist organised — like lists in Reminders or boards in Pinterest.
           </p>
           <button
-            onClick={openAdd}
-            className="wl-pulse px-6 py-3.5 rounded-full text-white text-sm font-bold hover:opacity-90 transition-opacity min-h-[48px]"
+            onClick={() => setCollectionModal({})}
+            className="wl-pulse px-6 py-3.5 rounded-full text-white text-sm font-bold min-h-[48px]"
             style={{ backgroundColor: '#6C63FF' }}
           >
-            + Add Your First Item
+            + New Collection
           </button>
         </div>
-      ) : visibleItems.length === 0 ? (
-        <p className="text-sm text-gray-400 py-14 text-center">🔍 No items match these filters.</p>
-      ) : view === 'timeline' ? (
-        <TimelineView
-          items={visibleItems}
-          onView={openView}
-          onEdit={openEdit}
-          onMarkPurchased={markPurchased}
-          onDelete={handleDelete}
-        />
       ) : (
-        // key forces a remount on filter change → the results crossfade in and
-        // the cards re-run their staggered entrance.
-        <div key={filterSig} className="wl-results-in">
-          {activeEntries.length > 0 && renderEntries(activeEntries)}
-
-          {purchasedEntries.length > 0 && (
-            <div className={activeEntries.length > 0 ? 'mt-10' : ''}>
-              <div className="flex items-center gap-3 mb-5">
-                <div className="h-px flex-1 bg-gray-200" />
-                <span className="text-sm font-bold text-gray-500 flex items-center gap-1.5">✅ Purchased ({purchasedItems.length})</span>
-                <div className="h-px flex-1 bg-gray-200" />
-              </div>
-              {renderEntries(purchasedEntries)}
-            </div>
-          )}
+        <div className="wl-results-in grid grid-cols-1 md:grid-cols-2 gap-4">
+          {allCollections.map((c, i) => (
+            <CollectionCard
+              key={c.id ?? 'uncat'}
+              index={i}
+              collection={c}
+              items={itemsInCollection(c.id)}
+              onOpen={(col) => setOpenCollectionId(col.uncategorized ? null : col.id)}
+              onEdit={(col) => setCollectionModal({ editing: col })}
+              onDelete={handleDeleteCollection}
+            />
+          ))}
         </div>
       )}
 
-      {showModal && <WishlistModal item={modalItem} onSave={handleSaved} onClose={closeModal} />}
+      {showModal && (
+        <WishlistModal
+          item={modalItem}
+          collections={collections}
+          lockedCollectionId={modalLockCollection ? modalLockCollection.id : undefined}
+          collectionLocked={Boolean(modalLockCollection)}
+          onSave={handleSaved}
+          onClose={closeModal}
+        />
+      )}
+      {collectionModal && (
+        <CollectionModal
+          collection={collectionModal.editing}
+          onSave={handleCollectionSaved}
+          onClose={() => setCollectionModal(null)}
+        />
+      )}
+      {moveItem && (
+        <MovePicker
+          item={moveItem}
+          collections={collections}
+          onMove={handleMove}
+          onClose={() => setMoveItem(null)}
+        />
+      )}
       {detailItem && !showModal && (
         <WishlistDetailModal
           item={detailItem}
+          collection={detailCollection}
           onClose={closeView}
           onEdit={openEdit}
+          onMove={setMoveItem}
           onMarkPurchased={markPurchased}
           onDelete={handleDelete}
         />

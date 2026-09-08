@@ -134,4 +134,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createWishlistItem:  (data)    => ipcRenderer.invoke('wishlist:create', data),
   updateWishlistItem:  (data)    => ipcRenderer.invoke('wishlist:update', data),
   deleteWishlistItem:  (id)      => ipcRenderer.invoke('wishlist:delete', id),
+  moveWishlistItem:    (itemId, collectionId) => ipcRenderer.invoke('wishlist:moveItem', { itemId, collectionId }),
+
+  // Wishlist collections
+  getWishlistCollections:   ()     => ipcRenderer.invoke('wishlist:getCollections'),
+  createWishlistCollection: (data) => ipcRenderer.invoke('wishlist:createCollection', data),
+  updateWishlistCollection: (data) => ipcRenderer.invoke('wishlist:updateCollection', data),
+  deleteWishlistCollection: (id)   => ipcRenderer.invoke('wishlist:deleteCollection', id),
 })

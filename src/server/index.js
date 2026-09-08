@@ -19,6 +19,7 @@ const dashboardRouter = require('./routes/dashboard')
 const weightRouter = require('./routes/weight')
 const travelRouter = require('./routes/travel')
 const wishlistRouter = require('./routes/wishlist')
+const wishlistCollectionsRouter = require('./routes/wishlistCollections')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -70,7 +71,10 @@ app.use('/api/weight', requireAuth, weightRouter)
 // Travel — admin only
 app.use('/api/travel', requireAuth, requireAdmin, travelRouter)
 
-// Wishlist — both roles, always scoped to the caller's own items
+// Wishlist — both roles, always scoped to the caller's own items. The
+// collections router is mounted first so /api/wishlist/collections* never
+// falls through to wishlist's `/:id` handlers.
+app.use('/api/wishlist/collections', requireAuth, wishlistCollectionsRouter)
 app.use('/api/wishlist', requireAuth, wishlistRouter)
 
 if (IS_WEB) {

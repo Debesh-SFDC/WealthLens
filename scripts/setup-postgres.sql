@@ -426,3 +426,74 @@ WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
     SELECT 1 FROM wishlist_items
     WHERE user_id = 1 AND group_name = 'Gaming PC Build — Quote #969081'
   );
+
+-- ── Wishlist collections — folder-style grouping (Reminders lists / boards) ──
+CREATE TABLE IF NOT EXISTS wishlist_collections (
+  id          SERIAL PRIMARY KEY,
+  sync_id     TEXT UNIQUE,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  description TEXT,
+  emoji       TEXT DEFAULT '📦',
+  color       TEXT DEFAULT '#6C63FF',
+  sort_order  INTEGER DEFAULT 0,
+  deleted_at  TEXT,
+  created_at  TEXT DEFAULT (now()::text),
+  updated_at  TEXT DEFAULT (now()::text)
+);
+CREATE INDEX IF NOT EXISTS idx_wishlist_collections_user ON wishlist_collections(user_id);
+
+-- collection_id — nullable; cleared (not cascaded) when the collection is
+-- removed so items fall back to Uncategorized.
+ALTER TABLE wishlist_items ADD COLUMN IF NOT EXISTS collection_id INTEGER REFERENCES wishlist_collections(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_wishlist_items_collection ON wishlist_items(collection_id);
+
+-- One-time migration for admin (id=1): seed defaults only when they have none.
+INSERT INTO wishlist_collections (user_id, name, emoji, color, sort_order)
+SELECT 1, v.name, v.emoji, v.color, v.sort_order
+FROM (VALUES
+  ('Scrambler 400X', '🏍️', '#f97316', 1),
+  ('Gaming PC',      '🖥️', '#6366f1', 2),
+  ('Home Setup',     '🏠', '#22c55e', 3),
+  ('Life & Misc',    '✨', '#ec4899', 4)
+) AS v(name, emoji, color, sort_order)
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
+  AND NOT EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1);
+
+-- Sort existing items into collections — single statement so the "nothing
+-- assigned yet" guard is evaluated once; a no-op on every later re-run.
+UPDATE wishlist_items wi
+SET collection_id = c.id, updated_at = now()::text
+FROM wishlist_collections c
+WHERE wi.user_id = 1 AND wi.collection_id IS NULL AND wi.deleted_at IS NULL
+  AND c.user_id = 1 AND c.deleted_at IS NULL
+  AND c.name = CASE
+    WHEN wi.group_name LIKE '%Gaming PC%' OR wi.category = 'PC' THEN 'Gaming PC'
+    WHEN wi.name LIKE '%Helmet%' OR wi.name LIKE '%Hanger%' OR wi.category = 'Home' THEN 'Home Setup'
+    ELSE 'Life & Misc'
+  END
+  AND NOT EXISTS (
+    SELECT 1 FROM wishlist_items x
+    WHERE x.user_id = 1 AND x.collection_id IS NOT NULL AND x.deleted_at IS NULL
+  );
+
+-- Scrambler 400X accessory shortlist — guarded by name so it is safe to re-run.
+INSERT INTO wishlist_items
+  (user_id, collection_id, name, brand, category, priority, status, purchase_timing, notes)
+SELECT 1,
+  (SELECT id FROM wishlist_collections WHERE user_id = 1 AND name = 'Scrambler 400X' AND deleted_at IS NULL),
+  v.name, v.brand, 'Motorcycle', 'high', 'wishlist', 'Later', v.notes
+FROM (VALUES
+  ('Engine Guard', 'Triumph', 'Protect engine casing from tip-over damage'),
+  ('Knuckle Guard / Hand Guard', 'Triumph', 'Protect hands from wind, debris and tip-overs'),
+  ('Mirror Replacement', 'Triumph', 'Stock mirrors vibrate at highway speeds, replace with bar-end or aftermarket'),
+  ('Saddle Stay / Luggage Rack', 'Triumph', 'Required to mount saddle bags properly'),
+  ('Saddle Bags', 'Triumph', 'For touring — soft panniers preferred, fits 20-30L each side'),
+  ('Side Stand Extender', 'Triumph', 'Prevents bike sinking into soft ground when parked on gravel or mud')
+) AS v(name, brand, notes)
+WHERE EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1 AND name = 'Scrambler 400X' AND deleted_at IS NULL)
+  AND NOT EXISTS (
+    SELECT 1 FROM wishlist_items x
+    JOIN wishlist_collections sc ON sc.id = x.collection_id
+    WHERE x.user_id = 1 AND sc.name = 'Scrambler 400X' AND x.name = v.name
+  );
