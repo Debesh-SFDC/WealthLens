@@ -399,9 +399,9 @@ function WishlistModal({ item, onSave, onClose }) {
           <section>
             <h3 className="text-sm font-bold uppercase tracking-wide mb-3" style={{ color: '#8B5CF6' }}>📝 Notes</h3>
             <textarea
-              rows={3} placeholder="e.g. Only buy if price drops below ₹5,000 or after moving house"
+              rows={5} placeholder="e.g. Only buy if price drops below ₹5,000 or after moving house"
               value={form.notes || ''} onChange={e => set('notes', e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 resize-none"
+              className="w-full min-h-[120px] px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-800 leading-relaxed focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 resize-y"
             />
 
             <label className="text-sm font-semibold text-gray-700 mb-1.5 mt-4 block">Group (optional)</label>
@@ -431,11 +431,114 @@ function WishlistModal({ item, onSave, onClose }) {
   )
 }
 
+// ── Read-only item detail view ──────────────────────────────────────────
+function WishlistDetailModal({ item, onClose, onEdit, onMarkPurchased, onDelete }) {
+  const pr = priorityMeta(item.priority)
+  const st = statusMeta(item.status)
+  const cat = categoryMeta(item.category)
+  const isPurchased = item.status === 'purchased'
+  const hasPrice = item.price != null && item.price !== ''
+  const added = item.created_at
+    ? new Date(item.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    : null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm sm:flex sm:items-center sm:justify-center sm:p-4"
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-white w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[520px] sm:rounded-3xl overflow-y-auto shadow-2xl">
+        <div className="px-5 sm:px-7 py-4 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+          <button onClick={onClose} className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
+            <CloseIcon className="w-5 h-5 text-gray-500" />
+          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => onEdit(item)} className="px-3 h-8 rounded-lg text-xs font-bold border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors">✏️ Edit</button>
+            <button onClick={() => onDelete(item)} className="px-3 h-8 rounded-lg text-xs font-bold border border-red-200 text-red-600 hover:bg-red-50 transition-colors">🗑️ Delete</button>
+          </div>
+        </div>
+
+        <div className="p-5 sm:p-7">
+          <div className="flex items-center justify-between gap-3">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: `${cat.color}1A`, color: cat.color }}>
+              <span>{cat.emoji}</span>{item.category}
+            </span>
+            <span className="inline-flex items-center gap-1.5 text-sm font-bold" style={{ color: pr.color }}>
+              {pr.emoji} {pr.label}
+            </span>
+          </div>
+
+          <h2 className="mt-4 text-2xl font-extrabold text-gray-900 leading-tight" style={{ textDecoration: st.strike ? 'line-through' : 'none' }}>
+            {item.name}
+          </h2>
+          {item.brand && <p className="text-sm text-gray-500 mt-1">by {item.brand}</p>}
+
+          <p className="mt-4 text-3xl font-extrabold text-gray-900">
+            {hasPrice ? INR.format(item.price) : <span className="text-base font-semibold text-gray-400 italic">Price not set</span>}
+          </p>
+
+          <dl className="mt-5 space-y-2 text-sm">
+            <div className="flex gap-3">
+              <dt className="w-20 shrink-0 font-semibold text-gray-400">Status</dt>
+              <dd><span className="font-bold px-2 py-0.5 rounded-full text-xs" style={{ backgroundColor: st.bg, color: st.fg }}>{st.label}</span></dd>
+            </div>
+            <div className="flex gap-3">
+              <dt className="w-20 shrink-0 font-semibold text-gray-400">Timing</dt>
+              <dd className="text-gray-800">🕐 {item.purchase_timing || '—'}</dd>
+            </div>
+            {added && (
+              <div className="flex gap-3">
+                <dt className="w-20 shrink-0 font-semibold text-gray-400">Added</dt>
+                <dd className="text-gray-800">{added}</dd>
+              </div>
+            )}
+            {item.group_name && (
+              <div className="flex gap-3">
+                <dt className="w-20 shrink-0 font-semibold text-gray-400">Group</dt>
+                <dd className="text-gray-800">{item.group_name}</dd>
+              </div>
+            )}
+          </dl>
+
+          {item.notes && (
+            <div className="mt-5">
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-400 mb-1.5">Notes</p>
+              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed bg-gray-50 rounded-xl p-4">{item.notes}</p>
+            </div>
+          )}
+
+          {item.url && (
+            <a
+              href={item.url} target="_blank" rel="noopener noreferrer"
+              className="mt-5 inline-flex items-center gap-1.5 text-sm font-bold" style={{ color: '#6C63FF' }}
+            >
+              Open Product
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-3.5 h-3.5">
+                <line x1="7" y1="17" x2="17" y2="7" /><polyline points="7 7 17 7 17 17" />
+              </svg>
+            </a>
+          )}
+
+          {!isPurchased && (
+            <button
+              onClick={() => onMarkPurchased(item)}
+              className="mt-6 w-full py-3.5 rounded-2xl text-white text-sm font-bold hover:opacity-90 transition-opacity min-h-[48px]"
+              style={{ backgroundColor: '#22C55E' }}
+            >
+              ✓ Mark as Purchased
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Compact item card ────────────────────────────────────────────────────
 // Fixed ~172px height, 3px accent bar, notes hidden behind an inline "•••"
 // toggle, and a quick-action row that slides up from the bottom on hover
 // (always visible on touch / small screens where there is no hover).
-function ItemCard({ item, index = 0, removing = false, onEdit, onMarkPurchased, onDelete }) {
+function ItemCard({ item, index = 0, removing = false, onView, onEdit, onMarkPurchased, onDelete }) {
   const [flash, setFlash] = useState(false)
   const [expanded, setExpanded] = useState(false)
   const pr = priorityMeta(item.priority)
@@ -451,9 +554,14 @@ function ItemCard({ item, index = 0, removing = false, onEdit, onMarkPurchased, 
     setTimeout(() => setFlash(false), 900)
   }
 
+  // Stop a click on an action control from also triggering the card's
+  // "open detail view" handler.
+  const stop = (fn) => (e) => { e.stopPropagation(); fn() }
+
   return (
     <div
-      className={`group relative flex flex-col rounded-xl bg-white border border-gray-100 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg ${removing ? 'wl-card-exit' : 'wl-card-enter'} ${expanded ? '' : 'md:h-[172px]'} ${isPurchased ? 'opacity-80' : ''}`}
+      onClick={() => onView?.(item)}
+      className={`group relative flex flex-col rounded-xl bg-white border border-gray-100 shadow-sm transition-all duration-200 cursor-pointer hover:-translate-y-1 hover:shadow-lg ${removing ? 'wl-card-exit' : 'wl-card-enter'} ${expanded ? '' : 'md:h-[172px]'} ${isPurchased ? 'opacity-80' : ''}`}
       style={removing ? undefined : { animationDelay: `${Math.min(index, 10) * 50}ms` }}
     >
       <span
@@ -499,6 +607,7 @@ function ItemCard({ item, index = 0, removing = false, onEdit, onMarkPurchased, 
           {item.url ? (
             <a
               href={item.url} target="_blank" rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
               className="inline-flex items-center gap-1 text-xs font-bold" style={{ color: '#6C63FF' }}
             >
               Open <span className="text-[10px]">↗</span>
@@ -508,7 +617,7 @@ function ItemCard({ item, index = 0, removing = false, onEdit, onMarkPurchased, 
           <div className="flex items-center gap-1">
             {item.notes && (
               <button
-                onClick={() => setExpanded(e => !e)}
+                onClick={stop(() => setExpanded(e => !e))}
                 className="px-1.5 h-7 rounded-md text-xs font-bold text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
                 title={expanded ? 'Hide notes' : 'Show notes'}
               >
@@ -536,20 +645,20 @@ function ItemCard({ item, index = 0, removing = false, onEdit, onMarkPurchased, 
       <div className="absolute inset-x-0 bottom-0 h-9 overflow-hidden pointer-events-none max-md:hidden">
         <div className="absolute inset-x-0 bottom-0 h-9 flex translate-y-full group-hover:translate-y-0 transition-transform duration-200 border-t border-gray-100 bg-white/95 backdrop-blur-sm pointer-events-auto">
           {!isPurchased && (
-            <button onClick={handleMarkPurchased} className="flex-1 text-xs font-bold text-green-600 hover:bg-green-50 transition-colors">✓ Purchased</button>
+            <button onClick={stop(handleMarkPurchased)} className="flex-1 text-xs font-bold text-green-600 hover:bg-green-50 transition-colors">✓ Purchased</button>
           )}
-          <button onClick={() => onEdit(item)} className="flex-1 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors border-l border-gray-100">✏️ Edit</button>
-          <button onClick={() => onDelete(item)} className="flex-1 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors border-l border-gray-100">🗑️ Delete</button>
+          <button onClick={stop(() => onEdit(item))} className="flex-1 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors border-l border-gray-100">✏️ Edit</button>
+          <button onClick={stop(() => onDelete(item))} className="flex-1 text-xs font-bold text-red-600 hover:bg-red-50 transition-colors border-l border-gray-100">🗑️ Delete</button>
         </div>
       </div>
 
       {/* Touch / mobile: the same actions, always visible */}
       <div className="md:hidden flex border-t border-gray-100">
         {!isPurchased && (
-          <button onClick={handleMarkPurchased} className="flex-1 py-2.5 text-xs font-bold text-green-600 active:bg-green-50">✓ Purchased</button>
+          <button onClick={stop(handleMarkPurchased)} className="flex-1 py-2.5 text-xs font-bold text-green-600 active:bg-green-50">✓ Purchased</button>
         )}
-        <button onClick={() => onEdit(item)} className="flex-1 py-2.5 text-xs font-bold text-gray-600 active:bg-gray-50 border-l border-gray-100">✏️ Edit</button>
-        <button onClick={() => onDelete(item)} className="flex-1 py-2.5 text-xs font-bold text-red-600 active:bg-red-50 border-l border-gray-100">🗑️ Delete</button>
+        <button onClick={stop(() => onEdit(item))} className="flex-1 py-2.5 text-xs font-bold text-gray-600 active:bg-gray-50 border-l border-gray-100">✏️ Edit</button>
+        <button onClick={stop(() => onDelete(item))} className="flex-1 py-2.5 text-xs font-bold text-red-600 active:bg-red-50 border-l border-gray-100">🗑️ Delete</button>
       </div>
     </div>
   )
@@ -654,7 +763,7 @@ function WishlistGroup({ name, items, index = 0, expanded, onToggleExpand, onMar
 }
 
 // ── Compact card used inside timeline sections ──────────────────────────
-function TimelineCard({ item, onEdit, onMarkPurchased, onDelete }) {
+function TimelineCard({ item, onView, onEdit, onMarkPurchased, onDelete }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const cat = categoryMeta(item.category)
   const st = statusMeta(item.status)
@@ -662,14 +771,15 @@ function TimelineCard({ item, onEdit, onMarkPurchased, onDelete }) {
 
   return (
     <div
-      className="wl-card-enter relative bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 w-[210px] shrink-0 md:w-auto"
+      onClick={() => onView?.(item)}
+      className="wl-card-enter relative bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow p-3.5 w-[210px] shrink-0 md:w-auto cursor-pointer"
       style={{ borderLeft: `3px solid ${isPurchased ? '#22C55E' : cat.color}` }}
     >
       <div className="flex items-start justify-between gap-1">
         <h4 className="text-sm font-bold text-gray-900 leading-snug line-clamp-2 pr-1">{item.name}</h4>
         <div className="relative shrink-0">
           <button
-            onClick={() => setMenuOpen(o => !o)}
+            onClick={(e) => { e.stopPropagation(); setMenuOpen(o => !o) }}
             className="w-7 h-7 -mr-1 -mt-1 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors text-gray-400"
           >
             <svg viewBox="0 0 24 24" fill="currentColor" className="w-3.5 h-3.5">
@@ -678,8 +788,11 @@ function TimelineCard({ item, onEdit, onMarkPurchased, onDelete }) {
           </button>
           {menuOpen && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} />
-              <div className="absolute right-0 top-8 z-20 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1">
+              <div className="fixed inset-0 z-10" onClick={(e) => { e.stopPropagation(); setMenuOpen(false) }} />
+              <div
+                className="absolute right-0 top-8 z-20 w-40 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden py-1"
+                onClick={(e) => e.stopPropagation()}
+              >
                 <button onClick={() => { setMenuOpen(false); onEdit(item) }} className="w-full text-left px-3.5 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50">
                   ✏️ Edit
                 </button>
@@ -710,7 +823,7 @@ function TimelineCard({ item, onEdit, onMarkPurchased, onDelete }) {
           {st.label}
         </span>
         {item.url && (
-          <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold" style={{ color: '#6C63FF' }}>
+          <a href={item.url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="text-[11px] font-bold" style={{ color: '#6C63FF' }}>
             Open ↗
           </a>
         )}
@@ -720,7 +833,7 @@ function TimelineCard({ item, onEdit, onMarkPurchased, onDelete }) {
 }
 
 // ── One collapsible timeline section (header + its cards) ──────────────
-function TimelineSection({ def, monthLabel, items, collapsed, onToggle, onEdit, onMarkPurchased, onDelete }) {
+function TimelineSection({ def, monthLabel, items, collapsed, onToggle, onView, onEdit, onMarkPurchased, onDelete }) {
   if (items.length === 0) return null
   const label = def.key === 'This Month' && monthLabel ? `${def.label} — ${monthLabel}` : def.label
 
@@ -740,12 +853,12 @@ function TimelineSection({ def, monthLabel, items, collapsed, onToggle, onEdit, 
         <>
           <div className="flex md:hidden gap-3 overflow-x-auto pb-1 -mx-1 px-1">
             {items.map(item => (
-              <TimelineCard key={item.id} item={item} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete} />
+              <TimelineCard key={item.id} item={item} onView={onView} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete} />
             ))}
           </div>
           <div className="hidden md:grid grid-cols-2 lg:grid-cols-3 gap-3">
             {items.map(item => (
-              <TimelineCard key={item.id} item={item} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete} />
+              <TimelineCard key={item.id} item={item} onView={onView} onEdit={onEdit} onMarkPurchased={onMarkPurchased} onDelete={onDelete} />
             ))}
           </div>
         </>
@@ -755,7 +868,7 @@ function TimelineSection({ def, monthLabel, items, collapsed, onToggle, onEdit, 
 }
 
 // ── Timeline view — items grouped by purchase timing ────────────────────
-function TimelineView({ items, onEdit, onMarkPurchased, onDelete }) {
+function TimelineView({ items, onView, onEdit, onMarkPurchased, onDelete }) {
   const [selectedYear, setSelectedYear] = useState(CURRENT_YEAR)
   const [collapsed, setCollapsed] = useState({})
 
@@ -845,6 +958,7 @@ function TimelineView({ items, onEdit, onMarkPurchased, onDelete }) {
               items={groupedByKey[def.key]}
               collapsed={Boolean(collapsed[def.key])}
               onToggle={() => toggleSection(def.key)}
+              onView={onView}
               onEdit={onEdit}
               onMarkPurchased={onMarkPurchased}
               onDelete={onDelete}
@@ -857,6 +971,7 @@ function TimelineView({ items, onEdit, onMarkPurchased, onDelete }) {
               items={purchased}
               collapsed={Boolean(collapsed[PURCHASED_SECTION.key])}
               onToggle={() => toggleSection(PURCHASED_SECTION.key)}
+              onView={onView}
               onEdit={onEdit}
               onMarkPurchased={onMarkPurchased}
               onDelete={onDelete}
@@ -957,6 +1072,7 @@ export default function Wishlist() {
   const [view, setView] = useState(getStoredView)
   const [removingId, setRemovingId] = useState(null)
   const [expandedGroups, setExpandedGroups] = useState({})
+  const [detailItem, setDetailItem] = useState(null)
 
   function changeView(v) {
     setView(v)
@@ -1054,17 +1170,22 @@ export default function Wishlist() {
   const filterSig = `${activeChip}|${categoryFilter}|${search}|${sortBy}|${view}`
 
   function openAdd() { setModalItem(null); setShowModal(true) }
-  function openEdit(item) { setModalItem(item); setShowModal(true) }
+  function openEdit(item) { setDetailItem(null); setModalItem(item); setShowModal(true) }
   function closeModal() { setShowModal(false); setModalItem(null) }
   async function handleSaved() { closeModal(); await load() }
 
+  function openView(item) { setDetailItem(item) }
+  function closeView() { setDetailItem(null) }
+
   async function markPurchased(item) {
     await bridge.updateWishlistItem({ ...item, status: 'purchased' })
+    setDetailItem(d => (d && d.id === item.id ? null : d))
     await load()
   }
 
   async function handleDelete(item) {
     if (!confirm(`Remove "${item.name}" from wishlist?`)) return
+    setDetailItem(d => (d && d.id === item.id ? null : d))
     // Play the card's scale-down/fade-out before it leaves the DOM.
     setRemovingId(item.id)
     setTimeout(async () => {
@@ -1282,6 +1403,7 @@ export default function Wishlist() {
       ) : view === 'timeline' ? (
         <TimelineView
           items={visibleItems}
+          onView={openView}
           onEdit={openEdit}
           onMarkPurchased={markPurchased}
           onDelete={handleDelete}
@@ -1310,6 +1432,7 @@ export default function Wishlist() {
                     index={i}
                     item={node.item}
                     removing={removingId === node.item.id}
+                    onView={openView}
                     onEdit={openEdit}
                     onMarkPurchased={markPurchased}
                     onDelete={handleDelete}
@@ -1345,6 +1468,7 @@ export default function Wishlist() {
                       index={i}
                       item={node.item}
                       removing={removingId === node.item.id}
+                      onView={openView}
                       onEdit={openEdit}
                       onMarkPurchased={markPurchased}
                       onDelete={handleDelete}
@@ -1358,6 +1482,15 @@ export default function Wishlist() {
       )}
 
       {showModal && <WishlistModal item={modalItem} onSave={handleSaved} onClose={closeModal} />}
+      {detailItem && !showModal && (
+        <WishlistDetailModal
+          item={detailItem}
+          onClose={closeView}
+          onEdit={openEdit}
+          onMarkPurchased={markPurchased}
+          onDelete={handleDelete}
+        />
+      )}
     </div>
   )
 }
