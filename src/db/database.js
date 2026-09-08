@@ -857,6 +857,18 @@ function createWishlistTable() {
         'After I Buy a House', 'wishlist', 'medium',
         'Buy this or something similar depending on the new home available wall/storage space.'
       )
+      db.prepare(`
+        INSERT INTO wishlist_items
+          (user_id, name, brand, category, url, price, currency, purchase_timing, status, priority, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        admin.id,
+        'Custom Gaming PC Build', 'MD Computers', 'PC',
+        'https://www.mdcomputers.in',
+        122815, 'INR',
+        'Later', 'wishlist', 'high',
+        'Quote #969081 dated 08/09/2026 from MD Computers PVT LTD. Components: Intel Core i5-14400 (₹23,600) + Arctic Freezer 36 ARGB Cooler (₹4,050) + MSI B760M Gaming Plus WiFi6E DDR4 M-ATX (₹16,600) + Corsair Vengeance LPX 16GB DDR4 3600MHz (₹14,999) + Crucial E100 1TB NVMe Gen4 SSD (₹14,980) + Asus Dual RTX 3050 OC 6GB (₹29,386) + Corsair RM750e ATX 3.1 Gold PSU (₹10,400) + Lian Li A3-mATX Wood Black Mini Tower (₹8,800). Total: ₹1,22,815. Estimated wattage: 254W. Contact: 033-40-550-550, info@mdcomputers.in'
+      )
     }
   }
 }
