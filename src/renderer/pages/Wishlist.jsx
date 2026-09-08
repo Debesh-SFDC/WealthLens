@@ -126,6 +126,21 @@ const hasPriceSet = (i) => i.price != null && i.price !== ''
 const topPriority = (its) =>
   its.some(i => i.priority === 'high') ? 'high' : its.some(i => i.priority === 'medium') ? 'medium' : 'low'
 
+// Colour a budget/total by size: gray < ₹50k, amber ₹50k–₹1L, purple > ₹1L.
+const budgetColor = (amt) => (amt > 100000 ? '#6C63FF' : amt >= 50000 ? '#D97706' : '#6B7280')
+
+// Sum of priced items, excluding dropped ones, + how many have no price.
+function wishlistTotals(list) {
+  const active = list.filter(i => i.status !== 'dropped')
+  const priced = active.filter(hasPriceSet)
+  return {
+    total: priced.reduce((s, i) => s + priceOf(i), 0),
+    itemCount: active.length,
+    pricedCount: priced.length,
+    unpricedCount: active.length - priced.length,
+  }
+}
+
 // Resolve an item's collection object (or the synthetic Uncategorized one).
 function collectionOf(item, collections) {
   if (item.collection_id == null) return UNCATEGORIZED
@@ -833,7 +848,9 @@ function CollectionCard({ collection, items, index = 0, onOpen, onEdit, onDelete
   const [menuOpen, setMenuOpen] = useState(false)
   const editable = !collection.uncategorized
   const count = items.length
-  const value = items.filter(hasPriceSet).reduce((s, i) => s + priceOf(i), 0)
+  const pricedItems = items.filter(hasPriceSet)
+  const value = pricedItems.reduce((s, i) => s + priceOf(i), 0)
+  const pricedCount = pricedItems.length
   const highCount = items.filter(i => i.priority === 'high').length
   const highPct = count ? Math.round((highCount / count) * 100) : 0
   const prio = priorityMeta(topPriority(items))
@@ -870,9 +887,17 @@ function CollectionCard({ collection, items, index = 0, onOpen, onEdit, onDelete
       </div>
 
       <h3 className="mt-3 text-xl font-bold text-gray-900 truncate">{collection.name}</h3>
-      <p className="text-sm text-gray-500 mt-0.5">
-        {count} item{count === 1 ? '' : 's'} • {value > 0 ? `${INR.format(value)} budgeted` : 'no budget yet'}
-      </p>
+      <p className="text-xs text-gray-500 mt-0.5">{count} item{count === 1 ? '' : 's'}</p>
+      {pricedCount === 0 ? (
+        <p className="mt-1 text-sm font-semibold text-gray-400">No budget set yet</p>
+      ) : (
+        <p className="mt-1 text-lg font-extrabold" style={{ color: budgetColor(value) }}>
+          {INR.format(value)}
+          {pricedCount < count && (
+            <span className="ml-1.5 text-xs font-semibold text-gray-400">• {pricedCount} item{pricedCount === 1 ? '' : 's'} priced</span>
+          )}
+        </p>
+      )}
 
       {preview.length > 0 ? (
         <ul className="mt-3 space-y-0.5">
@@ -1372,6 +1397,8 @@ export default function Wishlist() {
   }
 
   const totalItems = items.length
+  const highCount = useMemo(() => items.filter(i => i.priority === 'high' && i.status !== 'dropped').length, [items])
+  const totals = useMemo(() => wishlistTotals(items), [items])
   const detailCollection = detailItem ? collectionOf(detailItem, collections) : null
 
   return (
@@ -1389,7 +1416,9 @@ export default function Wishlist() {
               <span className="text-3xl md:text-4xl">🛍️</span> My Wishlist
             </h1>
             <p className="text-sm text-gray-600 mt-1 font-medium">
-              {totalItems} item{totalItems === 1 ? '' : 's'} across {collections.length} collection{collections.length === 1 ? '' : 's'}
+              {totalItems} item{totalItems === 1 ? '' : 's'}
+              {highCount > 0 && <> • {highCount} high priority</>}
+              {collections.length > 0 && <> • {collections.length} collection{collections.length === 1 ? '' : 's'}</>}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1421,6 +1450,19 @@ export default function Wishlist() {
             </button>
           </div>
         </div>
+
+        {totals.total > 0 && (
+          <div className="mt-5 pt-4 border-t border-white/50">
+            <p className="text-xs font-bold uppercase tracking-wide text-gray-500">💰 Total Wishlist Value</p>
+            <p className="text-2xl md:text-3xl font-extrabold leading-tight mt-0.5" style={{ color: budgetColor(totals.total) }}>
+              {INR.format(totals.total)}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5">
+              across {totals.itemCount} item{totals.itemCount === 1 ? '' : 's'}
+              {totals.unpricedCount > 0 && <> ({totals.unpricedCount} without price)</>}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Search */}
