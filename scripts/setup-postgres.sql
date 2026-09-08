@@ -497,3 +497,23 @@ WHERE EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1 AND name = 'S
     JOIN wishlist_collections sc ON sc.id = x.collection_id
     WHERE x.user_id = 1 AND sc.name = 'Scrambler 400X' AND x.name = v.name
   );
+
+-- One-off: "Ford EcoSport" collection + its full-body-repaint item for admin.
+-- Guarded by name so it is added at most once and not resurrected after delete.
+INSERT INTO wishlist_collections (user_id, name, emoji, color, sort_order)
+SELECT 1, 'Ford EcoSport', '🚗', '#ef4444', 5
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
+  AND NOT EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1 AND name = 'Ford EcoSport');
+
+INSERT INTO wishlist_items
+  (user_id, collection_id, name, brand, category, price, currency, priority, status, purchase_timing, notes)
+SELECT 1,
+  (SELECT id FROM wishlist_collections WHERE user_id = 1 AND name = 'Ford EcoSport' ORDER BY id ASC LIMIT 1),
+  'Full Body Repainting — Mars Red to Red Black Dual Tone',
+  'Local Auto Body Shop', 'Automobile', 90000, 'INR', 'medium', 'wishlist', 'Later',
+  'Change current Mars Red color to Red Black dual tone finish. Get quotes from multiple body shops before finalizing. Check if factory dual tone is available as vinyl wrap alternative.'
+WHERE EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1 AND name = 'Ford EcoSport')
+  AND NOT EXISTS (
+    SELECT 1 FROM wishlist_items
+    WHERE user_id = 1 AND name = 'Full Body Repainting — Mars Red to Red Black Dual Tone'
+  );

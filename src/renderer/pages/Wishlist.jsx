@@ -6,13 +6,14 @@ import bridge from '../lib/bridge'
 // tracker each only ever see their own items and collections.
 
 export const WISHLIST_CATEGORIES = [
-  'Motorcycle', 'Riding Gear', 'Electronics', 'PC', 'Watches',
+  'Motorcycle', 'Automobile', 'Riding Gear', 'Electronics', 'PC', 'Watches',
   'Clothing', 'Shoes', 'Bags & Backpacks', 'Home', 'Travel',
   'Fitness', 'Accessories', 'Other',
 ]
 
 const CATEGORY_META = {
   'Motorcycle':        { emoji: '🏍️', color: '#F97316' },
+  'Automobile':         { emoji: '🚗', color: '#EF4444' },
   'Riding Gear':        { emoji: '🪖', color: '#EF4444' },
   'Electronics':        { emoji: '📱', color: '#3B82F6' },
   'PC':                 { emoji: '🖥️', color: '#6366F1' },

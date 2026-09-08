@@ -40,6 +40,7 @@ export function initDatabase() {
   createTravelTables()
   createWishlistTable()
   createWishlistCollectionsTable()
+  seedFordEcoSportCollection()
   return db
 }
 
@@ -992,6 +993,40 @@ function migrateWishlistCollections() {
     for (const [name, brand, notes] of scramblerItems) {
       if (!exists.get(uid, scramblerId, name)) insertItem.run(randomUUID(), uid, scramblerId, name, brand, notes, now, now)
     }
+  }
+}
+
+// One-off add: "Ford EcoSport" collection + its full-body-repaint wishlist
+// item for the admin account. Guarded by name so it's added at most once and
+// never resurrected after the user deletes it.
+function seedFordEcoSportCollection() {
+  const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+  if (!admin) return
+  const uid = admin.id
+
+  let coll = db.prepare("SELECT id FROM wishlist_collections WHERE user_id = ? AND name = 'Ford EcoSport'").get(uid)
+  if (!coll) {
+    const info = db.prepare(
+      "INSERT INTO wishlist_collections (user_id, name, emoji, color, sort_order) VALUES (?, 'Ford EcoSport', '🚗', '#ef4444', 5)"
+    ).run(uid)
+    coll = { id: info.lastInsertRowid }
+  }
+
+  const itemName = 'Full Body Repainting — Mars Red to Red Black Dual Tone'
+  const exists = db.prepare('SELECT 1 FROM wishlist_items WHERE user_id = ? AND name = ?').get(uid, itemName)
+  if (!exists) {
+    const now = new Date().toISOString()
+    db.prepare(`
+      INSERT INTO wishlist_items
+        (sync_id, user_id, collection_id, name, brand, category, price, currency,
+         priority, status, purchase_timing, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 'Local Auto Body Shop', 'Automobile', 90000, 'INR',
+        'medium', 'wishlist', 'Later', ?, ?, ?)
+    `).run(
+      randomUUID(), uid, coll.id, itemName,
+      'Change current Mars Red color to Red Black dual tone finish. Get quotes from multiple body shops before finalizing. Check if factory dual tone is available as vinyl wrap alternative.',
+      now, now
+    )
   }
 }
 
