@@ -155,6 +155,21 @@ const FILTER_TABS = [
   { key: 'others', label: 'Others' },
 ]
 
+// An "active SIP" = a monthly commitment on an MF-SIP or RD.
+const isActiveSIP = (i) => ['mf_sip', 'rd'].includes(i.type) && Number(i.monthly_sip_amount) > 0
+
+// Second-row quick filters — independent of the type tab, one at a time.
+const QUICK_CHIPS = [
+  { key: 'sip',      emoji: '💰', label: 'Active SIPs' },
+  { key: 'positive', emoji: '📈', label: 'Profitable' },
+  { key: 'negative', emoji: '📉', label: 'In Loss' },
+]
+const QUICK_FILTER_FN = {
+  sip:      isActiveSIP,
+  positive: (i) => effectiveCurrentValue(i) > (Number(i.invested_amount) || 0),
+  negative: (i) => effectiveCurrentValue(i) < (Number(i.invested_amount) || 0),
+}
+
 // ── Allocation health helpers ─────────────────────────────────────────────
 function computeAge(dob) {
   if (!dob) return null
@@ -801,8 +816,8 @@ function InvestmentCard({ inv, onEdit, onDelete, onRefresh, refreshing, onClick 
             <span className="px-1 py-px rounded-full text-[10px] font-medium bg-purple-50 text-purple-600">🎯 {inv.goal_title}</span>
           )}
           {inv.type === 'mf_sip' && inv.monthly_sip_amount > 0 && (
-            <span className="px-1 py-px rounded-full text-[10px] font-medium bg-blue-50 text-blue-600">
-              SIP {fmt(inv.monthly_sip_amount)}/{inv.sip_frequency === 'weekly' ? 'wk' : 'mo'}
+            <span className="px-1.5 py-px rounded-full text-[10px] font-bold bg-teal-50 text-teal-700">
+              SIP: {fmt(inv.monthly_sip_amount)}/{inv.sip_frequency === 'weekly' ? 'wk' : 'mo'}
             </span>
           )}
           {isRetirement && inv.monthly_sip_amount > 0 && (
@@ -3332,6 +3347,21 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
   )
 }
 
+// ── Active-SIP summary card (shown when the "Active SIPs" chip is on) ──────
+function SipSummaryCard({ items }) {
+  const monthly = items.reduce((s, i) => s + (Number(i.monthly_sip_amount) || 0), 0)
+  const yearly = monthly * 12
+  return (
+    <div className="mb-4 rounded-2xl p-4 border" style={{ background: '#f0fdfa', borderColor: '#99f6e4' }}>
+      <p className="text-sm font-extrabold text-teal-800 flex items-center gap-1.5">💰 Your Active SIPs</p>
+      <p className="text-sm text-teal-900 mt-1.5">
+        <b>{items.length}</b> fund{items.length === 1 ? '' : 's'} • <b>{fmt(monthly)}</b>/month total
+      </p>
+      <p className="text-xs text-teal-700/80 mt-0.5">Yearly commitment: <b>{fmt(yearly)}</b></p>
+    </div>
+  )
+}
+
 // ── Main Investments page ─────────────────────────────────────────────────
 export default function Investments() {
   const [investments, setInvestments] = useState([])
@@ -3339,6 +3369,7 @@ export default function Investments() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('all')
+  const [quickFilter, setQuickFilter] = useState(null) // null | 'sip' | 'positive' | 'negative'
   const [search, setSearch] = useState('')
   const [showForm, setShowForm] = useState(false)
   const [editInv, setEditInv] = useState(null)
@@ -3431,12 +3462,24 @@ export default function Investments() {
   }
 
   const searchLower = search.trim().toLowerCase()
+  const quickFn = quickFilter ? QUICK_FILTER_FN[quickFilter] : null
+
+  // Chip counts reflect the current type tab (they combine).
+  const typeScoped = investments.filter(i => TYPE_GROUPS[filter]?.(i.type) ?? true)
+  const quickCounts = {
+    sip:      typeScoped.filter(QUICK_FILTER_FN.sip).length,
+    positive: typeScoped.filter(QUICK_FILTER_FN.positive).length,
+    negative: typeScoped.filter(QUICK_FILTER_FN.negative).length,
+  }
+
   const filtered = investments.filter(i => {
     if (!(TYPE_GROUPS[filter]?.(i.type) ?? true)) return false
+    if (quickFn && !quickFn(i)) return false
     if (!searchLower) return true
     return [i.name, i.bank_or_amc, i.provider, i.account_number, i.notes, TYPE_META[i.type]?.label]
       .some(field => field?.toLowerCase().includes(searchLower))
   })
+  const sipSummaryItems = quickFilter === 'sip' ? filtered.filter(isActiveSIP) : []
 
   return (
     <div className="p-6">
@@ -3511,39 +3554,69 @@ export default function Investments() {
       )}
 
       {/* Filter tabs + search */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="flex gap-1 bg-gray-100 rounded-xl p-1 shrink-0">
-          {FILTER_TABS.map(t => (
-            <button key={t.key} onClick={() => setFilter(t.key)}
-              className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
-              style={{
-                backgroundColor: filter === t.key ? '#fff' : 'transparent',
-                color: filter === t.key ? '#1a1a2e' : '#9ca3af',
-                boxShadow: filter === t.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
-              }}>
-              {t.label}
-            </button>
-          ))}
+      <div className="mb-4 space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 shrink-0">
+            {FILTER_TABS.map(t => (
+              <button key={t.key} onClick={() => setFilter(t.key)}
+                className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
+                style={{
+                  backgroundColor: filter === t.key ? '#fff' : 'transparent',
+                  color: filter === t.key ? '#1a1a2e' : '#9ca3af',
+                  boxShadow: filter === t.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                }}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <div className="relative flex-1 max-w-xs">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
+              <SearchIcon />
+            </span>
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search investments…"
+              className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-colors"
+            />
+            {search && (
+              <button onClick={() => setSearch('')}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors text-base leading-none">
+                ×
+              </button>
+            )}
+          </div>
         </div>
-        <div className="relative flex-1 max-w-xs">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
-            <SearchIcon />
-          </span>
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search investments…"
-            className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-colors"
-          />
-          {search && (
-            <button onClick={() => setSearch('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors text-base leading-none">
-              ×
-            </button>
-          )}
+
+        {/* Row 2: quick filter chips (combine with the type tab above) */}
+        <div className="flex flex-wrap gap-2">
+          {QUICK_CHIPS.map(c => {
+            const active = quickFilter === c.key
+            return (
+              <button key={c.key}
+                onClick={() => setQuickFilter(active ? null : c.key)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-colors"
+                style={active
+                  ? { backgroundColor: '#6C63FF', borderColor: '#6C63FF', color: '#fff' }
+                  : { backgroundColor: '#fff', borderColor: '#E5E7EB', color: '#6B7280' }}>
+                <span>{c.emoji}</span>{c.label}
+                <span style={{ opacity: 0.8 }}>({quickCounts[c.key]})</span>
+              </button>
+            )
+          })}
         </div>
       </div>
+
+      {/* Active-SIP summary + count bar */}
+      {!loading && quickFilter === 'sip' && sipSummaryItems.length > 0 && (
+        <>
+          <SipSummaryCard items={sipSummaryItems} />
+          <p className="text-xs font-semibold text-gray-500 mb-3">
+            {sipSummaryItems.length} active SIP{sipSummaryItems.length === 1 ? '' : 's'} • {fmt(sipSummaryItems.reduce((s, i) => s + (Number(i.monthly_sip_amount) || 0), 0))}/month total
+          </p>
+        </>
+      )}
 
       {/* Cards grid */}
       {loading ? (
@@ -3555,12 +3628,18 @@ export default function Investments() {
           <div className="text-center">
             <p className="text-4xl mb-3">{searchLower ? '🔍' : '📈'}</p>
             <p className="text-base font-semibold text-gray-700">
-              {searchLower ? `No results for "${search}"` : 'No investments here'}
+              {searchLower
+                ? `No results for "${search}"`
+                : quickFilter
+                  ? `No ${QUICK_CHIPS.find(c => c.key === quickFilter)?.label.toLowerCase()} investments`
+                  : 'No investments here'}
             </p>
             <p className="text-sm text-gray-400 mt-1">
               {searchLower
                 ? 'Try a different name, provider, or type'
-                : filter === 'all' ? 'Tap + Add Investment to get started' : `No ${FILTER_TABS.find(t => t.key === filter)?.label} found`}
+                : quickFilter
+                  ? 'Clear the quick filter or pick a different type'
+                  : filter === 'all' ? 'Tap + Add Investment to get started' : `No ${FILTER_TABS.find(t => t.key === filter)?.label} found`}
             </p>
           </div>
         </div>
