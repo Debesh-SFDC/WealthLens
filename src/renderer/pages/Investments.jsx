@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import bridge from '../lib/bridge'
 
+// Live NAV/gold/MF-search and the goal↔investment junction are Electron-only
+// (no web route). In web mode every window.electronAPI.* call below is skipped
+// and the user is told the feature lives in the desktop app.
+const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
+const DESKTOP_ONLY_MSG = 'Available in the desktop app'
+
 // ── Utilities ─────────────────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const fmt = (v) => INR.format(v || 0)
@@ -399,6 +405,7 @@ function QuickUpdateModal({ inv, onSave, onClose }) {
 
   const handleFetchNav = async () => {
     if (!inv.scheme_code) return
+    if (!IS_ELECTRON) { setFetchSt('error'); setFetchMsg(DESKTOP_ONLY_MSG); return }
     setFetchSt('fetching')
     try {
       const { nav, date } = await window.electronAPI.fetchMFNav(inv.scheme_code)
@@ -410,6 +417,7 @@ function QuickUpdateModal({ inv, onSave, onClose }) {
   }
 
   const handleFetchGold = async () => {
+    if (!IS_ELECTRON) { setFetchSt('error'); setFetchMsg(DESKTOP_ONLY_MSG); return }
     setFetchSt('fetching')
     try {
       const { inrPerGram } = await window.electronAPI.fetchGoldPrice()
@@ -1389,7 +1397,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
 
   // Load done rebalancing actions whenever card opens
   useEffect(() => {
-    if (!open) return
+    if (!open || !IS_ELECTRON) return
     window.electronAPI.rebalancingGetAll?.().then(rows => {
       setDoneActions(new Set((rows || []).filter(r => r.status === 'done').map(r => r.suggestion_text)))
     }).catch(() => {})
@@ -1398,7 +1406,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
   const toggleDone = async (text) => {
     const isDone    = doneActions.has(text)
     const newStatus = isDone ? 'pending' : 'done'
-    window.electronAPI.rebalancingUpsert?.(text, newStatus).catch(() => {})
+    if (IS_ELECTRON) window.electronAPI.rebalancingUpsert?.(text, newStatus).catch(() => {})
     setDoneActions(prev => {
       const next = new Set(prev)
       isDone ? next.delete(text) : next.add(text)
@@ -2259,6 +2267,7 @@ function MFSearchInput({ value, schemeCode, onSelect }) {
     setQuery(q)
     clearTimeout(debounceRef.current)
     if (q.length < 3) { setResults([]); return }
+    if (!IS_ELECTRON) { setResults([]); return }
     debounceRef.current = setTimeout(async () => {
       setLoading(true)
       try {
@@ -2297,6 +2306,9 @@ function MFSearchInput({ value, schemeCode, onSelect }) {
         </div>
       )}
       {schemeCode && <p className="text-xs text-gray-400 mt-1">Scheme code: {schemeCode}</p>}
+      {!IS_ELECTRON && (
+        <p className="text-xs text-gray-400 mt-1">🔍 Fund search &amp; live NAV — {DESKTOP_ONLY_MSG.toLowerCase()}. Enter the scheme code manually if you have it.</p>
+      )}
     </div>
   )
 }
@@ -2326,7 +2338,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
   // goal(s) this investment is linked to — investments.goal_id can be stale on
   // older records. Reconcile the dropdown's pre-selection against it on load.
   useEffect(() => {
-    if (!initial?.id) return
+    if (!initial?.id || !IS_ELECTRON) return
     window.electronAPI.getGoalsForInvestment?.(initial.id).then(goalIds => {
       if (goalIds && goalIds.length > 0) set('goal_id', String(goalIds[0]))
     }).catch(() => {})
@@ -2367,6 +2379,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
 
   const handleFetchNav = async () => {
     if (!form.scheme_code) return
+    if (!IS_ELECTRON) { setFetchStatus('error'); setFetchMsg(DESKTOP_ONLY_MSG); return }
     setFetchStatus('fetching')
     try {
       const { nav, date, name } = await window.electronAPI.fetchMFNav(form.scheme_code)
@@ -2381,6 +2394,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
   }
 
   const handleFetchGold = async () => {
+    if (!IS_ELECTRON) { setFetchStatus('error'); setFetchMsg(DESKTOP_ONLY_MSG); return }
     setFetchStatus('fetching')
     try {
       const { inrPerGram } = await window.electronAPI.fetchGoldPrice()
@@ -3070,6 +3084,7 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
 
   const fetchMF = async (inv) => {
     if (!inv.scheme_code) return
+    if (!IS_ELECTRON) { showToast?.(DESKTOP_ONLY_MSG, 'warn'); return }
     setFetching(f => ({ ...f, [inv.id]: true }))
     try {
       const { nav } = await window.electronAPI.fetchMFNav(inv.scheme_code)
@@ -3081,6 +3096,7 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
 
   const fetchGold = async (inv) => {
     if (!Number(inv.units)) return
+    if (!IS_ELECTRON) { showToast?.(DESKTOP_ONLY_MSG, 'warn'); return }
     setFetching(f => ({ ...f, [inv.id]: true }))
     try {
       const { inrPerGram } = await window.electronAPI.fetchGoldPrice()
@@ -3385,6 +3401,7 @@ export default function Investments() {
   }
 
   const handleRefresh = async (inv) => {
+    if (!IS_ELECTRON) { showToast('Live price refresh is available in the desktop app', 'warn'); return }
     setRefreshingId(inv.id)
     try {
       let newValue = inv.current_value
