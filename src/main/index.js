@@ -1073,10 +1073,12 @@ function setupIpcHandlers() {
   ipcMain.handle('expenses:create', (_, d) => {
     const syncId   = generateExpenseSyncId()
     const deviceId = getOrCreateDeviceId()
+    // Client always sends the picked date, but fall back to today if it's missing.
+    const date = d.date || new Date().toISOString().slice(0, 10)
     const result  = db.prepare(`
       INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id, updated_at, device_id)
       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
-    `).run(syncId, d.amount, d.category, d.note ?? null, d.date, currentUserSession?.id ?? null, deviceId)
+    `).run(syncId, d.amount, d.category, d.note ?? null, date, currentUserSession?.id ?? null, deviceId)
     // Auto-push to Drive in background (fire and forget)
     const { connected } = getDriveStatus()
     if (connected) {

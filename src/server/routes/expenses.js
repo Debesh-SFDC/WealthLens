@@ -116,10 +116,12 @@ router.post('/', async (req, res) => {
   const d = req.body || {}
   const db = getDb()
   const now = new Date().toISOString()
+  // Client always sends the picked date, but fall back to today if it's missing.
+  const date = d.date || now.slice(0, 10)
   const { rows } = await db.query(
     `INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    [randomUUID(), d.amount, d.category, d.note ?? null, d.date, req.user.id, now, now]
+    [randomUUID(), d.amount, d.category, d.note ?? null, date, req.user.id, now, now]
   )
   res.json({ id: rows[0].id })
 })

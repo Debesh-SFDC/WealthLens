@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import bridge from '../lib/bridge'
+import Toast from '../components/Toast'
+import ExpenseDateChips, { expenseDateShortLabel } from '../components/ExpenseDateChips'
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const fmt = (v) => INR.format(v || 0)
@@ -37,7 +39,7 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
     }
     if (isEdit) await bridge.updateExpense(data)
     else await bridge.createExpense(data)
-    onSave()
+    onSave(isEdit ? null : form.date)
   }
 
   return (
@@ -80,10 +82,7 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
 
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Date *</label>
-            <input
-              type="date" required value={form.date} onChange={e => set('date', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
-            />
+            <ExpenseDateChips value={form.date} onChange={d => set('date', d)} />
           </div>
 
           <div>
@@ -171,6 +170,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
   const [catFilter, setCatFilter] = useState('all')
   const [userFilter, setUserFilter] = useState('all') // 'all' | userId string
   const [allUsers, setAllUsers]   = useState([])
+  const [toast, setToast]         = useState({ visible: false, message: '', type: 'success' })
 
   async function loadData() {
     setLoading(true)
@@ -223,10 +223,13 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
     loadData()
   }
 
-  function handleSaved() {
+  function handleSaved(addedDate) {
     setShowModal(false)
     setEditTarget(null)
     loadData()
+    if (addedDate) {
+      setToast({ visible: true, type: 'success', message: `✅ Expense added for ${expenseDateShortLabel(addedDate)}` })
+    }
   }
 
   const isCurrentMonth = year === now.getFullYear() && month === now.getMonth() + 1
@@ -509,6 +512,13 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
           onClose={() => { setShowModal(false); setEditTarget(null) }}
         />
       )}
+
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => setToast(t => ({ ...t, visible: false }))}
+      />
     </div>
   )
 }

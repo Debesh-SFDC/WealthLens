@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
+import ExpenseDateChips, { expenseDateShortLabel } from '../components/ExpenseDateChips'
 import RetirementCountdown from '../components/RetirementCountdown'
 import {
   BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
@@ -55,7 +56,7 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
     if (!form.amount || !form.category) return
     const amount = parseFloat(form.amount)
     await bridge.createExpense({ ...form, amount })
-    onAdded({ amount, category: form.category })
+    onAdded({ amount, category: form.category, date: form.date })
   }
 
   return (
@@ -81,6 +82,7 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
           >
             {categories.map(c => <option key={c.id} value={c.name}>{c.icon} {c.name}</option>)}
           </select>
+          <ExpenseDateChips value={form.date} onChange={d => set('date', d)} />
           <input
             type="text" placeholder="Note (optional)"
             value={form.note} onChange={e => set('note', e.target.value)}
@@ -409,7 +411,7 @@ export default function Dashboard({ onNavigate, currentUser }) {
     if (info?.kg != null) {
       showToast(`✅ Weight logged — ${info.kg} kg for ${shortDateLabel(info.date, isoDaysAgo(0))}`)
     } else if (info?.amount != null) {
-      showToast(`✅ Expense added — ${fmt(info.amount)} ${info.category}`)
+      showToast(`✅ Expense added for ${expenseDateShortLabel(info.date)}`)
     }
   }
 

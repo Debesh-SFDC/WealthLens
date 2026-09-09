@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
+import ExpenseDateChips, { expenseDateShortLabel } from '../components/ExpenseDateChips'
 
 const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
 
@@ -68,7 +69,6 @@ export default function TrackerHome({ user }) {
   const [amtFocused, setAmtFocused] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_CATS)
   const [selectedDate, setSelectedDate] = useState(todayStr())
-  const [showPicker, setShowPicker] = useState(false)
 
   // Weight state
   const [weightInput,   setWeightInput]   = useState('')
@@ -185,7 +185,7 @@ export default function TrackerHome({ user }) {
       setSaved(true)
       setTimeout(() => setSaved(false), 1800)
       await load()
-      showToast(`✅ Expense added — ${fmt(amt)} ${category}`)
+      showToast(`✅ Expense added for ${expenseDateShortLabel(selectedDate)}`)
     } finally { setSaving(false) }
   }
 
@@ -448,54 +448,8 @@ export default function TrackerHome({ user }) {
           </div>
 
           {/* Date selector */}
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-xs font-semibold text-gray-500">Date:</span>
-            <button
-              onClick={() => { setSelectedDate(today); setShowPicker(false) }}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-              style={{
-                backgroundColor: selectedDate === today && !showPicker ? '#EEF2FF' : '#F3F4F6',
-                color: selectedDate === today && !showPicker ? '#6C63FF' : '#6B7280',
-              }}
-            >
-              Today
-            </button>
-            <button
-              onClick={() => { setSelectedDate(yesterday); setShowPicker(false) }}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
-              style={{
-                backgroundColor: selectedDate === yesterday && !showPicker ? '#EEF2FF' : '#F3F4F6',
-                color: selectedDate === yesterday && !showPicker ? '#6C63FF' : '#6B7280',
-              }}
-            >
-              Yesterday
-            </button>
-            <button
-              onClick={() => setShowPicker(v => !v)}
-              className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1"
-              style={{
-                backgroundColor: showPicker || (selectedDate !== today && selectedDate !== yesterday) ? '#EEF2FF' : '#F3F4F6',
-                color: showPicker || (selectedDate !== today && selectedDate !== yesterday) ? '#6C63FF' : '#6B7280',
-              }}
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ width: 12, height: 12 }}>
-                <rect x="3" y="4" width="18" height="18" rx="2" />
-                <path d="M16 2v4M8 2v4M3 10h18" />
-              </svg>
-              {showPicker || (selectedDate !== today && selectedDate !== yesterday)
-                ? formatDateLabel(selectedDate)
-                : 'Pick date'}
-            </button>
-            {showPicker && (
-              <input
-                type="date"
-                value={selectedDate}
-                max={today}
-                onChange={e => { if (e.target.value) setSelectedDate(e.target.value) }}
-                className="text-xs text-gray-700 outline-none border border-gray-200 rounded-xl px-2 py-1.5 bg-white"
-                style={{ maxWidth: 130 }}
-              />
-            )}
+          <div className="mb-4">
+            <ExpenseDateChips value={selectedDate} onChange={setSelectedDate} />
           </div>
 
           {/* Category grid */}
