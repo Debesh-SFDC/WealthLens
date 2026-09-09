@@ -252,6 +252,34 @@ INSERT INTO expense_categories (name, icon, color, is_default)
 VALUES ('Grocery', '🛒', '#22c55e', 1)
 ON CONFLICT (name) DO NOTHING;
 
+-- ── Need/Want bucketing (Option C: the category sets the default bucket, and
+--    each expense can override it per-entry) ──────────────────────────────────
+-- The category carries the default; a fresh column fills every existing row
+-- with 'need', then the "want"-leaning categories are flipped below.
+ALTER TABLE expense_categories ADD COLUMN IF NOT EXISTS bucket TEXT DEFAULT 'need'
+  CHECK (bucket IN ('need','want'));
+
+UPDATE expense_categories SET bucket = 'want'
+WHERE bucket = 'need'
+  AND name IN ('Shopping','Entertainment','Travel','Dining','Restaurants',
+               'Others','Other','Gifts','Subscriptions','Hobbies');
+
+-- expenses.bucket: add it nullable first so existing rows can be backfilled
+-- from their category (Postgres fills a DEFAULT into every existing row
+-- immediately, which would defeat the category-based backfill), then set the
+-- default for future inserts that don't send a bucket.
+ALTER TABLE expenses ADD COLUMN IF NOT EXISTS bucket TEXT
+  CHECK (bucket IN ('need','want'));
+
+UPDATE expenses e
+SET bucket = COALESCE(
+  (SELECT ec.bucket FROM expense_categories ec WHERE ec.name = e.category LIMIT 1),
+  'need'
+)
+WHERE e.bucket IS NULL;
+
+ALTER TABLE expenses ALTER COLUMN bucket SET DEFAULT 'need';
+
 CREATE TABLE IF NOT EXISTS weight_logs (
   id          SERIAL PRIMARY KEY,
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

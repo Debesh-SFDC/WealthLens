@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
 import ExpenseDateChips, { expenseDateShortLabel } from '../components/ExpenseDateChips'
+import BucketToggle from '../components/BucketToggle'
+import { BUCKET_META, bucketForCategory } from '../lib/bucket'
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const fmt = (v) => INR.format(v || 0)
@@ -17,17 +19,48 @@ function getCatIcon(name, categories) {
   return cat?.icon || '💸'
 }
 
+// Small coloured dot marking an expense's Need/Want bucket.
+function BucketDot({ bucket }) {
+  const m = BUCKET_META[bucket === 'want' ? 'want' : 'need']
+  return (
+    <span
+      title={m.label}
+      className="inline-block w-2 h-2 rounded-full shrink-0"
+      style={{ backgroundColor: m.color }}
+    />
+  )
+}
+
+function overrideHint(category, autoBucket) {
+  const label = autoBucket === 'want' ? 'Want' : 'Need'
+  const tail = autoBucket === 'want' ? 'mark it a Need if it was essential' : 'change if this was a treat 🍽️'
+  return `${category} is usually a ${label} — ${tail}`
+}
+
 // ── Expense add/edit modal ────────────────────────────────────────────────
 function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [form, setForm] = useState(
-    expense
-      ? { ...expense, amount: String(expense.amount) }
-      : { amount: '', category: categories[0]?.name || 'Food & Dining', note: '', date: today }
-  )
+  const [form, setForm] = useState(() => {
+    if (expense) {
+      return {
+        ...expense,
+        amount: String(expense.amount),
+        bucket: expense.bucket === 'want' ? 'want' : expense.bucket === 'need'
+          ? 'need' : bucketForCategory(expense.category, categories),
+      }
+    }
+    const cat = categories[0]?.name || 'Food & Dining'
+    return { amount: '', category: cat, note: '', date: today, bucket: bucketForCategory(cat, categories) }
+  })
 
   const isEdit = Boolean(expense?.id)
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  // Changing the category re-arms the auto-selected bucket (Option C).
+  const setCategory = (name) =>
+    setForm(f => ({ ...f, category: name, bucket: bucketForCategory(name, categories) }))
+
+  const autoBucket = bucketForCategory(form.category, categories)
+  const bucketOverridden = form.bucket !== autoBucket
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -71,7 +104,7 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Category *</label>
             <select
-              value={form.category} onChange={e => set('category', e.target.value)}
+              value={form.category} onChange={e => setCategory(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
             >
               {categories.map(c => (
@@ -79,6 +112,12 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
               ))}
             </select>
           </div>
+
+          <BucketToggle
+            value={form.bucket}
+            onChange={b => set('bucket', b)}
+            hint={bucketOverridden ? overrideHint(form.category, autoBucket) : null}
+          />
 
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Date *</label>
@@ -365,9 +404,36 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
       {monthlyStats && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
-            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Total Spend</p>
-            <p className="text-2xl font-bold text-gray-900">{fmt(totalSpend)}</p>
-            <p className="text-xs text-gray-400 mt-1">{MONTHS[month - 1]} {year}</p>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+              {isCurrentMonth ? 'This Month' : `${MONTHS[month - 1]} ${year}`}
+            </p>
+            {(() => {
+              const needs = monthlyStats.needs ?? 0
+              const wants = monthlyStats.wants ?? 0
+              const pct = (v) => totalSpend > 0 ? Math.round((v / totalSpend) * 100) : 0
+              return (
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-1.5 text-gray-600">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BUCKET_META.need.color }} />
+                      Needs
+                    </span>
+                    <span className="font-bold text-gray-900">{fmt(needs)} <span className="text-xs font-medium text-gray-400">({pct(needs)}%)</span></span>
+                  </div>
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-1.5 text-gray-600">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BUCKET_META.want.color }} />
+                      Wants
+                    </span>
+                    <span className="font-bold text-gray-900">{fmt(wants)} <span className="text-xs font-medium text-gray-400">({pct(wants)}%)</span></span>
+                  </div>
+                  <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-gray-100 text-sm">
+                    <span className="text-gray-400 font-semibold">Total</span>
+                    <span className="font-bold text-gray-900">{fmt(totalSpend)}</span>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
           <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Daily Average</p>
@@ -466,7 +532,10 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
                           {getCatIcon(exp.category, categories)}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-800 truncate">{exp.note || exp.category}</p>
+                          <p className="text-sm font-semibold text-gray-800 truncate flex items-center gap-1.5">
+                            <BucketDot bucket={exp.bucket} />
+                            <span className="truncate">{exp.note || exp.category}</span>
+                          </p>
                           <div className="flex items-center gap-1.5">
                             {exp.note && <p className="text-xs text-gray-400">{exp.category}</p>}
                             {exp.logged_by_name && (

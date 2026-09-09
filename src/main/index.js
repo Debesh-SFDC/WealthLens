@@ -1070,15 +1070,24 @@ function setupIpcHandlers() {
     return db.prepare(query).all(...params)
   })
 
+  // Resolves the Need/Want bucket: explicit 'need'/'want' from the client wins,
+  // else fall back to the category's default bucket, else 'need'.
+  const resolveExpenseBucket = (explicit, category) => {
+    if (explicit === 'need' || explicit === 'want') return explicit
+    const cat = db.prepare('SELECT bucket FROM expense_categories WHERE name = ? LIMIT 1').get(category)
+    return cat?.bucket === 'want' ? 'want' : 'need'
+  }
+
   ipcMain.handle('expenses:create', (_, d) => {
     const syncId   = generateExpenseSyncId()
     const deviceId = getOrCreateDeviceId()
     // Client always sends the picked date, but fall back to today if it's missing.
     const date = d.date || new Date().toISOString().slice(0, 10)
+    const bucket = resolveExpenseBucket(d.bucket, d.category)
     const result  = db.prepare(`
-      INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id, updated_at, device_id)
-      VALUES (?, ?, ?, ?, ?, ?, datetime('now'), ?)
-    `).run(syncId, d.amount, d.category, d.note ?? null, date, currentUserSession?.id ?? null, deviceId)
+      INSERT INTO expenses (sync_id, amount, category, note, date, bucket, logged_by_user_id, updated_at, device_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+    `).run(syncId, d.amount, d.category, d.note ?? null, date, bucket, currentUserSession?.id ?? null, deviceId)
     // Auto-push to Drive in background (fire and forget)
     const { connected } = getDriveStatus()
     if (connected) {
@@ -1090,9 +1099,10 @@ function setupIpcHandlers() {
 
   ipcMain.handle('expenses:update', (_, d) => {
     const deviceId = getOrCreateDeviceId()
+    const bucket = resolveExpenseBucket(d.bucket, d.category)
     db.prepare(`
-      UPDATE expenses SET amount = ?, category = ?, note = ?, date = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?
-    `).run(d.amount, d.category, d.note ?? null, d.date, deviceId, d.id)
+      UPDATE expenses SET amount = ?, category = ?, note = ?, date = ?, bucket = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?
+    `).run(d.amount, d.category, d.note ?? null, d.date, bucket, deviceId, d.id)
     return { success: true }
   })
 
@@ -1154,6 +1164,8 @@ function setupIpcHandlers() {
     ).all(month, year)
 
     const total = rows.reduce((s, r) => s + r.amount, 0)
+    const needs = rows.reduce((s, r) => s + (r.bucket === 'want' ? 0 : r.amount), 0)
+    const wants = rows.reduce((s, r) => s + (r.bucket === 'want' ? r.amount : 0), 0)
 
     const catMap = {}
     for (const r of rows) catMap[r.category] = (catMap[r.category] || 0) + r.amount
@@ -1170,6 +1182,8 @@ function setupIpcHandlers() {
 
     return {
       total,
+      needs,
+      wants,
       byCategory,
       dailyAvg,
       topDay: topDayEntry ? { date: topDayEntry[0], amount: topDayEntry[1] } : null,
@@ -1200,6 +1214,8 @@ function setupIpcHandlers() {
     const monthExpenses = db.prepare(expQuery).all(...expParams)
 
     const thisMonthSpend = monthExpenses.reduce((sum, e) => sum + e.amount, 0)
+    const needsSpend = monthExpenses.reduce((s, e) => s + (e.bucket === 'want' ? 0 : e.amount), 0)
+    const wantsSpend = monthExpenses.reduce((s, e) => s + (e.bucket === 'want' ? e.amount : 0), 0)
     const todayExpenses = monthExpenses.filter(e => e.date === today)
 
     const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -1211,12 +1227,16 @@ function setupIpcHandlers() {
     })
 
     const activePlan = db.prepare('SELECT id FROM salary_plans WHERE is_active = 1 LIMIT 1').get()
-    let monthlyBudget = 0
+    let monthlyBudget = 0, budgetedNeeds = 0, budgetedWants = 0
     if (activePlan) {
-      const { total } = db.prepare(
-        "SELECT COALESCE(SUM(amount), 0) as total FROM salary_plan_items WHERE plan_id = ? AND category IN ('needs', 'wants')"
-      ).get(activePlan.id)
-      monthlyBudget = total
+      const itemRows = db.prepare(
+        "SELECT category, COALESCE(SUM(amount), 0) as total FROM salary_plan_items WHERE plan_id = ? AND category IN ('needs', 'wants') GROUP BY category"
+      ).all(activePlan.id)
+      for (const r of itemRows) {
+        if (r.category === 'needs') budgetedNeeds = r.total
+        else if (r.category === 'wants') budgetedWants = r.total
+      }
+      monthlyBudget = budgetedNeeds + budgetedWants
     }
 
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000).toISOString().slice(0, 10)
@@ -1252,7 +1272,8 @@ function setupIpcHandlers() {
     }
 
     return {
-      thisMonthSpend, monthlyBudget, dailySpend, todayExpenses,
+      thisMonthSpend, needsSpend, wantsSpend, monthlyBudget, budgetedNeeds, budgetedWants,
+      dailySpend, todayExpenses,
       latestWeight, weightLogs, heightCm, totalInvested, activeGoals, netWorth, familyWeights,
     }
   })

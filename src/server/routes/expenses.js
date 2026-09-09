@@ -61,6 +61,8 @@ router.get('/monthly-stats', async (req, res) => {
   const { rows } = await db.query(query, params)
 
   const total = rows.reduce((s, r) => s + r.amount, 0)
+  const needs = rows.reduce((s, r) => s + (r.bucket === 'want' ? 0 : r.amount), 0)
+  const wants = rows.reduce((s, r) => s + (r.bucket === 'want' ? r.amount : 0), 0)
 
   const catMap = {}
   for (const r of rows) catMap[r.category] = (catMap[r.category] || 0) + r.amount
@@ -76,10 +78,21 @@ router.get('/monthly-stats', async (req, res) => {
   const topDayEntry = Object.entries(dayMap).sort((a, b) => b[1] - a[1])[0]
 
   res.json({
-    total, byCategory, dailyAvg,
+    total, needs, wants, byCategory, dailyAvg,
     topDay: topDayEntry ? { date: topDayEntry[0], amount: topDayEntry[1] } : null,
   })
 })
+
+// Resolves the Need/Want bucket for an expense: an explicit 'need'/'want' from
+// the client wins; otherwise fall back to the selected category's default
+// bucket, and finally to 'need'.
+async function resolveBucket(db, explicit, category) {
+  if (explicit === 'need' || explicit === 'want') return explicit
+  const { rows } = await db.query(
+    'SELECT bucket FROM expense_categories WHERE name = ? LIMIT 1', [category]
+  )
+  return rows[0]?.bucket === 'want' ? 'want' : 'need'
+}
 
 // POST /api/expenses/categories — admin only. { name, icon?, color? } -> { id }
 // mirrors expenses:createCategory.
@@ -118,10 +131,11 @@ router.post('/', async (req, res) => {
   const now = new Date().toISOString()
   // Client always sends the picked date, but fall back to today if it's missing.
   const date = d.date || now.slice(0, 10)
+  const bucket = await resolveBucket(db, d.bucket, d.category)
   const { rows } = await db.query(
-    `INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
-    [randomUUID(), d.amount, d.category, d.note ?? null, date, req.user.id, now, now]
+    `INSERT INTO expenses (sync_id, amount, category, note, date, bucket, logged_by_user_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id`,
+    [randomUUID(), d.amount, d.category, d.note ?? null, date, bucket, req.user.id, now, now]
   )
   res.json({ id: rows[0].id })
 })
@@ -138,9 +152,10 @@ router.put('/:id', async (req, res) => {
   }
 
   const now = new Date().toISOString()
+  const bucket = await resolveBucket(db, d.bucket, d.category)
   await db.query(
-    'UPDATE expenses SET amount = ?, category = ?, note = ?, date = ?, updated_at = ? WHERE id = ?',
-    [d.amount, d.category, d.note ?? null, d.date, now, id]
+    'UPDATE expenses SET amount = ?, category = ?, note = ?, date = ?, bucket = ?, updated_at = ? WHERE id = ?',
+    [d.amount, d.category, d.note ?? null, d.date, bucket, now, id]
   )
   res.json({ success: true })
 })

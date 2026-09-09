@@ -27,6 +27,8 @@ router.get('/stats', async (req, res) => {
   const { rows: monthExpenses } = await db.query(expQuery, expParams)
 
   const thisMonthSpend = monthExpenses.reduce((sum, e) => sum + e.amount, 0)
+  const needsSpend = monthExpenses.reduce((s, e) => s + (e.bucket === 'want' ? 0 : e.amount), 0)
+  const wantsSpend = monthExpenses.reduce((s, e) => s + (e.bucket === 'want' ? e.amount : 0), 0)
   const todayExpenses = monthExpenses.filter(e => e.date === today)
 
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()
@@ -38,13 +40,17 @@ router.get('/stats', async (req, res) => {
   })
 
   const { rows: planRows } = await db.query("SELECT id FROM salary_plans WHERE is_active = 1 LIMIT 1")
-  let monthlyBudget = 0
+  let monthlyBudget = 0, budgetedNeeds = 0, budgetedWants = 0
   if (planRows[0]) {
     const { rows: itemRows } = await db.query(
-      "SELECT COALESCE(SUM(amount), 0) as total FROM salary_plan_items WHERE plan_id = ? AND category IN ('needs', 'wants')",
+      "SELECT category, COALESCE(SUM(amount), 0) as total FROM salary_plan_items WHERE plan_id = ? AND category IN ('needs', 'wants') GROUP BY category",
       [planRows[0].id]
     )
-    monthlyBudget = Number(itemRows[0].total)
+    for (const r of itemRows) {
+      if (r.category === 'needs') budgetedNeeds = Number(r.total)
+      else if (r.category === 'wants') budgetedWants = Number(r.total)
+    }
+    monthlyBudget = budgetedNeeds + budgetedWants
   }
 
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86_400_000).toISOString().slice(0, 10)
@@ -89,7 +95,8 @@ router.get('/stats', async (req, res) => {
   }
 
   res.json({
-    thisMonthSpend, monthlyBudget, dailySpend, todayExpenses,
+    thisMonthSpend, needsSpend, wantsSpend, monthlyBudget, budgetedNeeds, budgetedWants,
+    dailySpend, todayExpenses,
     latestWeight, weightLogs, heightCm, totalInvested, activeGoals, netWorth, familyWeights,
   })
 })

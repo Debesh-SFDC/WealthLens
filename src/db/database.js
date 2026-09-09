@@ -24,6 +24,7 @@ export function initDatabase() {
   createUsersTable()
   migrateExpensesAddUser()
   migrateExpensesAddSyncId()
+  migrateExpenseBuckets()
   seedUsers()
   migrateUserPinsToSixDigit()
   migrateUserMobileAuth()
@@ -348,6 +349,31 @@ function migrateExpensesAddSyncId() {
   const upd  = db.prepare('UPDATE expenses SET sync_id = ? WHERE id = ?')
   for (const row of rows) upd.run(randomUUID(), row.id)
   try { db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_expenses_sync_id ON expenses(sync_id)') } catch {}
+}
+
+// Need/Want bucketing (Option C) — the category carries the default bucket, and
+// each expense can override it. expense_categories.bucket gets a constant
+// DEFAULT so every existing row lands on 'need'; the "want"-leaning categories
+// are then flipped. expenses.bucket is added nullable so existing rows can be
+// backfilled from their category before new inserts start supplying it.
+function migrateExpenseBuckets() {
+  try { db.exec("ALTER TABLE expense_categories ADD COLUMN bucket TEXT DEFAULT 'need'") } catch {}
+  try { db.exec('ALTER TABLE expenses ADD COLUMN bucket TEXT') } catch {}
+
+  db.exec(`
+    UPDATE expense_categories SET bucket = 'want'
+    WHERE bucket = 'need' AND name IN (
+      'Shopping','Entertainment','Travel','Dining','Restaurants',
+      'Others','Other','Gifts','Subscriptions','Hobbies'
+    )
+  `)
+  db.exec(`
+    UPDATE expenses SET bucket = COALESCE(
+      (SELECT ec.bucket FROM expense_categories ec WHERE ec.name = expenses.category LIMIT 1),
+      'need'
+    )
+    WHERE bucket IS NULL
+  `)
 }
 
 function seedUsers() {
@@ -1134,7 +1160,7 @@ export function generateExpenseSyncId() {
 
 export function getAllExpensesForSync(db) {
   return db.prepare(`
-    SELECT e.sync_id, e.amount, e.category, e.note, e.date, e.created_at,
+    SELECT e.sync_id, e.amount, e.category, e.note, e.date, e.bucket, e.created_at,
            u.name AS user_name, u.role AS user_role
     FROM expenses e
     LEFT JOIN users u ON e.logged_by_user_id = u.id
@@ -1147,8 +1173,8 @@ export function mergeExpensesFromSync(db, expenses) {
   const findUser    = db.prepare('SELECT id FROM users WHERE name = ? LIMIT 1')
   const checkExists = db.prepare('SELECT id FROM expenses WHERE sync_id = ?')
   const insert      = db.prepare(`
-    INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id, created_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO expenses (sync_id, amount, category, note, date, bucket, logged_by_user_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `)
   let merged = 0
   const tx = db.transaction(() => {
@@ -1161,6 +1187,7 @@ export function mergeExpensesFromSync(db, expenses) {
         exp.category,
         exp.note || null,
         exp.date,
+        exp.bucket === 'want' ? 'want' : 'need',
         user?.id ?? null,
         exp.created_at || new Date().toISOString()
       )

@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from 'react'
 import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
 import ExpenseDateChips, { expenseDateShortLabel } from '../components/ExpenseDateChips'
+import BucketToggle from '../components/BucketToggle'
+import { BUCKET_META, bucketForCategory } from '../lib/bucket'
 
 const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
 
@@ -69,6 +71,7 @@ export default function TrackerHome({ user }) {
   const [amtFocused, setAmtFocused] = useState(false)
   const [categories, setCategories] = useState(DEFAULT_CATS)
   const [selectedDate, setSelectedDate] = useState(todayStr())
+  const [bucketOverride, setBucketOverride] = useState(null) // null = follow category default
 
   // Weight state
   const [weightInput,   setWeightInput]   = useState('')
@@ -92,10 +95,11 @@ export default function TrackerHome({ user }) {
     try {
       const cats = await bridge.getExpenseCategories()
       if (cats?.length) {
-        const merged = [...DEFAULT_CATS]
+        const byName = new Map(cats.map(c => [c.name, c]))
+        const merged = DEFAULT_CATS.map(m => ({ ...m, bucket: byName.get(m.name)?.bucket }))
         for (const c of cats) {
           if (!merged.find(m => m.name === c.name)) {
-            merged.push({ name: c.name, icon: c.icon || '💸', color: c.color || '#8B93A5', bg: '#F8FAFC' })
+            merged.push({ name: c.name, icon: c.icon || '💸', color: c.color || '#8B93A5', bg: '#F8FAFC', bucket: c.bucket })
           }
         }
         setCategories(merged)
@@ -171,17 +175,23 @@ export default function TrackerHome({ user }) {
 
   const { greeting, name: uname, emoji } = getGreeting(user.name)
 
+  // Need/Want: category sets the default, user can override per expense.
+  const autoBucket = bucketForCategory(category, categories)
+  const bucket = bucketOverride ?? autoBucket
+  const bucketOverridden = bucketOverride != null && bucketOverride !== autoBucket
+
   async function save() {
     const amt = parseFloat(amount)
     if (!amt || amt <= 0 || saving) return
     setSaving(true)
     try {
       await bridge.createExpense({
-        amount: amt, category, note: note.trim() || null,
+        amount: amt, category, note: note.trim() || null, bucket,
         date: selectedDate, logged_by_user_id: user.id,
       })
       setAmount('')
       setNote('')
+      setBucketOverride(null)
       setSaved(true)
       setTimeout(() => setSaved(false), 1800)
       await load()
@@ -459,7 +469,7 @@ export default function TrackerHome({ user }) {
               return (
                 <button
                   key={cat.name}
-                  onClick={() => setCategory(cat.name)}
+                  onClick={() => { setCategory(cat.name); setBucketOverride(null) }}
                   className="cat-chip flex flex-col items-center py-2.5 rounded-2xl"
                   style={{
                     backgroundColor: isActive ? cat.bg : '#F9FAFB',
@@ -478,6 +488,17 @@ export default function TrackerHome({ user }) {
                 </button>
               )
             })}
+          </div>
+
+          {/* Need / Want toggle — auto-set from category, tap to override */}
+          <div className="mb-4">
+            <BucketToggle
+              value={bucket}
+              onChange={setBucketOverride}
+              hint={bucketOverridden
+                ? `${category} is usually a ${autoBucket === 'want' ? 'Want' : 'Need'} — ${autoBucket === 'want' ? 'mark it a Need if it was essential' : 'change if this was a treat 🍽️'}`
+                : null}
+            />
           </div>
 
           {/* Note */}
@@ -543,7 +564,13 @@ export default function TrackerHome({ user }) {
                       {cat.icon}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">{exp.category}</p>
+                      <p className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                        <span
+                          className="inline-block w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: BUCKET_META[exp.bucket === 'want' ? 'want' : 'need'].color }}
+                        />
+                        {exp.category}
+                      </p>
                       {exp.note
                         ? <p className="text-xs text-gray-400 truncate">{exp.note}</p>
                         : <p className="text-xs text-gray-300">{timeStr(exp.created_at)}</p>

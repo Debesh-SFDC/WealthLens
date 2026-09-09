@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
 import ExpenseDateChips, { expenseDateShortLabel } from '../components/ExpenseDateChips'
+import BucketToggle from '../components/BucketToggle'
+import { BUCKET_META, bucketForCategory } from '../lib/bucket'
 import RetirementCountdown from '../components/RetirementCountdown'
 import {
   BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
@@ -48,8 +50,17 @@ const DEFAULT_CATS = [
 // ── Quick Add Expense modal ─────────────────────────────────────────────────
 function QuickAddExpense({ categories, onAdded, onClose }) {
   const today = new Date().toISOString().slice(0, 10)
-  const [form, setForm] = useState({ amount: '', category: categories[0]?.name || 'Other', note: '', date: today })
+  const firstCat = categories[0]?.name || 'Other'
+  const [form, setForm] = useState({
+    amount: '', category: firstCat, note: '', date: today,
+    bucket: bucketForCategory(firstCat, categories),
+  })
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+  const setCategory = (name) =>
+    setForm(f => ({ ...f, category: name, bucket: bucketForCategory(name, categories) }))
+
+  const autoBucket = bucketForCategory(form.category, categories)
+  const overridden = form.bucket !== autoBucket
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -77,11 +88,18 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
             className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
           />
           <select
-            value={form.category} onChange={e => set('category', e.target.value)}
+            value={form.category} onChange={e => setCategory(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF]"
           >
             {categories.map(c => <option key={c.id} value={c.name}>{c.icon} {c.name}</option>)}
           </select>
+          <BucketToggle
+            value={form.bucket}
+            onChange={b => set('bucket', b)}
+            hint={overridden
+              ? `${form.category} is usually a ${autoBucket === 'want' ? 'Want' : 'Need'} — ${autoBucket === 'want' ? 'mark it a Need if it was essential' : 'change if this was a treat 🍽️'}`
+              : null}
+          />
           <ExpenseDateChips value={form.date} onChange={d => set('date', d)} />
           <input
             type="text" placeholder="Note (optional)"
@@ -228,7 +246,7 @@ function QuickLogWeight({ userId, weightLogs, onSaved, onClose }) {
 }
 
 // ── 3. Two stat cards side by side ──────────────────────────────────────────
-function MonthSpendCard({ spend, budget }) {
+function MonthSpendCard({ spend, budget, needsSpend = 0, wantsSpend = 0, budgetedNeeds = 0, budgetedWants = 0 }) {
   const pct = budget > 0 ? Math.min(100, (spend / budget) * 100) : 0
   const color = budget <= 0 ? '#9CA3AF' : pct < 50 ? '#10B981' : pct <= 80 ? '#F59E0B' : '#EF4444'
 
@@ -243,6 +261,16 @@ function MonthSpendCard({ spend, budget }) {
           <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: color }} />
         </div>
       )}
+      <div className="mt-2 space-y-0.5 text-[11px] text-gray-500">
+        <p className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: BUCKET_META.need.color }} />
+          Needs {fmtCompact(needsSpend)}{budgetedNeeds > 0 && <span className="text-gray-400"> / {fmtCompact(budgetedNeeds)}</span>}
+        </p>
+        <p className="flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: BUCKET_META.want.color }} />
+          Wants {fmtCompact(wantsSpend)}{budgetedWants > 0 && <span className="text-gray-400"> / {fmtCompact(budgetedWants)}</span>}
+        </p>
+      </div>
     </div>
   )
 }
@@ -344,6 +372,10 @@ function TodayExpensesCompact({ expenses, categoryIcons, onDelete, onViewAll }) 
               className="w-full flex items-center gap-2.5 min-h-[44px] text-left hover:bg-gray-50 rounded-lg px-1.5 -mx-1.5 transition-colors"
             >
               <span className="text-base shrink-0">{categoryIcons[e.category] || '🔖'}</span>
+              <span
+                className="w-1.5 h-1.5 rounded-full shrink-0"
+                style={{ backgroundColor: BUCKET_META[e.bucket === 'want' ? 'want' : 'need'].color }}
+              />
               <span className="flex-1 min-w-0 text-sm text-gray-700 truncate">{e.note || e.category}</span>
               <span className="text-sm font-bold text-gray-900 shrink-0">{fmt(e.amount)}</span>
             </button>
@@ -469,7 +501,11 @@ export default function Dashboard({ onNavigate, currentUser }) {
         <>
           {/* 3. Two stat cards side by side */}
           <div className="grid grid-cols-2 gap-3">
-            <MonthSpendCard spend={stats.thisMonthSpend} budget={stats.monthlyBudget} />
+            <MonthSpendCard
+              spend={stats.thisMonthSpend} budget={stats.monthlyBudget}
+              needsSpend={stats.needsSpend} wantsSpend={stats.wantsSpend}
+              budgetedNeeds={stats.budgetedNeeds} budgetedWants={stats.budgetedWants}
+            />
             <TodaySpendCard
               spend={stats.todayExpenses.reduce((s, e) => s + e.amount, 0)}
               count={stats.todayExpenses.length}

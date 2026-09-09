@@ -17,7 +17,7 @@ function fillDefaults(row, defaults) {
 // Builds the full local snapshot in the shared JSON shape.
 export function getSyncSnapshot(db) {
   const expenses = db.prepare(`
-    SELECT e.sync_id as id, e.amount, e.category, e.note, e.date,
+    SELECT e.sync_id as id, e.amount, e.category, e.note, e.date, e.bucket,
            e.created_at, e.updated_at, e.deleted_at, e.device_id,
            u.name as logged_by_user_name
     FROM expenses e LEFT JOIN users u ON u.id = e.logged_by_user_id
@@ -279,19 +279,20 @@ export function applySyncMerge(db, remoteData, deviceId) {
     {
       const findLocal = db.prepare('SELECT id, updated_at FROM expenses WHERE sync_id = ?')
       const insert = db.prepare(`
-        INSERT INTO expenses (sync_id, amount, category, note, date, logged_by_user_id,
+        INSERT INTO expenses (sync_id, amount, category, note, date, bucket, logged_by_user_id,
           created_at, updated_at, deleted_at, device_id)
-        VALUES (@id, @amount, @category, @note, @date, @logged_by_user_id,
+        VALUES (@id, @amount, @category, @note, @date, @bucket, @logged_by_user_id,
           @created_at, @updated_at, @deleted_at, @device_id)
       `)
       const update = db.prepare(`
-        UPDATE expenses SET amount=@amount, category=@category, note=@note, date=@date,
+        UPDATE expenses SET amount=@amount, category=@category, note=@note, date=@date, bucket=@bucket,
           logged_by_user_id=@logged_by_user_id, updated_at=@updated_at, deleted_at=@deleted_at, device_id=@device_id
         WHERE sync_id=@id
       `)
       for (const raw of remoteData.expenses || []) {
-        const r = fillDefaults(raw, { note: null, deleted_at: null, device_id: null,
+        const r = fillDefaults(raw, { note: null, bucket: 'need', deleted_at: null, device_id: null,
           updated_at: raw.updated_at || raw.created_at })
+        r.bucket = r.bucket === 'want' ? 'want' : 'need'
         r.logged_by_user_id = r.logged_by_user_name ? (findUser.get(r.logged_by_user_name)?.id ?? null) : null
         const local = findLocal.get(r.id)
         if (!local) { insert.run(r); downloaded++ }
