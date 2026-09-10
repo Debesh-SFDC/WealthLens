@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { PieChart, Pie, Cell, Tooltip as ReTooltip, ResponsiveContainer } from 'recharts'
 import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
 import ExpenseDateChips, { expenseDateShortLabel } from '../components/ExpenseDateChips'
@@ -9,14 +10,68 @@ const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR',
 const fmt = (v) => INR.format(v || 0)
 const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
-function getCatColor(name, categories) {
-  const cat = categories.find(c => c.name === name)
-  return cat?.color || '#AEB6BF'
+// Distinct chart palette by category name — keeps the donut readable even when
+// several DB categories share a colour. Falls back to the category's own colour,
+// then to a cycled palette for anything unnamed here.
+const CATEGORY_COLORS = {
+  'Gaming Related': '#6366F1', 'Gaming': '#6366F1',
+  'Grocery': '#22C55E', 'Groceries': '#22C55E',
+  'Food': '#F97316',
+  'Food & Dining': '#EF4444', 'Dining': '#EF4444',
+  'Others': '#94A3B8', 'Other': '#94A3B8',
+  'Transport': '#3B82F6', 'Transportation': '#3B82F6',
+  'Shopping': '#EC4899',
+  'Bills': '#F59E0B', 'Utilities': '#F59E0B',
+  'Health': '#14B8A6', 'Healthcare': '#14B8A6',
+  'Entertainment': '#8B5CF6',
+}
+const FALLBACK_PALETTE = ['#6366F1', '#22C55E', '#F97316', '#EF4444', '#3B82F6', '#EC4899', '#F59E0B', '#14B8A6', '#8B5CF6', '#94A3B8']
+
+function getCatColor(name, categories, index = 0) {
+  return CATEGORY_COLORS[name]
+    || categories.find(c => c.name === name)?.color
+    || FALLBACK_PALETTE[index % FALLBACK_PALETTE.length]
 }
 
 function getCatIcon(name, categories) {
   const cat = categories.find(c => c.name === name)
   return cat?.icon || '💸'
+}
+
+const CHART_TOOLTIP_STYLE = { borderRadius: 12, border: '1px solid #E5E7EB', fontSize: 12 }
+
+// One "🔴 Needs  ₹4,738  40%" row with a colour-coded progress bar. Shared by
+// the This Month summary card and the Needs vs Wants chart.
+function BucketStatRow({ emoji, label, amount, pct, color }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-sm mb-1">
+        <span className="flex items-center gap-1.5 text-gray-600">
+          <span>{emoji}</span>{label}
+        </span>
+        <span className="font-bold text-gray-900">
+          {fmt(amount)} <span className="text-xs font-medium text-gray-400">{pct}%</span>
+        </span>
+      </div>
+      <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, backgroundColor: color }} />
+      </div>
+    </div>
+  )
+}
+
+// Insight line under the Needs vs Wants chart.
+function spendingInsight(needsPct, wantsPct, total) {
+  if (total <= 0) return null
+  if (wantsPct > 50) return { tone: 'warn', text: `⚠️ Your wants spending (${wantsPct}%) is higher than needs this month` }
+  if (needsPct > 80) return { tone: 'ok', text: '✅ Great! Most spending is on essentials' }
+  if (needsPct >= 40 && needsPct <= 60) return { tone: 'info', text: '📊 Balanced spending this month' }
+  return null
+}
+const INSIGHT_STYLE = {
+  warn: { backgroundColor: '#FFFBEB', color: '#B45309' },
+  ok:   { backgroundColor: '#F0FDF4', color: '#15803D' },
+  info: { backgroundColor: '#F3F4F6', color: '#4B5563' },
 }
 
 // Small coloured dot marking an expense's Need/Want bucket.
@@ -158,49 +213,93 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
   )
 }
 
-// ── Category donut ────────────────────────────────────────────────────────
-function CategoryDonut({ byCategory, categories, total }) {
-  if (!byCategory.length) return null
-
-  let cum = 0
-  const segs = byCategory.slice(0, 6).map(({ category, amount }) => {
-    const pct = total > 0 ? (amount / total) * 100 : 0
-    const color = getCatColor(category, categories)
-    const start = cum
-    cum += pct
-    return { category, amount, pct, color, start }
-  })
-
-  const gradient = segs.length > 1
-    ? segs.map(s => `${s.color} ${s.start}% ${s.start + s.pct}%`).join(', ')
-    : segs[0]?.color
-
+// ── Donut chart card (shared shell for both charts) ───────────────────────
+function DonutCard({ title, centerLabel, centerValue, data, children }) {
   return (
-    <div className="flex flex-col gap-5">
-      <div className="relative mx-auto w-28 h-28">
-        <div className="w-28 h-28 rounded-full" style={{ background: `conic-gradient(${gradient})` }} />
-        <div className="absolute inset-4 bg-white rounded-full flex flex-col items-center justify-center">
-          <p className="text-[10px] font-bold text-gray-500">SPEND</p>
+    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+      <h3 className="text-sm font-semibold text-gray-700 mb-4">{title}</h3>
+      <div className="relative mx-auto w-full max-w-[300px]" style={{ height: 240 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <PieChart>
+            <Pie
+              data={data} dataKey="value" nameKey="name"
+              cx="50%" cy="50%" innerRadius="60%" outerRadius="92%"
+              paddingAngle={2} strokeWidth={0} animationDuration={700}
+            >
+              {data.map(d => <Cell key={d.name} fill={d.color} />)}
+            </Pie>
+            <ReTooltip
+              formatter={(value, name, entry) => [`${fmt(value)} · ${entry?.payload?.pct ?? 0}%`, name]}
+              contentStyle={CHART_TOOLTIP_STYLE}
+            />
+          </PieChart>
+        </ResponsiveContainer>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{centerLabel}</p>
+          <p className="text-xl font-bold text-gray-900">{centerValue}</p>
         </div>
       </div>
+      {children}
+    </div>
+  )
+}
 
-      <div className="space-y-2.5">
-        {segs.map((s, i) => (
-          <div key={i}>
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-1.5">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                <span className="text-xs text-gray-600 truncate max-w-[90px]">{s.category}</span>
-              </div>
-              <span className="text-xs font-bold text-gray-800">{fmt(s.amount)}</span>
-            </div>
-            <div className="h-1 bg-gray-100 rounded-full overflow-hidden">
-              <div className="h-full rounded-full" style={{ width: `${s.pct}%`, backgroundColor: s.color }} />
-            </div>
+// ── By Category donut ─────────────────────────────────────────────────────
+function CategoryDonut({ byCategory, categories, total }) {
+  if (!byCategory.length) return null
+  const pct = (v) => total > 0 ? Math.round((v / total) * 100) : 0
+
+  const top = byCategory.slice(0, 7)
+  const restSum = byCategory.slice(7).reduce((s, c) => s + c.amount, 0)
+  const segs = [
+    ...top.map(({ category, amount }, i) => ({
+      name: category, value: amount, pct: pct(amount), color: getCatColor(category, categories, i),
+    })),
+    ...(restSum > 0 ? [{ name: 'Other', value: restSum, pct: pct(restSum), color: '#94A3B8' }] : []),
+  ]
+
+  return (
+    <DonutCard title="By Category" centerLabel="Spend" centerValue={fmt(total)} data={segs}>
+      <div className="mt-4 space-y-2">
+        {segs.map(s => (
+          <div key={s.name} className="flex items-center justify-between text-sm gap-2">
+            <span className="flex items-center gap-1.5 text-gray-600 min-w-0">
+              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+              <span className="truncate">{s.name}</span>
+            </span>
+            <span className="font-bold text-gray-900 shrink-0">
+              {fmt(s.value)} <span className="text-xs font-medium text-gray-400">{s.pct}%</span>
+            </span>
           </div>
         ))}
       </div>
-    </div>
+    </DonutCard>
+  )
+}
+
+// ── Needs vs Wants donut ──────────────────────────────────────────────────
+function NeedsWantsChart({ needs, wants, total }) {
+  const pct = (v) => total > 0 ? Math.round((v / total) * 100) : 0
+  const needsPct = pct(needs)
+  const wantsPct = pct(wants)
+  const data = [
+    { name: 'Needs', value: needs, pct: needsPct, color: BUCKET_META.need.color },
+    { name: 'Wants', value: wants, pct: wantsPct, color: BUCKET_META.want.color },
+  ].filter(d => d.value > 0)
+  const insight = spendingInsight(needsPct, wantsPct, total)
+
+  return (
+    <DonutCard title="Needs vs Wants" centerLabel="Total" centerValue={fmt(total)} data={data}>
+      <div className="mt-4 space-y-3">
+        <BucketStatRow emoji={BUCKET_META.need.dot} label="Needs" amount={needs} pct={needsPct} color={BUCKET_META.need.color} />
+        <BucketStatRow emoji={BUCKET_META.want.dot} label="Wants" amount={wants} pct={wantsPct} color={BUCKET_META.want.color} />
+      </div>
+      {insight && (
+        <p className="mt-4 px-3 py-2 rounded-lg text-xs font-medium" style={INSIGHT_STYLE[insight.tone]}>
+          {insight.text}
+        </p>
+      )}
+    </DonutCard>
   )
 }
 
@@ -436,22 +535,10 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
               const wants = monthlyStats.wants ?? 0
               const pct = (v) => totalSpend > 0 ? Math.round((v / totalSpend) * 100) : 0
               return (
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5 text-gray-600">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BUCKET_META.need.color }} />
-                      Needs
-                    </span>
-                    <span className="font-bold text-gray-900">{fmt(needs)} <span className="text-xs font-medium text-gray-400">({pct(needs)}%)</span></span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5 text-gray-600">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: BUCKET_META.want.color }} />
-                      Wants
-                    </span>
-                    <span className="font-bold text-gray-900">{fmt(wants)} <span className="text-xs font-medium text-gray-400">({pct(wants)}%)</span></span>
-                  </div>
-                  <div className="flex items-center justify-between pt-1.5 mt-1.5 border-t border-gray-100 text-sm">
+                <div className="space-y-3">
+                  <BucketStatRow emoji={BUCKET_META.need.dot} label="Needs" amount={needs} pct={pct(needs)} color={BUCKET_META.need.color} />
+                  <BucketStatRow emoji={BUCKET_META.want.dot} label="Wants" amount={wants} pct={pct(wants)} color={BUCKET_META.want.color} />
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100 text-sm">
                     <span className="text-gray-400 font-semibold">Total</span>
                     <span className="font-bold text-gray-900">{fmt(totalSpend)}</span>
                   </div>
@@ -476,21 +563,27 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-5">
-        {/* Category donut */}
-        {(monthlyStats?.byCategory?.length > 0) && (
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
-            <h3 className="text-sm font-semibold text-gray-700 mb-5">By Category</h3>
+      {/* Charts — Needs vs Wants (left) + By Category (right); stacked on mobile */}
+      {monthlyStats && totalSpend > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-6">
+          <NeedsWantsChart
+            needs={monthlyStats.needs ?? 0}
+            wants={monthlyStats.wants ?? 0}
+            total={totalSpend}
+          />
+          {monthlyStats.byCategory?.length > 0 && (
             <CategoryDonut
               byCategory={monthlyStats.byCategory}
               categories={categories}
               total={totalSpend}
             />
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
+      <div>
         {/* Expense list */}
-        <div className={monthlyStats?.byCategory?.length > 0 ? 'col-span-2' : 'col-span-3'}>
+        <div>
           {/* Search */}
           <div className="relative mb-3">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
@@ -513,13 +606,13 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
             >
               All
             </button>
-            {categories.map(c => (
+            {categories.map((c, i) => (
               <button
                 key={c.id}
                 onClick={() => setCatFilter(catFilter === c.name ? 'all' : c.name)}
                 className="px-3 py-1 rounded-full text-xs font-semibold border transition-colors"
                 style={catFilter === c.name
-                  ? { backgroundColor: c.color, color: '#fff', borderColor: 'transparent' }
+                  ? { backgroundColor: getCatColor(c.name, categories, i), color: '#fff', borderColor: 'transparent' }
                   : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
               >
                 {c.icon} {c.name}
