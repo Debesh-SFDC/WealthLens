@@ -26,6 +26,7 @@ export function initDatabase() {
   migrateExpensesAddSyncId()
   migrateExpenseBuckets()
   seedUsers()
+  migrateExpensesBackfillUser()
   migrateUserPinsToSixDigit()
   migrateUserMobileAuth()
   seedTrackerBudget()
@@ -342,6 +343,18 @@ function createUsersTable() {
 
 function migrateExpensesAddUser() {
   try { db.exec('ALTER TABLE expenses ADD COLUMN logged_by_user_id INTEGER REFERENCES users(id)') } catch {}
+}
+
+// Expenses logged before per-user attribution existed have logged_by_user_id
+// NULL, so the Expenses page's per-user filter tabs never show them. Attribute
+// those orphans to the admin (the app was single-admin back then). Idempotent —
+// only touches NULL rows, and runs after seedUsers() so an admin exists.
+function migrateExpensesBackfillUser() {
+  try {
+    const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+    if (!admin) return
+    db.prepare('UPDATE expenses SET logged_by_user_id = ? WHERE logged_by_user_id IS NULL').run(admin.id)
+  } catch {}
 }
 
 function migrateExpensesAddSyncId() {

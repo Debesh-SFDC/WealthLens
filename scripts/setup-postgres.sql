@@ -280,6 +280,14 @@ WHERE e.bucket IS NULL;
 
 ALTER TABLE expenses ALTER COLUMN bucket SET DEFAULT 'need';
 
+-- Attribute historical expenses that predate per-user logging (logged_by_user_id
+-- NULL) to the admin, so the Expenses page's per-user filter tabs show them.
+-- Idempotent — only touches NULL rows.
+UPDATE expenses
+SET logged_by_user_id = (SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1)
+WHERE logged_by_user_id IS NULL
+  AND EXISTS (SELECT 1 FROM users WHERE role = 'admin');
+
 CREATE TABLE IF NOT EXISTS weight_logs (
   id          SERIAL PRIMARY KEY,
   user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

@@ -20,13 +20,23 @@ router.get('/', async (req, res) => {
     params.push(`${req.query.month}%`)
   }
   if (req.user.role === 'tracker') {
+    // Tracker is always locked to their own expenses.
     query += ' AND e.logged_by_user_id = ?'
     params.push(req.user.id)
-  } else if (req.query.logged_by) {
-    query += ' AND e.logged_by_user_id = ?'
-    params.push(req.query.logged_by)
+  } else {
+    // Admin: optional per-user filter. logged_by must be an integer user id;
+    // absent/blank/non-numeric = no filter (every user's expenses combined).
+    const loggedBy = req.query.logged_by != null && req.query.logged_by !== ''
+      ? Number(req.query.logged_by) : null
+    if (Number.isInteger(loggedBy)) {
+      query += ' AND e.logged_by_user_id = ?'
+      params.push(loggedBy)
+    }
   }
   query += ' ORDER BY e.date DESC, e.created_at DESC'
+
+  console.log('[GET /api/expenses] role=%s month=%s logged_by=%o → sql params=%o',
+    req.user.role, req.query.month, req.query.logged_by, params)
 
   const { rows } = await db.query(query, params)
   res.json(rows)
@@ -54,9 +64,13 @@ router.get('/monthly-stats', async (req, res) => {
   if (req.user.role === 'tracker') {
     query += ' AND logged_by_user_id = ?'
     params.push(req.user.id)
-  } else if (req.query.logged_by) {
-    query += ' AND logged_by_user_id = ?'
-    params.push(req.query.logged_by)
+  } else {
+    const loggedBy = req.query.logged_by != null && req.query.logged_by !== ''
+      ? Number(req.query.logged_by) : null
+    if (Number.isInteger(loggedBy)) {
+      query += ' AND logged_by_user_id = ?'
+      params.push(loggedBy)
+    }
   }
   const { rows } = await db.query(query, params)
 

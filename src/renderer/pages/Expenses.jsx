@@ -317,7 +317,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
   const [editTarget, setEditTarget] = useState(null)
   const [search, setSearch]       = useState('')
   const [catFilter, setCatFilter] = useState('all')
-  const [userFilter, setUserFilter] = useState('all') // 'all' | userId string
+  const [userFilter, setUserFilter] = useState('all') // 'all' | user id (number)
   const [allUsers, setAllUsers]   = useState([])
   const [toast, setToast]         = useState({ visible: false, message: '', type: 'success' })
 
@@ -326,15 +326,22 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
     try {
       // Build expense filter: month/year for stats, but for list use YYYY-MM format
       const ym = `${year}-${String(month).padStart(2, '0')}`
+      // logged_by must be the user's integer id (matches expenses.logged_by_user_id),
+      // never their name. 'all' = no filter → admin sees every user's expenses.
+      const loggedBy = userFilter === 'all' ? null : Number(userFilter)
       const expFilter = { month: ym }
-      if (userFilter !== 'all') expFilter.logged_by = Number(userFilter)
+      const statsFilter = { month, year }
+      if (Number.isInteger(loggedBy)) {
+        expFilter.logged_by = loggedBy
+        statsFilter.logged_by = loggedBy
+      }
 
       // Settle each call independently — a failure in one of the side calls
       // (stats, salary plan, users) must not blank out the expense list.
       const [exps, cats, stats, activePlan, users] = await Promise.all([
         bridge.getAllExpenses(expFilter).catch(err => { console.error('getAllExpenses failed:', err); return null }),
         bridge.getExpenseCategories().catch(err => { console.error('getExpenseCategories failed:', err); return null }),
-        bridge.getExpenseMonthlyStats({ month, year }).catch(err => { console.error('getExpenseMonthlyStats failed:', err); return null }),
+        bridge.getExpenseMonthlyStats(statsFilter).catch(err => { console.error('getExpenseMonthlyStats failed:', err); return null }),
         bridge.getActivePlan().catch(err => { console.error('getActivePlan failed:', err); return null }),
         bridge.getUsers().catch(err => { console.error('getUsers failed:', err); return null }),
       ])
@@ -426,9 +433,6 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
     return d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
   }
 
-  const adminUser   = allUsers.find(u => u.role === 'admin')
-  const trackerUser = allUsers.find(u => u.role === 'tracker')
-
   return (
     <div className="p-8">
       {/* Header */}
@@ -465,9 +469,10 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
         </button>
       </div>
 
-      {/* User filter tabs */}
+      {/* User filter tabs — 'All' shows every user's expenses combined; a name
+          tab filters to that user's id (expenses.logged_by_user_id). */}
       {allUsers.length > 1 && (
-        <div className="flex gap-2 mb-5">
+        <div className="flex gap-2 mb-5 flex-wrap">
           <button
             onClick={() => setUserFilter('all')}
             className="px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
@@ -477,36 +482,26 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
           >
             All
           </button>
-          {adminUser && (
-            <button
-              onClick={() => setUserFilter(userFilter === String(adminUser.id) ? 'all' : String(adminUser.id))}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
-              style={userFilter === String(adminUser.id)
-                ? { backgroundColor: adminUser.avatar_color || '#6C63FF', color: '#fff', borderColor: 'transparent' }
-                : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
-            >
-              <span className="w-4 h-4 rounded-full inline-flex items-center justify-center text-white text-[9px] font-bold"
-                style={{ backgroundColor: adminUser.avatar_color || '#6C63FF' }}>
-                {adminUser.name.charAt(0).toUpperCase()}
-              </span>
-              {adminUser.name}
-            </button>
-          )}
-          {trackerUser && (
-            <button
-              onClick={() => setUserFilter(userFilter === String(trackerUser.id) ? 'all' : String(trackerUser.id))}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
-              style={userFilter === String(trackerUser.id)
-                ? { backgroundColor: trackerUser.avatar_color || '#EC4899', color: '#fff', borderColor: 'transparent' }
-                : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
-            >
-              <span className="w-4 h-4 rounded-full inline-flex items-center justify-center text-white text-[9px] font-bold"
-                style={{ backgroundColor: trackerUser.avatar_color || '#EC4899' }}>
-                {trackerUser.name.charAt(0).toUpperCase()}
-              </span>
-              {trackerUser.name}
-            </button>
-          )}
+          {[...allUsers].sort((a, b) => (b.role === 'admin' ? 1 : 0) - (a.role === 'admin' ? 1 : 0)).map(u => {
+            const active = userFilter === u.id
+            const accent = u.avatar_color || (u.role === 'admin' ? '#6C63FF' : '#EC4899')
+            return (
+              <button
+                key={u.id}
+                onClick={() => setUserFilter(active ? 'all' : u.id)}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
+                style={active
+                  ? { backgroundColor: accent, color: '#fff', borderColor: 'transparent' }
+                  : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
+              >
+                <span className="w-4 h-4 rounded-full inline-flex items-center justify-center text-white text-[9px] font-bold"
+                  style={{ backgroundColor: accent }}>
+                  {u.name.charAt(0).toUpperCase()}
+                </span>
+                {u.name}
+              </button>
+            )
+          })}
         </div>
       )}
 

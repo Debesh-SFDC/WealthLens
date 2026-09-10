@@ -1063,9 +1063,10 @@ function setupIpcHandlers() {
       query += " AND strftime('%Y-%m', e.date) = ?"
       params.push(filter.month)
     }
-    if (filter?.logged_by) {
+    const loggedBy = filter?.logged_by != null && filter.logged_by !== '' ? Number(filter.logged_by) : null
+    if (Number.isInteger(loggedBy)) {
       query += ' AND e.logged_by_user_id = ?'
-      params.push(filter.logged_by)
+      params.push(loggedBy)
     }
     query += ' ORDER BY e.date DESC, e.created_at DESC'
     return db.prepare(query).all(...params)
@@ -1160,9 +1161,14 @@ function setupIpcHandlers() {
   ipcMain.handle('expenses:getMonthlyStats', (_, filter) => {
     const month = String(filter.month).padStart(2, '0')
     const year  = String(filter.year)
-    const rows  = db.prepare(
-      `SELECT * FROM expenses WHERE strftime('%m', date) = ? AND strftime('%Y', date) = ?`
-    ).all(month, year)
+    const loggedBy = filter?.logged_by != null && filter.logged_by !== '' ? Number(filter.logged_by) : null
+    let statsQuery = `SELECT * FROM expenses WHERE deleted_at IS NULL AND strftime('%m', date) = ? AND strftime('%Y', date) = ?`
+    const statsParams = [month, year]
+    if (Number.isInteger(loggedBy)) {
+      statsQuery += ' AND logged_by_user_id = ?'
+      statsParams.push(loggedBy)
+    }
+    const rows = db.prepare(statsQuery).all(...statsParams)
 
     const total = rows.reduce((s, r) => s + r.amount, 0)
     const needs = rows.reduce((s, r) => s + (r.bucket === 'want' ? 0 : r.amount), 0)

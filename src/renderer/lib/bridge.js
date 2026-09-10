@@ -72,9 +72,11 @@ const bridge = {
   getExpenseCategories: () => IS_ELECTRON
     ? window.electronAPI.getExpenseCategories()
     : webCall('GET', '/expenses/categories'),
-  getExpenseMonthlyStats: ({ month, year } = {}) => IS_ELECTRON
-    ? window.electronAPI.getExpenseMonthlyStats({ month, year })
-    : webCall('GET', `/expenses/monthly-stats?${new URLSearchParams({ month, year })}`),
+  getExpenseMonthlyStats: ({ month, year, logged_by } = {}) => IS_ELECTRON
+    ? window.electronAPI.getExpenseMonthlyStats({ month, year, logged_by })
+    : webCall('GET', `/expenses/monthly-stats?${new URLSearchParams(
+        logged_by != null ? { month, year, logged_by } : { month, year }
+      )}`),
   createExpenseCategory: (data) => IS_ELECTRON
     ? window.electronAPI.createExpenseCategory(data)
     : webCall('POST', '/expenses/categories', data),
