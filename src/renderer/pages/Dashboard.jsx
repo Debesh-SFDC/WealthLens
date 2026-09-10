@@ -55,6 +55,8 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
     amount: '', category: firstCat, note: '', date: today,
     bucket: bucketForCategory(firstCat, categories),
   })
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   const setCategory = (name) =>
     setForm(f => ({ ...f, category: name, bucket: bucketForCategory(name, categories) }))
@@ -64,10 +66,19 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.amount || !form.category) return
+    if (!form.amount || !form.category || saving) return
     const amount = parseFloat(form.amount)
-    await bridge.createExpense({ ...form, amount })
-    onAdded({ amount, category: form.category, date: form.date })
+    setSaving(true)
+    setError('')
+    try {
+      const result = await bridge.createExpense({ ...form, amount })
+      console.log('Expense saved:', result)
+      onAdded({ amount, category: form.category, date: form.date })
+    } catch (err) {
+      console.error('Expense save failed:', err)
+      setError(err?.message || 'Could not save expense. Please try again.')
+      setSaving(false)
+    }
   }
 
   return (
@@ -106,9 +117,10 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
             value={form.note} onChange={e => set('note', e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
           />
+          {error && <p className="text-xs font-semibold text-red-500">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-            <button type="submit" className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>Add</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60" style={{ backgroundColor: '#6C63FF' }}>{saving ? 'Saving…' : 'Add'}</button>
           </div>
         </form>
       </div>

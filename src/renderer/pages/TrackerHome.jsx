@@ -185,10 +185,11 @@ export default function TrackerHome({ user }) {
     if (!amt || amt <= 0 || saving) return
     setSaving(true)
     try {
-      await bridge.createExpense({
+      const result = await bridge.createExpense({
         amount: amt, category, note: note.trim() || null, bucket,
         date: selectedDate, logged_by_user_id: user.id,
       })
+      console.log('Expense saved:', result)
       setAmount('')
       setNote('')
       setBucketOverride(null)
@@ -196,6 +197,9 @@ export default function TrackerHome({ user }) {
       setTimeout(() => setSaved(false), 1800)
       await load()
       showToast(`✅ Expense added for ${expenseDateShortLabel(selectedDate)}`)
+    } catch (err) {
+      console.error('Expense save failed:', err)
+      showToast(err?.message || 'Could not save expense. Please try again.', 'error')
     } finally { setSaving(false) }
   }
 

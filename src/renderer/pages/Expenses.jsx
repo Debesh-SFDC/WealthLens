@@ -54,6 +54,8 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
   })
 
   const isEdit = Boolean(expense?.id)
+  const [saving, setSaving] = useState(false)
+  const [error, setError]   = useState('')
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
   // Changing the category re-arms the auto-selected bucket (Option C).
   const setCategory = (name) =>
@@ -64,15 +66,23 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
 
   async function handleSubmit(e) {
     e.preventDefault()
-    if (!form.amount || !form.category || !form.date) return
+    if (!form.amount || !form.category || !form.date || saving) return
     const data = {
       ...form,
       amount: parseFloat(form.amount),
       logged_by_user_id: currentUser?.id ?? null,
     }
-    if (isEdit) await bridge.updateExpense(data)
-    else await bridge.createExpense(data)
-    onSave(isEdit ? null : form.date)
+    setSaving(true)
+    setError('')
+    try {
+      const result = isEdit ? await bridge.updateExpense(data) : await bridge.createExpense(data)
+      console.log(isEdit ? 'Expense updated:' : 'Expense saved:', result)
+      onSave(isEdit ? null : form.date)
+    } catch (err) {
+      console.error('Expense save failed:', err)
+      setError(err?.message || 'Could not save expense. Please try again.')
+      setSaving(false)
+    }
   }
 
   return (
@@ -133,12 +143,13 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
             />
           </div>
 
+          {error && <p className="text-xs font-semibold text-red-500">{error}</p>}
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button type="submit" className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>
-              {isEdit ? 'Update' : 'Add Expense'}
+            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60" style={{ backgroundColor: '#6C63FF' }}>
+              {saving ? 'Saving…' : isEdit ? 'Update' : 'Add Expense'}
             </button>
           </div>
         </form>
@@ -219,17 +230,20 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
       const expFilter = { month: ym }
       if (userFilter !== 'all') expFilter.logged_by = Number(userFilter)
 
+      // Settle each call independently — a failure in one of the side calls
+      // (stats, salary plan, users) must not blank out the expense list.
       const [exps, cats, stats, activePlan, users] = await Promise.all([
-        bridge.getAllExpenses(expFilter),
-        bridge.getExpenseCategories(),
-        bridge.getExpenseMonthlyStats({ month, year }),
-        bridge.getActivePlan(),
-        bridge.getUsers(),
+        bridge.getAllExpenses(expFilter).catch(err => { console.error('getAllExpenses failed:', err); return null }),
+        bridge.getExpenseCategories().catch(err => { console.error('getExpenseCategories failed:', err); return null }),
+        bridge.getExpenseMonthlyStats({ month, year }).catch(err => { console.error('getExpenseMonthlyStats failed:', err); return null }),
+        bridge.getActivePlan().catch(err => { console.error('getActivePlan failed:', err); return null }),
+        bridge.getUsers().catch(err => { console.error('getUsers failed:', err); return null }),
       ])
-      setExpenses(exps || [])
-      setCategories(cats || [])
+      if (exps) setExpenses(exps)
+      else setToast({ visible: true, type: 'error', message: 'Could not load expenses — check your connection and try again' })
+      if (cats) setCategories(cats)
       setMonthlyStats(stats || null)
-      setAllUsers(users || [])
+      if (users) setAllUsers(users)
 
       const needsTotal = (activePlan?.items || [])
         .filter(i => i.category === 'needs')
@@ -237,7 +251,6 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
       setNeedsBudget(needsTotal)
     } catch (err) {
       console.error('Failed to load expenses:', err)
-      setExpenses([])
     } finally {
       setLoading(false)
     }
@@ -265,9 +278,20 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
   function handleSaved(addedDate) {
     setShowModal(false)
     setEditTarget(null)
-    loadData()
     if (addedDate) {
+      // Jump the month view to the saved expense's month so it's always visible
+      // after saving (e.g. when a past date was picked). Changing month/year
+      // triggers loadData() via the effect below; otherwise refresh in place.
+      const [y, m] = addedDate.split('-').map(Number)
+      if (Number.isFinite(y) && Number.isFinite(m) && (y !== year || m !== month)) {
+        setYear(y)
+        setMonth(m)
+      } else {
+        loadData()
+      }
       setToast({ visible: true, type: 'success', message: `✅ Expense added for ${expenseDateShortLabel(addedDate)}` })
+    } else {
+      loadData()
     }
   }
 
