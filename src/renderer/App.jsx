@@ -12,9 +12,8 @@ import Expenses from './pages/Expenses'
 import SalaryAllocator from './pages/SalaryAllocator'
 import NetWorth from './pages/NetWorth'
 import FirePlannerPage from './pages/FirePlannerPage'
-import Goals from './pages/Goals'
+import GoalsAndWishlist from './pages/GoalsAndWishlist'
 import TravelPage from './pages/TravelPage'
-import Wishlist from './pages/Wishlist'
 import Settings from './pages/Settings'
 import TrackerApp from './components/TrackerApp'
 import AdminWeight from './pages/AdminWeight'
@@ -25,10 +24,11 @@ const adminPages = {
   expenses:    Expenses,
   networth:    NetWorth,
   fire:        FirePlannerPage,
-  goals:       Goals,
+  'goals-wishlist': GoalsAndWishlist,
+  goals:       GoalsAndWishlist,   // fallback alias → unified page
+  wishlist:    GoalsAndWishlist,   // fallback alias → unified page
   salary:      SalaryAllocator,
   travel:      TravelPage,
-  wishlist:    Wishlist,
   settings:    Settings,
   health:      AdminWeight,
 }

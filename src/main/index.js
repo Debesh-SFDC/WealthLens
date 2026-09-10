@@ -604,6 +604,7 @@ function setupIpcHandlers() {
       db.prepare(`UPDATE investments SET goal_id = NULL, last_updated_at = datetime('now'), device_id = ? WHERE goal_id = ?`)
         .run(deviceId, id)
       db.prepare('DELETE FROM goal_investments WHERE goal_id = ?').run(id)
+      db.prepare('DELETE FROM goal_wishlist_links WHERE goal_id = ?').run(id)
     })
     tx()
     return { success: true }
@@ -1574,6 +1575,46 @@ function setupIpcHandlers() {
     if (!info.changes) throw new Error('Collection not found')
     db.prepare('UPDATE wishlist_items SET collection_id = NULL, updated_at = ? WHERE collection_id = ? AND user_id = ?')
       .run(now, id, currentUserSession?.id)
+    db.prepare('DELETE FROM goal_wishlist_links WHERE collection_id = ? AND user_id = ?')
+      .run(id, currentUserSession?.id)
+    return { success: true }
+  })
+
+  // ── Goal ↔ Wishlist links ──────────────────────────────────────────────────
+  // Powers the unified Goals & Wishlist page (Linked tab + Venn overlap).
+  // Scoped to currentUserSession.id; rows are hard-deleted (regenerable).
+  ipcMain.handle('goalWishlistLinks:getAll', () => {
+    return db.prepare(`
+      SELECT l.id, l.goal_id, l.collection_id, l.created_at,
+        g.title AS goal_title, g.emoji AS goal_emoji, g.color AS goal_color,
+        g.target_amount AS goal_target_amount, g.current_amount AS goal_current_amount,
+        g.target_date AS goal_target_date, g.is_achieved AS goal_is_achieved,
+        c.name AS collection_name, c.emoji AS collection_emoji, c.color AS collection_color
+      FROM goal_wishlist_links l
+      JOIN goals g ON g.id = l.goal_id AND g.deleted_at IS NULL
+      JOIN wishlist_collections c ON c.id = l.collection_id AND c.deleted_at IS NULL
+      WHERE l.user_id = ?
+      ORDER BY l.id DESC
+    `).all(currentUserSession?.id)
+  })
+
+  ipcMain.handle('goalWishlistLinks:create', (_, d = {}) => {
+    if (!d.goal_id || !d.collection_id) throw new Error('goal_id and collection_id are required')
+    const now = new Date().toISOString()
+    try {
+      const info = db.prepare(
+        'INSERT INTO goal_wishlist_links (user_id, goal_id, collection_id, created_at) VALUES (?, ?, ?, ?)'
+      ).run(currentUserSession?.id, d.goal_id, d.collection_id, now)
+      return { id: info.lastInsertRowid }
+    } catch (e) {
+      throw new Error('That goal and collection are already linked')
+    }
+  })
+
+  ipcMain.handle('goalWishlistLinks:delete', (_, id) => {
+    const info = db.prepare('DELETE FROM goal_wishlist_links WHERE id = ? AND user_id = ?')
+      .run(id, currentUserSession?.id)
+    if (!info.changes) throw new Error('Link not found')
     return { success: true }
   })
 

@@ -64,6 +64,7 @@ router.delete('/:id', async (req, res) => {
   await db.query('UPDATE goals SET deleted_at = ?, updated_at = ? WHERE id = ?', [now, now, id])
   await db.query('UPDATE investments SET goal_id = NULL, last_updated_at = ? WHERE goal_id = ?', [now, id])
   await db.query('DELETE FROM goal_investments WHERE goal_id = ?', [id])
+  await db.query('DELETE FROM goal_wishlist_links WHERE goal_id = ?', [id])
   res.json({ success: true })
 })
 

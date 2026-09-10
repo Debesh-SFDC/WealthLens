@@ -1266,7 +1266,12 @@ function TimelineView({ items, collections, onView, onEdit, onMarkPurchased, onD
 }
 
 // ── Main page ────────────────────────────────────────────────────────────
-export default function Wishlist() {
+// Inner content is exported as <WishlistContent /> so the unified Goals &
+// Wishlist page can render it verbatim inside its "Wishlist" section. Passing
+// { requestedCollectionId, requestNonce } opens that collection (used when a
+// Venn chip is clicked). The default export is a thin wrapper kept for the
+// standalone route / fallback alias and the Tracker app.
+export function WishlistContent({ requestedCollectionId, requestNonce } = {}) {
   const [items, setItems] = useState([])
   const [collections, setCollections] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1302,6 +1307,14 @@ export default function Wishlist() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Open a specific collection on request from the parent (Venn chip click).
+  useEffect(() => {
+    if (!requestNonce || requestedCollectionId == null) return
+    setSearch('')
+    setView('collections')
+    setOpenCollectionId(requestedCollectionId)
+  }, [requestNonce]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasUncategorized = useMemo(() => items.some(i => i.collection_id == null), [items])
 
@@ -1571,4 +1584,8 @@ export default function Wishlist() {
       )}
     </div>
   )
+}
+
+export default function Wishlist() {
+  return <WishlistContent />
 }

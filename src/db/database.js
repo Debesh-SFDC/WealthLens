@@ -42,6 +42,7 @@ export function initDatabase() {
   createWishlistTable()
   createWishlistCollectionsTable()
   seedFordEcoSportCollection()
+  createGoalWishlistLinksTable()
   seedPlanningGoals()
   return db
 }
@@ -946,6 +947,25 @@ function createWishlistCollectionsTable() {
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_wishlist_items_collection ON wishlist_items(collection_id)') } catch {}
 
   migrateWishlistCollections()
+}
+
+// Goal ↔ wishlist links — connect a savings goal to a wishlist collection so the
+// Goals & Wishlist page can show them as a linked pair (Sections → Linked tab and
+// the Venn overlap zone). Scoped per-user; rows are hard-deleted (regenerable),
+// and the goals:delete / wishlist:deleteCollection handlers clean up by hand
+// since both of those are soft deletes.
+function createGoalWishlistLinksTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goal_wishlist_links (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      goal_id       INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+      collection_id INTEGER REFERENCES wishlist_collections(id) ON DELETE CASCADE,
+      created_at    TEXT DEFAULT (datetime('now')),
+      UNIQUE(goal_id, collection_id)
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_goal_wishlist_links_user ON goal_wishlist_links(user_id)') } catch {}
 }
 
 // One-time per-user migration: seed the four default collections, sort the

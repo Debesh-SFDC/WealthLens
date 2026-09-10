@@ -272,6 +272,17 @@ const bridge = {
   deleteWishlistCollection: (id) => IS_ELECTRON
     ? window.electronAPI.deleteWishlistCollection(id)
     : webCall('DELETE', `/wishlist/collections/${id}`),
+
+  // Goal ↔ Wishlist links — connect a savings goal to a wishlist collection
+  getGoalWishlistLinks: () => IS_ELECTRON
+    ? window.electronAPI.getGoalWishlistLinks()
+    : webCall('GET', '/goal-wishlist-links'),
+  createGoalWishlistLink: (data) => IS_ELECTRON
+    ? window.electronAPI.createGoalWishlistLink(data)
+    : webCall('POST', '/goal-wishlist-links', data),
+  deleteGoalWishlistLink: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteGoalWishlistLink(id)
+    : webCall('DELETE', `/goal-wishlist-links/${id}`),
 }
 
 export default bridge

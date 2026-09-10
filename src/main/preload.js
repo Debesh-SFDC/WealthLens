@@ -141,4 +141,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createWishlistCollection: (data) => ipcRenderer.invoke('wishlist:createCollection', data),
   updateWishlistCollection: (data) => ipcRenderer.invoke('wishlist:updateCollection', data),
   deleteWishlistCollection: (id)   => ipcRenderer.invoke('wishlist:deleteCollection', id),
+
+  // Goal ↔ Wishlist links
+  getGoalWishlistLinks:   ()     => ipcRenderer.invoke('goalWishlistLinks:getAll'),
+  createGoalWishlistLink: (data) => ipcRenderer.invoke('goalWishlistLinks:create', data),
+  deleteGoalWishlistLink: (id)   => ipcRenderer.invoke('goalWishlistLinks:delete', id),
 })

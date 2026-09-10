@@ -575,3 +575,14 @@ WHERE EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1 AND name = 'F
     SELECT 1 FROM wishlist_items
     WHERE user_id = 1 AND name = 'Full Body Repainting — Mars Red to Red Black Dual Tone'
   );
+
+-- ── Goal ↔ Wishlist links — connect a savings goal to a wishlist collection ──
+CREATE TABLE IF NOT EXISTS goal_wishlist_links (
+  id            SERIAL PRIMARY KEY,
+  user_id       INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  goal_id       INTEGER REFERENCES goals(id) ON DELETE CASCADE,
+  collection_id INTEGER REFERENCES wishlist_collections(id) ON DELETE CASCADE,
+  created_at    TEXT DEFAULT (now()::text),
+  UNIQUE(goal_id, collection_id)
+);
+CREATE INDEX IF NOT EXISTS idx_goal_wishlist_links_user ON goal_wishlist_links(user_id);

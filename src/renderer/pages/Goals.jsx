@@ -1351,7 +1351,10 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, syncing, onB
 }
 
 // ── Main Goals page ──────────────────────────────────────────────────────────
-export default function Goals() {
+// Inner content is exported as <GoalsContent /> so the unified Goals & Wishlist
+// page can render it verbatim inside its "Goals" section. The default export is
+// a thin wrapper kept for the standalone route / fallback alias.
+export function GoalsContent() {
   const [goals, setGoals] = useState([])
   const [investments, setInvestments] = useState([])
   const [goalInvestmentsMap, setGoalInvestmentsMap] = useState({})
@@ -1630,4 +1633,8 @@ export default function Goals() {
       )}
     </div>
   )
+}
+
+export default function Goals() {
+  return <GoalsContent />
 }

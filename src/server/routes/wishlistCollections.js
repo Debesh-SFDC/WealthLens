@@ -81,6 +81,10 @@ router.delete('/:id', async (req, res) => {
     'UPDATE wishlist_items SET collection_id = NULL, updated_at = ? WHERE collection_id = ? AND user_id = ?',
     [now, req.params.id, req.user.id]
   )
+  await db.query(
+    'DELETE FROM goal_wishlist_links WHERE collection_id = ? AND user_id = ?',
+    [req.params.id, req.user.id]
+  )
   res.json({ success: true })
 })
 
