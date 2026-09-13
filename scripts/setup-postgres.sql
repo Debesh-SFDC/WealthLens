@@ -584,6 +584,126 @@ WHERE EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1 AND name = 'F
     WHERE user_id = 1 AND name = 'Full Body Repainting — Mars Red to Red Black Dual Tone'
   );
 
+-- One-off: "Dream Vehicles" collection + the Dream Bike / Dream Car wishlist
+-- items and their matching savings goals for admin. Guarded by name/title so
+-- each is added at most once and not resurrected after the user edits/deletes it.
+INSERT INTO wishlist_collections (user_id, name, emoji, color, sort_order)
+SELECT 1, 'Dream Vehicles', '🌄', '#F59E0B', 6
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
+  AND NOT EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1 AND name = 'Dream Vehicles');
+
+INSERT INTO wishlist_items
+  (user_id, collection_id, name, brand, category, price, currency, priority, status, purchase_timing, notes)
+SELECT 1,
+  (SELECT id FROM wishlist_collections WHERE user_id = 1 AND name = 'Dream Vehicles' ORDER BY id ASC LIMIT 1),
+  v.name, v.brand, v.category, v.price, 'INR', 'medium', 'wishlist', 'Later', v.notes
+FROM (VALUES
+  ('Dream All-India Tourer — Lightweight Adventure Bike', 'Honda / Triumph / Kawasaki / Royal Enfield', 'Motorcycle', 1200000,
+$$Dream bike for All India ride with pillion (wife). Not finalized — will buy something similar to this class when retiring.
+
+KEY REQUIREMENTS:
+- Comfortable two-up riding for long distances
+- Lightweight enough to handle easily (under 200kg wet)
+- Upright ergonomics, good wind protection
+- Reliable engine, good service network across India
+- Luggage capacity (panniers + tank bag)
+- Highway cruising ability at 80-100kmph comfortably
+
+CURRENT SHORTLIST (as of 2026):
+- Honda Transalp 750 (₹10-11L) — lightweight, comfortable, reliable Honda
+- Honda Africa Twin 1100 (₹16-17L) — heavier but gold standard for touring
+- Triumph Tiger 900 GT (₹14-16L) — excellent tourer, lighter than Africa Twin
+- Triumph Scrambler 900/1200 — stylish but check pillion comfort
+- Kawasaki Versys 650 (₹7-8L) — lightweight, practical, underrated tourer
+- Royal Enfield Guerrilla 450 / Himalayan 450 — lightweight option if budget tightens
+
+Will finalize closer to retirement based on what is available, reviewed and suits both rider and pillion comfort. Budget ₹40-50L by 2041 including accessories and touring setup.$$),
+  ('Dream Family Road Trip SUV — All India Capable', 'Mahindra / Toyota / Jeep / Isuzu', 'Automobile', 2500000,
+$$Dream car for All India family road trips and day-to-day use post retirement. Should be capable of functioning as a camper for extended trips.
+
+KEY REQUIREMENTS:
+- All India road capability including bad roads, mountain passes, off-road sections
+- Camper friendly: flat boot space or roof tent compatible, 12V power outlets, good ground clearance
+- Comfortable for 4 people on long drives
+- Reliable and bulletproof — buy to keep for life
+- Good diesel range for remote areas
+- Not too large for city day-to-day driving
+- Strong after-sales network across India
+
+CURRENT SHORTLIST (as of 2026):
+- Mahindra Scorpio-N Z8L Diesel — capable, reliable, Mahindra parts everywhere in India
+- Mahindra Thar Roxx 5-door — lifestyle + capable, check long distance comfort
+- Toyota Fortuner Legender Diesel — bulletproof reliability, best after-sales, slightly large
+- Isuzu D-Max V-Cross — pickup truck camper option, excellent for overlanding, unique choice
+- Jeep Meridian / Compass TrailHawk — capable but check long term reliability and parts cost
+- Maruti Suzuki Jimny 5-door — if budget tightens, capable, lightweight, parts everywhere
+
+CAMPING SETUP PLAN:
+- Roof tent or boot sleeping setup
+- Solar panel for auxiliary power
+- Fridge/cooler, cooking setup
+- Recovery gear (tow rope, shovel, hi-lift jack)
+
+Budget ₹60-80L by 2041 including camping setup.$$)
+) AS v(name, brand, category, price, notes)
+WHERE EXISTS (SELECT 1 FROM wishlist_collections WHERE user_id = 1 AND name = 'Dream Vehicles')
+  AND NOT EXISTS (
+    SELECT 1 FROM wishlist_items x WHERE x.user_id = 1 AND x.name = v.name
+  );
+
+INSERT INTO goals
+  (sync_id, user_id, title, type, category, target_amount, current_amount, target_date,
+   bank_or_provider, emoji, color, status, notes, created_at, updated_at)
+SELECT NULL, 1, v.title, 'life_goal', 'want', v.target_amount, 0, v.target_date,
+       'Savings Account', v.emoji, v.color, 'active', v.notes, now()::text, now()::text
+FROM (VALUES
+  ('Dream Bike Fund — All India Tourer', 5000000, '2041-12-31', '🏍️', '#F59E0B',
+$$Fund for a lightweight adventure tourer for All India ride with wife as pillion after retirement.
+
+Target ₹50L covers:
+- Bike purchase: ₹35-45L (2041 inflation adjusted)
+- Full touring accessories: ₹2-3L
+  (panniers, tank bag, crash guards, GPS,
+   auxiliary lights, comfortable pillion seat)
+- Riding gear for both: ₹1-2L
+  (helmets, jackets, pants, boots, gloves)
+- Buffer for price variation: ₹2-5L
+
+Bike requirements: lightweight, two-up comfort,
+reliable, good service network across India.
+Shortlist: Transalp 750, Tiger 900 GT,
+Versys 650, Africa Twin.
+
+Trigger: Retired + Own house built.
+Goal: Complete All India tour with wife.$$),
+  ('Dream Car Fund — Family Road Trip SUV', 5000000, '2041-12-31', '🚙', '#10B981',
+$$Fund for a reliable All India capable family SUV with camping capability.
+
+Target ₹50L covers:
+- Vehicle: ₹40-45L (2041 inflation adjusted
+  from current ₹20-25L at 6% inflation)
+- Camping/overlanding setup: ₹2-4L
+  (roof tent or boot setup, solar, fridge,
+   cooking gear, recovery equipment)
+- Initial accessories: ₹1-2L
+  (dash cam, reverse camera upgrade,
+   floor mats, seat covers, roof rack)
+
+Requirements: reliable, all-terrain capable,
+camper friendly, comfortable 4-up long distance,
+buy-for-life vehicle.
+Shortlist: Scorpio-N, Thar Roxx, Fortuner,
+Isuzu D-Max V-Cross.
+
+Use case split:
+60% - Day to day family use
+40% - Road trips and All India adventures
+
+Trigger: Retired + Own house built.$$)
+) AS v(title, target_amount, target_date, emoji, color, notes)
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
+  AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.title = v.title);
+
 -- ── Goal ↔ Wishlist links — connect a savings goal to a wishlist collection ──
 CREATE TABLE IF NOT EXISTS goal_wishlist_links (
   id            SERIAL PRIMARY KEY,
