@@ -1005,8 +1005,356 @@ function BankAllocationDashboard({ plan }) {
   )
 }
 
+// ── Allocation Suggestions ────────────────────────────────────────────────
+const SUGGESTION_KINDS = {
+  critical: { icon: '🔴', border: '#FECACA', bg: '#FEF2F2', color: '#B91C1C' },
+  warning:  { icon: '⚠️', border: '#FDE68A', bg: '#FFFBEB', color: '#B45309' },
+  tip:      { icon: '💡', border: '#BFDBFE', bg: '#EFF6FF', color: '#1D4ED8' },
+  good:     { icon: '✅', border: '#A7F3D0', bg: '#ECFDF5', color: '#047857' },
+}
+const SUGGESTION_ORDER = { critical: 0, warning: 1, tip: 2, good: 3 }
+const LIMIT_80C_MONTHLY = 12500 // ₹1.5L / year
+
+const pct1 = v => `${(Math.round(v * 10) / 10).toFixed(1)}%`
+const nameOf = item => (item.name || '').toLowerCase()
+const RE_EMERGENCY = /emergency/
+const RE_HEALTH    = /health|medical|mediclaim/
+const RE_TERM      = /\bterm\b/
+const RE_80C       = /\b(ppf|elss|nps|epf|vpf)\b|tax\s*saver/
+
+// Old-regime marginal slab (incl. 4% cess) for an annual gross income
+function marginalTaxRate(annual) {
+  const base = annual > 1000000 ? 0.30 : annual > 500000 ? 0.20 : annual > 250000 ? 0.05 : 0
+  return base * 1.04
+}
+
+function analyzePlan(plan, fallbackSalary = 0) {
+  const salary = plan.monthly_salary || fallbackSalary || 0
+  const items = (plan.items || []).map(i => ({ ...i, amount: Number(i.amount) || 0 }))
+  const sumOf = cat => items.filter(i => i.category === cat).reduce((s, i) => s + i.amount, 0)
+
+  const needs = sumOf('needs')
+  const wants = sumOf('wants')
+  const invest = sumOf('investment')
+  const unallocated = salary - needs - wants - invest
+  const pctOf = v => salary > 0 ? (v / salary) * 100 : 0
+  const needsPct = pctOf(needs)
+  const wantsPct = pctOf(wants)
+  const investPct = pctOf(invest)
+  const unallocatedPct = pctOf(unallocated)
+
+  const investItems = items.filter(i => i.category === 'investment')
+  const emergencyItems = investItems.filter(i => RE_EMERGENCY.test(nameOf(i)))
+  const emergencyAmt = emergencyItems.reduce((s, i) => s + i.amount, 0)
+  const hasHealth = items.some(i => RE_HEALTH.test(nameOf(i)) && /insur|mediclaim|cover|policy/.test(nameOf(i)))
+  const hasTerm = items.some(i => RE_TERM.test(nameOf(i)))
+  const monthly80C = items.filter(i => RE_80C.test(nameOf(i))).reduce((s, i) => s + i.amount, 0)
+  const is80CMaxed = monthly80C >= LIMIT_80C_MONTHLY
+  const emergencyTarget = (needs + wants) * 6
+
+  const suggestions = []
+  const add = s => suggestions.push(s)
+
+  if (salary > 0) {
+    // Rule 1 — 50/30/20
+    if (needsPct > 50) add({
+      id: 'needs-high', kind: 'warning', title: 'Needs spending is high',
+      body: `Your needs (rent, bills, groceries) are ${pct1(needsPct)} of income. Best practice is under 50%. Consider reducing fixed costs where possible.`,
+      current: pct1(needsPct), recommended: '≤50%',
+    })
+    if (wantsPct > 30) add({
+      id: 'wants-high', kind: 'warning', title: 'Wants spending above recommended',
+      body: `Lifestyle expenses (dining, entertainment, subscriptions) are ${pct1(wantsPct)} of income. Try to keep wants under 30% to accelerate savings.`,
+      current: pct1(wantsPct), recommended: '≤30%',
+    })
+    if (investPct < 20) add({
+      id: 'under-invest', kind: 'critical', title: "You're under-investing",
+      body: `Only ${pct1(investPct)} of your income goes to investments. Most financial experts recommend at least 20%. Even small increases now compound significantly over 15 years.`,
+      current: pct1(investPct), recommended: '≥20%',
+    })
+    else if (investPct < 30) add({
+      id: 'invest-good', kind: 'good', title: 'Good investment rate',
+      body: `You're investing ${pct1(investPct)} of income — above the minimum 20% benchmark. Consider pushing toward 30% for early retirement.`,
+      current: pct1(investPct), recommended: '≥20%',
+    })
+    else add({
+      id: 'invest-excellent', kind: 'good', title: 'Excellent investment rate!',
+      body: `Investing ${pct1(investPct)} of income puts you well ahead of most. At this rate your FIRE goal is very achievable.`,
+      current: pct1(investPct), recommended: '≥20%',
+    })
+
+    // Rule 2 — Emergency fund (recommended monthly = build the 6-month corpus over a year)
+    const emergencyMonthly = Math.ceil(emergencyTarget / 12 / 500) * 500
+    if (!emergencyItems.length) add({
+      id: 'no-emergency', kind: 'critical', title: 'No Emergency Fund allocated',
+      body: `You should have 6 months of expenses (${fmt(emergencyTarget)}) as emergency fund before investing aggressively. Add an Emergency Fund line to your allocation.`,
+      recommended: `${fmt(emergencyMonthly)}/month until you hit ${fmt(emergencyTarget)}`,
+      apply: emergencyMonthly > 0 ? { label: `Add Emergency Fund (${fmt(emergencyMonthly)}/mo)`, type: 'add-emergency', amount: emergencyMonthly } : null,
+    })
+    else if (pctOf(emergencyAmt) < 5) add({
+      id: 'emergency-low', kind: 'tip', title: 'Emergency Fund allocation seems low',
+      body: `Consider allocating more until you reach 6 months of expenses (${fmt(emergencyTarget)}) as a safety net.`,
+      current: pct1(pctOf(emergencyAmt)), recommended: '≥5%',
+    })
+    else add({
+      id: 'emergency-ok', kind: 'good', title: 'Emergency Fund is funded',
+      body: `${fmt(emergencyAmt)}/month (${pct1(pctOf(emergencyAmt))}) goes to your emergency fund. Target corpus: ${fmt(emergencyTarget)} (6 months of expenses).`,
+    })
+
+    // Rule 3 — Insurance
+    if (!hasHealth) add({
+      id: 'no-health', kind: 'critical', title: 'No Health Insurance in allocation',
+      body: "Health insurance is critical — especially with a family. Ensure it's allocated and not missed.",
+    })
+    else add({ id: 'health-ok', kind: 'good', title: 'Health Insurance covered', body: 'Health insurance premium is part of your monthly allocation.' })
+    if (!hasTerm) add({
+      id: 'no-term', kind: 'warning', title: 'Term Insurance not visible in allocation',
+      body: `A term life cover of 10-15× annual income (${fmt(salary * 12 * 10)}–${fmt(salary * 12 * 15)}) is recommended for family protection.`,
+    })
+    else add({ id: 'term-ok', kind: 'good', title: 'Term Insurance covered', body: 'Term life premium is part of your monthly allocation.' })
+
+    // Rule 4 — Unallocated
+    if (unallocated < 0) add({
+      id: 'over-allocated', kind: 'critical', title: `Over-allocated by ${fmt(-unallocated)}`,
+      body: `Your allocations exceed your salary by ${fmt(-unallocated)}. Review and reduce some line items.`,
+      current: pct1(100 - unallocatedPct), recommended: '≤100%',
+    })
+    else if (unallocatedPct > 5) add({
+      id: 'unallocated', kind: 'tip', title: `${fmt(unallocated)} unallocated each month`,
+      body: `You have ${fmt(unallocated)} (${pct1(unallocatedPct)}) not assigned to any category. Consider moving this to investments or emergency fund.`,
+      current: pct1(unallocatedPct), recommended: '≤5%',
+      apply: { label: `Move ${fmt(unallocated)} to Emergency Fund`, type: 'move-to-emergency', amount: Math.round(unallocated) },
+    })
+
+    // Rule 5 — Diversification
+    if (investItems.length >= 1 && investItems.length <= 2) add({
+      id: 'diversify', kind: 'tip', title: 'Consider diversifying investments',
+      body: `You have ${investItems.length} investment allocation${investItems.length > 1 ? 's' : ''}. Consider spreading across:`,
+      bullets: ['Equity MF (for growth)', 'PPF/EPF (for safety)', 'Emergency Fund (for liquidity)'],
+    })
+
+    // Rule 6 — 80C
+    if (!is80CMaxed) {
+      const gapAnnual = (LIMIT_80C_MONTHLY - monthly80C) * 12
+      const rate = marginalTaxRate(salary * 12)
+      add({
+        id: '80c', kind: 'tip', title: 'You may not be maximizing 80C benefits',
+        body: `You can save tax on up to ₹1.5L/year via 80C (PPF, ELSS, NPS, EPF). Currently allocating ${fmt(monthly80C)}/month = ${fmt(monthly80C * 12)}/year toward 80C instruments.`,
+        current: `${fmt(monthly80C)}/mo`, recommended: `${fmt(LIMIT_80C_MONTHLY)}/mo`,
+        footnote: `Potential tax saving: ${fmt(gapAnnual * rate)}/year at your ${Math.round(rate / 1.04 * 100)}% slab (old regime, incl. cess)`,
+      })
+    } else add({
+      id: '80c-ok', kind: 'good', title: '80C limit maximized',
+      body: `${fmt(monthly80C)}/month (${fmt(monthly80C * 12)}/year) goes to 80C instruments — the full ₹1.5L deduction is used.`,
+    })
+
+    // Rule 7 — Lean on wants
+    if (salary > 150000 && wantsPct < 10) add({
+      id: 'lean-wants', kind: 'tip', title: 'Room for lifestyle spending',
+      body: "With your income, allocating some to quality of life (travel, experiences, dining) is healthy. You're currently very lean on wants.",
+      current: pct1(wantsPct), recommended: '10–30%',
+    })
+  }
+
+  suggestions.sort((a, b) => SUGGESTION_ORDER[a.kind] - SUGGESTION_ORDER[b.kind])
+
+  // Health score
+  let score = 100
+  if (investPct < 10) score -= 25
+  if (investPct < 20) score -= 15
+  if (needsPct > 60) score -= 15
+  if (needsPct > 50) score -= 10
+  if (wantsPct > 40) score -= 10
+  if (!emergencyItems.length) score -= 10
+  if (!hasHealth) score -= 10
+  if (unallocated < 0) score -= 10
+  if (investPct >= 30) score += 5
+  if (is80CMaxed) score += 5
+  score = Math.max(0, Math.min(100, score))
+
+  return {
+    salary, needsPct, wantsPct, investPct, score, suggestions,
+    issues: suggestions.filter(s => s.kind !== 'good').length,
+    goods: suggestions.filter(s => s.kind === 'good').length,
+  }
+}
+
+function scoreLabel(score) {
+  if (score >= 90) return { text: 'Excellent 🌟', color: '#059669' }
+  if (score >= 75) return { text: 'Good ✅', color: '#10B981' }
+  if (score >= 60) return { text: 'Fair 💡', color: '#F59E0B' }
+  return { text: 'Needs attention ⚠️', color: '#EF4444' }
+}
+
+function SuggestionCard({ s, onApply, applying }) {
+  const k = SUGGESTION_KINDS[s.kind]
+  return (
+    <div className="rounded-xl border p-4" style={{ borderColor: k.border, backgroundColor: k.bg }}>
+      <p className="text-sm font-semibold flex items-center gap-2" style={{ color: k.color }}>
+        <span>{k.icon}</span> {s.title}
+      </p>
+      <p className="text-sm text-gray-700 mt-2 leading-relaxed">{s.body}</p>
+      {s.bullets && (
+        <ul className="mt-1.5 space-y-0.5 text-sm text-gray-700 list-disc pl-5">
+          {s.bullets.map(b => <li key={b}>{b}</li>)}
+        </ul>
+      )}
+      {(s.current || s.recommended) && (
+        <p className="text-xs mt-3 text-gray-600">
+          {s.current && <>Current: <span className="font-bold text-gray-800">{s.current}</span></>}
+          {s.current && s.recommended && <span className="mx-2 text-gray-400">→</span>}
+          {s.recommended && <>Recommended: <span className="font-bold text-gray-800">{s.recommended}</span></>}
+        </p>
+      )}
+      {s.footnote && <p className="text-xs mt-1.5 font-medium" style={{ color: k.color }}>{s.footnote}</p>}
+      {s.apply && (
+        <button
+          onClick={() => onApply(s.apply)} disabled={applying}
+          className="mt-3 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
+          style={{ backgroundColor: '#6C63FF' }}
+        >
+          {applying ? 'Applying…' : s.apply.label}
+        </button>
+      )}
+    </div>
+  )
+}
+
+function BenchmarkComparison({ needsPct, wantsPct, investPct }) {
+  const rows = [
+    { label: 'Needs',       you: needsPct,  bench: 50, higherIsBetter: false },
+    { label: 'Wants',       you: wantsPct,  bench: 30, higherIsBetter: false },
+    { label: 'Investments', you: investPct, bench: 20, higherIsBetter: true },
+  ]
+  const scale = Math.max(100, ...rows.map(r => r.you))
+  return (
+    <div className="mt-6 pt-5 border-t border-gray-100">
+      <p className="text-sm font-semibold text-gray-800 mb-1">How you compare to similar income earners:</p>
+      <p className="text-xs text-gray-400 mb-4">Benchmark: 50/30/20 rule — green is better than benchmark, red is worse</p>
+      <div className="grid grid-cols-12 text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
+        <div className="col-span-3" />
+        <div className="col-span-2 text-right">You</div>
+        <div className="col-span-2 text-right">Benchmark</div>
+        <div className="col-span-5" />
+      </div>
+      <div className="space-y-3">
+        {rows.map(r => {
+          const better = r.higherIsBetter ? r.you >= r.bench : r.you <= r.bench
+          const color = better ? '#10B981' : '#EF4444'
+          return (
+            <div key={r.label} className="grid grid-cols-12 items-center">
+              <div className="col-span-3 text-sm font-medium text-gray-700">{r.label}</div>
+              <div className="col-span-2 text-right text-sm font-bold" style={{ color }}>{pct1(r.you)}</div>
+              <div className="col-span-2 text-right text-sm text-gray-500">{r.bench}%</div>
+              <div className="col-span-5 pl-4 space-y-1">
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{ width: `${(r.you / scale) * 100}%`, backgroundColor: color }} />
+                </div>
+                <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-gray-300" style={{ width: `${(r.bench / scale) * 100}%` }} />
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+      <div className="flex items-center gap-4 mt-3 text-xs text-gray-500 justify-end">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-full bg-gray-500" />You (top bar)</span>
+        <span className="flex items-center gap-1.5"><span className="w-3 h-2 rounded-full bg-gray-300" />Benchmark</span>
+      </div>
+    </div>
+  )
+}
+
+function AllocationSuggestions({ plan, fallbackSalary, onUpdated }) {
+  const [open, setOpen] = useState(true)
+  const [applying, setApplying] = useState(false)
+  const a = analyzePlan(plan, fallbackSalary)
+  const label = scoreLabel(a.score)
+
+  async function handleApply(action) {
+    const items = (plan.items || [])
+      .slice()
+      .sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0))
+      .map(i => ({
+        name: i.name, amount: Number(i.amount) || 0, category: i.category,
+        bank_or_provider: i.bank_or_provider || null,
+      }))
+    const idx = items.findIndex(i => i.category === 'investment' && RE_EMERGENCY.test(nameOf(i)))
+    if (idx >= 0) items[idx].amount += action.amount
+    else items.push({ name: 'Emergency Fund', amount: action.amount, category: 'investment', bank_or_provider: null })
+
+    setApplying(true)
+    try {
+      await bridge.updatePlanItems({
+        planId: plan.id,
+        items: items.map((i, sort_order) => ({ ...i, sort_order })),
+      })
+      onUpdated?.()
+    } catch (e) {
+      console.error(e)
+    } finally {
+      setApplying(false)
+    }
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mt-6 overflow-hidden">
+      <button onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-gray-50/60 transition-colors">
+        <div>
+          <p className="text-base font-bold text-gray-900">💡 Allocation Suggestions</p>
+          <p className="text-xs text-gray-500 mt-0.5">Based on your current allocation and financial best practices</p>
+        </div>
+        <div className="flex items-center gap-3 shrink-0">
+          {!open && a.salary > 0 && (
+            <span className="px-2.5 py-1 rounded-full text-xs font-bold" style={{ backgroundColor: `${label.color}1A`, color: label.color }}>
+              {a.score}/100
+            </span>
+          )}
+          <span className="text-gray-400 text-sm transition-transform" style={{ transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-6 pb-6">
+          {a.salary <= 0 ? (
+            <p className="text-sm text-gray-500">Set a monthly salary on this plan to get suggestions.</p>
+          ) : (
+            <>
+              {/* Health score */}
+              <div className="rounded-xl border border-gray-100 bg-gray-50/70 p-4 mb-5">
+                <p className="text-sm font-semibold text-gray-800">💰 Allocation Health Score</p>
+                <div className="flex items-center gap-4 mt-3">
+                  <div className="flex-1 h-3 bg-gray-200 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all" style={{ width: `${a.score}%`, backgroundColor: label.color }} />
+                  </div>
+                  <p className="text-lg font-bold text-gray-900 shrink-0">{a.score}<span className="text-sm text-gray-400 font-medium">/100</span></p>
+                  <p className="text-sm font-semibold shrink-0" style={{ color: label.color }}>{label.text}</p>
+                </div>
+                <p className="text-xs text-gray-500 mt-2">
+                  {a.issues} issue{a.issues !== 1 ? 's' : ''} found • {a.goods} thing{a.goods !== 1 ? 's' : ''} doing well
+                </p>
+              </div>
+
+              {/* Suggestion cards */}
+              <div className="space-y-3">
+                {a.suggestions.map(s => (
+                  <SuggestionCard key={s.id} s={s} onApply={handleApply} applying={applying} />
+                ))}
+              </div>
+
+              <BenchmarkComparison needsPct={a.needsPct} wantsPct={a.wantsPct} investPct={a.investPct} />
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Plan Detail View ──────────────────────────────────────────────────────
-function PlanDetailView({ plan, investments, onEdit, onNewPlan, onHistory }) {
+function PlanDetailView({ plan, investments, profileSalary, onEdit, onNewPlan, onHistory, onUpdated }) {
   const [tab, setTab] = useState('overview') // 'overview' | 'bank'
 
   return (
@@ -1077,6 +1425,8 @@ function PlanDetailView({ plan, investments, onEdit, onNewPlan, onHistory }) {
       {tab === 'bank' && (
         <BankAllocationDashboard plan={plan} />
       )}
+
+      <AllocationSuggestions plan={plan} fallbackSalary={profileSalary} onUpdated={onUpdated} />
     </div>
   )
 }
@@ -1087,6 +1437,7 @@ export default function SalaryAllocator() {
   const [activePlan, setActivePlan]     = useState(null)
   const [allPlans, setAllPlans]         = useState([])
   const [investments, setInvestments]   = useState([])
+  const [profileSalary, setProfileSalary] = useState(0)
   const [view, setView]                 = useState('detail') // 'detail' | 'history' | 'viewPlan' | 'compare'
   const [showNewWizard, setShowNewWizard] = useState(false)
   const [showEdit, setShowEdit]         = useState(false)
@@ -1096,11 +1447,13 @@ export default function SalaryAllocator() {
   async function loadData() {
     setLoading(true)
     try {
-      const [plan, plans, inv] = await Promise.all([
+      const [plan, plans, inv, profile] = await Promise.all([
         bridge.getActivePlan(),
         bridge.getAllPlans(),
         bridge.getAllInvestments(),
+        bridge.getProfile().catch(() => null),
       ])
+      setProfileSalary(Number(profile?.monthly_salary) || 0)
       setActivePlan(plan || null)
       setAllPlans(plans || [])
       setInvestments(inv || [])
@@ -1166,9 +1519,11 @@ export default function SalaryAllocator() {
         <PlanDetailView
           plan={activePlan}
           investments={investments}
+          profileSalary={profileSalary}
           onEdit={() => setShowEdit(true)}
           onNewPlan={() => setShowNewWizard(true)}
           onHistory={() => setView('history')}
+          onUpdated={loadData}
         />
       )}
 
