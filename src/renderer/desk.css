@@ -1,0 +1,245 @@
+/* Desk Mode — full-screen ambient display (src/renderer/pages/DeskMode.jsx).
+   Every animation moves only transform/opacity so it stays on the compositor
+   at 60fps; no canvas/WebGL. Per-particle timing comes in via CSS variables
+   (--x, --d, --delay, …) set inline from the component. */
+
+.desk-root {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  overflow: hidden;
+  color: #fff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.desk-root.desk-hide-cursor,
+.desk-root.desk-hide-cursor * { cursor: none !important; }
+
+/* ── Glass cards ─────────────────────────────────────────────────────────── */
+.desk-glass {
+  background: rgba(0, 0, 0, 0.3);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+.desk-scroll { overflow-y: auto; scrollbar-width: none; }
+.desk-scroll::-webkit-scrollbar { display: none; }
+
+.desk-input::placeholder { color: rgba(255, 255, 255, 0.55); }
+.desk-input:focus { outline: none; border-color: rgba(255, 255, 255, 0.5); }
+
+/* ── Layout: landscape = three columns, portrait/narrow = stacked ──────── */
+.desk-layout {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: clamp(16px, 3vw, 40px);
+  gap: clamp(14px, 2vw, 24px);
+}
+.desk-grid {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px) minmax(0, 1fr);
+  grid-template-areas: "tasks time ideas";
+  gap: clamp(14px, 2vw, 24px);
+}
+.desk-area-tasks { grid-area: tasks; min-height: 0; }
+.desk-area-time  { grid-area: time;  min-height: 0; }
+.desk-area-ideas { grid-area: ideas; min-height: 0; }
+.desk-clock { font-size: clamp(4rem, 7vw, 6rem); }
+
+/* Below lg the corner controls sit under the quick-add bar; at lg+ they sit
+   beside it (the bar reserves room with lg:mr-[200px]). */
+@media (max-width: 1023px) {
+  .desk-layout { padding-bottom: 76px; }
+}
+
+@media (orientation: portrait), (max-width: 900px) {
+  .desk-main { overflow-y: auto; scrollbar-width: none; }
+  .desk-main::-webkit-scrollbar { display: none; }
+  .desk-grid {
+    flex: none;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "time" "tasks" "ideas";
+  }
+  .desk-area-tasks .desk-scroll { max-height: 46vh; }
+  .desk-area-ideas .desk-scroll { max-height: 40vh; }
+  .desk-clock { font-size: 4rem; }
+  .desk-header-date { display: none; }
+}
+
+/* Colon softly pulses once per second */
+@keyframes desk-colon { 0%, 100% { opacity: 1 } 50% { opacity: 0.35 } }
+.desk-colon { animation: desk-colon 2s ease-in-out infinite; }
+
+@keyframes desk-pop {
+  0% { transform: scale(0.9); opacity: 0 }
+  60% { transform: scale(1.04); opacity: 1 }
+  100% { transform: scale(1) }
+}
+.desk-pop { animation: desk-pop 0.5s ease-out both; }
+
+/* ── Background scenes ───────────────────────────────────────────────────── */
+.desk-bg { position: absolute; inset: 0; z-index: 0; overflow: hidden; transition: opacity 1.2s ease; }
+.desk-bg > * { pointer-events: none; }
+/* Readability scrim — soft vignette plus a light overall dim */
+.desk-scrim {
+  position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0.05) 0%, rgba(0,0,0,0.32) 100%);
+}
+
+.desk-scene-clear  { background: linear-gradient(205deg, #FCD34D 0%, #FB923C 22%, #E0715E 42%, #5068B5 70%, #1E3A8A 100%); }
+.desk-scene-cloudy { background: linear-gradient(180deg, #2F6FB0 0%, #5B9BD8 45%, #A9CDEE 100%); }
+.desk-scene-rain   { background: linear-gradient(180deg, #1F2937 0%, #334155 50%, #4B5A6E 100%); }
+.desk-scene-storm  { background: linear-gradient(180deg, #05070D 0%, #151526 50%, #2A2740 100%); }
+.desk-scene-fog    { background: linear-gradient(180deg, #5B6472 0%, #8A95A5 50%, #B7C0CC 100%); }
+.desk-scene-snow   { background: linear-gradient(180deg, #475569 0%, #7F8EA3 50%, #C3CDD9 100%); }
+.desk-scene-night  { background: linear-gradient(180deg, #020617 0%, #0B1A3F 55%, #1E2A5A 100%); }
+/* Rain/fog/snow after dark keep their weather, just darker */
+.desk-night-dim { position: absolute; inset: 0; z-index: -1; background: rgba(2, 6, 23, 0.5); }
+.desk-bg { isolation: isolate; }
+
+/* Sun + slowly rotating rays */
+.desk-sun {
+  position: absolute; top: -22vmax; right: -22vmax;
+  width: 64vmax; height: 64vmax;
+}
+.desk-sun-core {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,250,220,0.95) 0%, rgba(255,228,150,0.6) 9%, rgba(255,200,90,0.18) 22%, transparent 45%);
+}
+.desk-sun-rays {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, rgba(255,255,255,0.16) 0deg 5deg, transparent 5deg 15deg);
+  -webkit-mask-image: radial-gradient(circle, #000 8%, transparent 62%);
+  mask-image: radial-gradient(circle, #000 8%, transparent 62%);
+  animation: desk-spin 140s linear infinite;
+  will-change: transform;
+}
+@keyframes desk-spin { to { transform: rotate(360deg) } }
+
+/* Floating light motes */
+.desk-mote {
+  position: absolute; bottom: -4vh; left: var(--x);
+  width: var(--s); height: var(--s); border-radius: 50%;
+  background: rgba(255, 246, 210, 0.85);
+  box-shadow: 0 0 8px 2px rgba(255, 236, 170, 0.5);
+  opacity: 0;
+  animation: desk-float var(--d) ease-in-out var(--delay) infinite;
+  will-change: transform, opacity;
+}
+@keyframes desk-float {
+  0%   { transform: translate3d(0, 0, 0); opacity: 0 }
+  15%  { opacity: 0.8 }
+  85%  { opacity: 0.5 }
+  100% { transform: translate3d(var(--sway), -70vh, 0); opacity: 0 }
+}
+
+/* Drifting clouds */
+.desk-cloud {
+  position: absolute; left: 0; top: var(--y);
+  width: var(--w); height: calc(var(--w) * 0.28);
+  background: rgba(255, 255, 255, var(--o));
+  border-radius: 999px;
+  animation: desk-drift var(--d) linear var(--delay) infinite;
+  will-change: transform;
+}
+.desk-cloud::before, .desk-cloud::after {
+  content: ''; position: absolute; background: inherit; border-radius: 50%;
+}
+.desk-cloud::before { width: 46%; height: 150%; left: 14%; bottom: 35%; }
+.desk-cloud::after  { width: 34%; height: 115%; left: 48%; bottom: 40%; }
+@keyframes desk-drift {
+  from { transform: translate3d(-45vw, 0, 0) }
+  to   { transform: translate3d(110vw, 0, 0) }
+}
+
+/* Rain — thin streaks falling at an angle */
+.desk-rain { position: absolute; inset: -20% -15%; transform: rotate(12deg); }
+.desk-drop {
+  position: absolute; top: -12%; left: var(--x);
+  width: 1.5px; height: var(--h);
+  background: linear-gradient(to bottom, transparent, rgba(220, 235, 255, var(--o)));
+  animation: desk-fall var(--d) linear var(--delay) infinite;
+  will-change: transform;
+}
+@keyframes desk-fall { to { transform: translate3d(0, 140vh, 0) } }
+
+/* Lightning — overlapping cycles of different lengths read as random */
+.desk-flash {
+  position: absolute; inset: 0; background: #fff; opacity: 0;
+  will-change: opacity;
+}
+.desk-flash-soft { animation: desk-flash-soft 23s linear infinite; }
+.desk-flash-a    { animation: desk-flash-a 9s linear infinite; }
+.desk-flash-b    { animation: desk-flash-b 14s linear 3s infinite; }
+@keyframes desk-flash-soft {
+  0%, 60%, 100% { opacity: 0 }
+  60.4% { opacity: 0.14 } 60.8% { opacity: 0.02 } 61.3% { opacity: 0.1 } 62.5% { opacity: 0 }
+}
+@keyframes desk-flash-a {
+  0%, 40%, 100% { opacity: 0 }
+  40.5% { opacity: 0.75 } 41% { opacity: 0.1 } 41.8% { opacity: 0.9 } 44% { opacity: 0 }
+}
+@keyframes desk-flash-b {
+  0%, 70%, 100% { opacity: 0 }
+  70.4% { opacity: 0.55 } 71.2% { opacity: 0 } 71.6% { opacity: 0.4 } 73% { opacity: 0 }
+}
+
+/* Fog — wide soft bands sliding back and forth */
+.desk-fog {
+  position: absolute; left: -30vw; top: var(--y);
+  width: 160vw; height: var(--h);
+  background: radial-gradient(ellipse at center, rgba(255,255,255,var(--o)) 0%, rgba(255,255,255,0) 68%);
+  animation: desk-fog var(--d) ease-in-out var(--delay) infinite alternate;
+  will-change: transform;
+}
+@keyframes desk-fog {
+  from { transform: translate3d(-12vw, 0, 0) }
+  to   { transform: translate3d(12vw, 0, 0) }
+}
+
+/* Snow */
+.desk-flake {
+  position: absolute; top: -4vh; left: var(--x);
+  width: var(--s); height: var(--s); border-radius: 50%;
+  background: rgba(255, 255, 255, 0.9);
+  animation: desk-snow var(--d) linear var(--delay) infinite;
+  will-change: transform;
+}
+@keyframes desk-snow {
+  0%   { transform: translate3d(0, 0, 0) }
+  50%  { transform: translate3d(var(--sway), 55vh, 0) }
+  100% { transform: translate3d(0, 110vh, 0) }
+}
+
+/* Night — twinkling stars and a crescent moon */
+.desk-star {
+  position: absolute; left: var(--x); top: var(--y);
+  width: var(--s); height: var(--s); border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.8);
+  animation: desk-twinkle var(--d) ease-in-out var(--delay) infinite;
+  will-change: opacity;
+}
+@keyframes desk-twinkle { 0%, 100% { opacity: 0.15 } 50% { opacity: 1 } }
+.desk-moon {
+  /* Sits in the open sky above the clock card, clear of the glass panels */
+  position: absolute; top: 1.5vh; left: 52%;
+  width: clamp(36px, 4vw, 60px); height: clamp(36px, 4vw, 60px);
+  border-radius: 50%;
+  box-shadow: calc(clamp(36px, 4vw, 60px) * 0.22) calc(clamp(36px, 4vw, 60px) * 0.12) 0 0 #F5F1D0;
+  filter: drop-shadow(0 0 18px rgba(245, 241, 208, 0.45));
+}
+
+/* Reduced motion: drop only the lightning flashes. The rest is slow ambient
+   motion and is the point of Desk Mode, so it stays on. */
+@media (prefers-reduced-motion: reduce) {
+  .desk-flash { animation: none !important; opacity: 0 !important; }
+}

@@ -44,6 +44,7 @@ export function initDatabase() {
   createWishlistCollectionsTable()
   seedFordEcoSportCollection()
   createGoalWishlistLinksTable()
+  createTasksTable()
   seedPlanningGoals()
   seedDreamVehicles()
   return db
@@ -980,6 +981,30 @@ function createGoalWishlistLinksTable() {
     );
   `)
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_goal_wishlist_links_user ON goal_wishlist_links(user_id)') } catch {}
+}
+
+// Tasks & Ideas — quick-capture to-dos and ideas, scoped per user (every
+// route/IPC handler filters on the caller's user_id). due_date is local
+// 'YYYY-MM-DD' or 'YYYY-MM-DDTHH:MM'; done_at is an ISO timestamp.
+function createTasksTable() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tasks (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+      title       TEXT NOT NULL,
+      description TEXT,
+      type        TEXT DEFAULT 'task' CHECK (type IN ('task', 'idea')),
+      status      TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'archived')),
+      priority    TEXT DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+      due_date    TEXT,
+      done_at     TEXT,
+      sync_id     TEXT UNIQUE,
+      deleted_at  TEXT,
+      created_at  TEXT DEFAULT (datetime('now')),
+      updated_at  TEXT DEFAULT (datetime('now'))
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id)') } catch {}
 }
 
 // One-time per-user migration: seed the four default collections, sort the

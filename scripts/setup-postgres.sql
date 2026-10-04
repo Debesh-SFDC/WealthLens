@@ -714,3 +714,21 @@ CREATE TABLE IF NOT EXISTS goal_wishlist_links (
   UNIQUE(goal_id, collection_id)
 );
 CREATE INDEX IF NOT EXISTS idx_goal_wishlist_links_user ON goal_wishlist_links(user_id);
+
+-- ── Tasks & Ideas — quick-capture to-dos and ideas, scoped per user ──────────
+CREATE TABLE IF NOT EXISTS tasks (
+  id          SERIAL PRIMARY KEY,
+  user_id     INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  title       TEXT NOT NULL,
+  description TEXT,
+  type        TEXT DEFAULT 'task' CHECK (type IN ('task', 'idea')),
+  status      TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'archived')),
+  priority    TEXT DEFAULT 'medium' CHECK (priority IN ('high', 'medium', 'low')),
+  due_date    TEXT,
+  done_at     TEXT,
+  sync_id     TEXT UNIQUE,
+  deleted_at  TEXT,
+  created_at  TEXT DEFAULT (now()::text),
+  updated_at  TEXT DEFAULT (now()::text)
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id);

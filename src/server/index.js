@@ -21,6 +21,7 @@ const travelRouter = require('./routes/travel')
 const wishlistRouter = require('./routes/wishlist')
 const wishlistCollectionsRouter = require('./routes/wishlistCollections')
 const goalWishlistLinksRouter = require('./routes/goalWishlistLinks')
+const tasksRouter = require('./routes/tasks')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -81,6 +82,9 @@ app.use('/api/wishlist', requireAuth, wishlistRouter)
 // Goal ↔ wishlist-collection links — powers the unified Goals & Wishlist page.
 // requireAuth only (each row is scoped to req.user.id inside the router).
 app.use('/api/goal-wishlist-links', requireAuth, goalWishlistLinksRouter)
+
+// Tasks & Ideas — requireAuth only (each row is scoped to req.user.id inside the router).
+app.use('/api/tasks', requireAuth, tasksRouter)
 
 if (IS_WEB) {
   const distPath = path.join(__dirname, '..', '..', 'dist-web')

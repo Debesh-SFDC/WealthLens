@@ -17,6 +17,8 @@ import TravelPage from './pages/TravelPage'
 import Settings from './pages/Settings'
 import TrackerApp from './components/TrackerApp'
 import AdminWeight from './pages/AdminWeight'
+import TasksAndIdeas from './pages/TasksAndIdeas'
+import DeskMode from './pages/DeskMode'
 
 const adminPages = {
   dashboard:   Dashboard,
@@ -31,10 +33,15 @@ const adminPages = {
   travel:      TravelPage,
   settings:    Settings,
   health:      AdminWeight,
+  tasks:       TasksAndIdeas,
 }
 
 const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
 const TOKEN_KEY = 'wealthlens_token'
+// Desk Mode lives at /desk in web mode (deep-linkable, survives reloads). The
+// Electron renderer is loaded from a file/dev URL, so there it's state only.
+const DESK_PATH = '/desk'
+const isDeskPath = () => !IS_ELECTRON && window.location.pathname === DESK_PATH
 
 function decodeWebSession() {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -61,6 +68,30 @@ export default function App() {
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [appReady, setAppReady]             = useState(false)
   const [syncStatus, setSyncStatus]         = useState(null)
+  const [deskMode, setDeskMode]             = useState(isDeskPath)
+
+  // Browser back/forward in and out of /desk
+  useEffect(() => {
+    if (IS_ELECTRON) return
+    const onPop = () => setDeskMode(isDeskPath())
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [])
+
+  function enterDeskMode() {
+    if (!IS_ELECTRON) window.history.pushState({ desk: true }, '', DESK_PATH)
+    setDeskMode(true)
+  }
+
+  const exitDeskMode = useCallback(() => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
+    if (!IS_ELECTRON && isDeskPath()) {
+      // Entered from the app → pop back; deep-linked → just swap the URL.
+      if (window.history.state?.desk) window.history.back()
+      else window.history.replaceState(null, '', '/')
+    }
+    setDeskMode(false)
+  }, [])
 
   // ── First-launch + session bootstrap ────────────────────────────────────
   useEffect(() => {
@@ -167,6 +198,10 @@ export default function App() {
   // Admin role — wait for profile load
   if (!appReady) return null
 
+  if (deskMode) {
+    return <DeskMode profileName={profileName || currentUser.name} onExit={exitDeskMode} />
+  }
+
   const PageComponent = adminPages[activePage]
 
   return (
@@ -179,6 +214,7 @@ export default function App() {
           profileName={profileName || currentUser.name}
           syncStatus={syncStatus}
           onSignOut={handleSignOut}
+          onDeskMode={enterDeskMode}
         />
         <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           {activePage === 'dashboard'

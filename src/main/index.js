@@ -1624,6 +1624,74 @@ function setupIpcHandlers() {
     return { success: true }
   })
 
+  // ── Tasks & Ideas ──────────────────────────────────────────────────────────
+  // Mirrors src/server/routes/tasks.js — scoped to currentUserSession.id.
+  const TASK_TYPES      = ['task', 'idea']
+  const TASK_STATUSES   = ['pending', 'done', 'archived']
+  const TASK_PRIORITIES = ['high', 'medium', 'low']
+
+  ipcMain.handle('tasks:getAll', (_, filters = {}) => {
+    const { type, status, date } = filters || {}
+    let query = 'SELECT * FROM tasks WHERE user_id = ? AND deleted_at IS NULL'
+    const params = [currentUserSession?.id]
+    if (type)   { query += ' AND type = ?';        params.push(type) }
+    if (status) { query += ' AND status = ?';      params.push(status) }
+    if (date)   { query += ' AND due_date LIKE ?'; params.push(`${date}%`) }
+    query += ' ORDER BY created_at DESC'
+    return db.prepare(query).all(...params)
+  })
+
+  ipcMain.handle('tasks:create', (_, d = {}) => {
+    const title = (d.title || '').trim()
+    if (!title) throw new Error('title is required')
+    const status = TASK_STATUSES.includes(d.status) ? d.status : 'pending'
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      INSERT INTO tasks (sync_id, user_id, title, description, type, status, priority,
+        due_date, done_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(), currentUserSession?.id, title, d.description ?? null,
+      TASK_TYPES.includes(d.type) ? d.type : 'task', status,
+      TASK_PRIORITIES.includes(d.priority) ? d.priority : 'medium',
+      d.due_date || null, status === 'done' ? now : null, now, now
+    )
+    return { id: info.lastInsertRowid }
+  })
+
+  ipcMain.handle('tasks:update', (_, d = {}) => {
+    const cur = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
+      .get(d.id, currentUserSession?.id)
+    if (!cur) throw new Error('Task not found')
+    const now = new Date().toISOString()
+    const title = d.title !== undefined ? String(d.title).trim() : cur.title
+    if (!title) throw new Error('title is required')
+    const status = TASK_STATUSES.includes(d.status) ? d.status : cur.status
+    const done_at = status === 'done' ? (cur.status === 'done' ? cur.done_at : now) : null
+    db.prepare(`
+      UPDATE tasks SET title = ?, description = ?, type = ?, status = ?, priority = ?,
+        due_date = ?, done_at = ?, updated_at = ?
+      WHERE id = ? AND user_id = ?
+    `).run(
+      title,
+      d.description !== undefined ? (d.description || null) : cur.description,
+      TASK_TYPES.includes(d.type) ? d.type : cur.type,
+      status,
+      TASK_PRIORITIES.includes(d.priority) ? d.priority : cur.priority,
+      d.due_date !== undefined ? (d.due_date || null) : cur.due_date,
+      done_at, now, d.id, currentUserSession?.id
+    )
+    return { success: true, done_at }
+  })
+
+  ipcMain.handle('tasks:delete', (_, id) => {
+    const now = new Date().toISOString()
+    const info = db.prepare('UPDATE tasks SET deleted_at = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+      .run(now, now, id, currentUserSession?.id)
+    if (!info.changes) throw new Error('Task not found')
+    return { success: true }
+  })
+
   // Rebalancing actions
   ipcMain.handle('rebalancing:getAll', () => {
     return db.prepare('SELECT * FROM rebalancing_actions ORDER BY created_at DESC').all()

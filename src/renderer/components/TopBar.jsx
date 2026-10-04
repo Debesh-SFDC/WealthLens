@@ -7,6 +7,7 @@ const PAGE_TITLES = {
   expenses:    'Expenses',
   salary:      'Salary Allocator',
   travel:      'Travel',
+  tasks:       'Tasks & Ideas',
   networth:    'Net Worth',
   settings:    'Settings',
 }
@@ -28,7 +29,7 @@ function getInitials(name) {
   return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
-export default function TopBar({ activePage, profileName, syncStatus, onSignOut }) {
+export default function TopBar({ activePage, profileName, syncStatus, onSignOut, onDeskMode }) {
   const syncMeta = syncStatus ? SYNC_META[syncStatus.status] : null
 
   return (
@@ -76,6 +77,22 @@ export default function TopBar({ activePage, profileName, syncStatus, onSignOut 
             {syncStatus.status === 'failed'       && 'Sync failed'}
             {syncStatus.status === 'auth_expired' && 'Reconnect Drive'}
           </div>
+        )}
+
+        {/* Desk Mode — full-screen ambient display */}
+        {onDeskMode && (
+          <button
+            onClick={onDeskMode}
+            title="Desk Mode"
+            className="flex items-center gap-1.5 h-8 px-2 sm:px-2.5 rounded-lg text-gray-500 hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+            </svg>
+            <span className="hidden md:inline text-sm font-medium">Desk</span>
+          </button>
         )}
 
         {/* Avatar */}

@@ -285,6 +285,21 @@ const bridge = {
   deleteGoalWishlistLink: (id) => IS_ELECTRON
     ? window.electronAPI.deleteGoalWishlistLink(id)
     : webCall('DELETE', `/goal-wishlist-links/${id}`),
+
+  // Tasks & Ideas — always the caller's own rows. updateTask is a partial
+  // update: pass { id, ...onlyChangedFields }.
+  getTasks: (filters) => IS_ELECTRON
+    ? window.electronAPI.getTasks(filters)
+    : webCall('GET', `/tasks?${new URLSearchParams(filters || {})}`),
+  createTask: (data) => IS_ELECTRON
+    ? window.electronAPI.createTask(data)
+    : webCall('POST', '/tasks', data),
+  updateTask: (data) => IS_ELECTRON
+    ? window.electronAPI.updateTask(data)
+    : webCall('PUT', `/tasks/${data.id}`, data),
+  deleteTask: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteTask(id)
+    : webCall('DELETE', `/tasks/${id}`),
 }
 
 export default bridge

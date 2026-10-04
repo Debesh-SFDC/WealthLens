@@ -5,6 +5,7 @@ import ExpenseDateChips, { expenseDateShortLabel } from '../components/ExpenseDa
 import BucketToggle from '../components/BucketToggle'
 import { BUCKET_META, bucketForCategory } from '../lib/bucket'
 import RetirementCountdown from '../components/RetirementCountdown'
+import QuickCapture from '../components/QuickCapture'
 import {
   BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts'
@@ -504,6 +505,9 @@ export default function Dashboard({ onNavigate, currentUser }) {
           <span className="text-base leading-none">+</span> Log Weight
         </button>
       </div>
+
+      {/* Quick Capture — one-line task/idea add, no modal */}
+      <QuickCapture onToast={showToast} />
 
       {/* Retirement Countdown — Admin only (Dashboard never renders for Tracker) */}
       {!isTracker && (

@@ -146,4 +146,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getGoalWishlistLinks:   ()     => ipcRenderer.invoke('goalWishlistLinks:getAll'),
   createGoalWishlistLink: (data) => ipcRenderer.invoke('goalWishlistLinks:create', data),
   deleteGoalWishlistLink: (id)   => ipcRenderer.invoke('goalWishlistLinks:delete', id),
+
+  // Tasks & Ideas — always the caller's own rows (scoped by session)
+  getTasks:   (filters) => ipcRenderer.invoke('tasks:getAll', filters),
+  createTask: (data)    => ipcRenderer.invoke('tasks:create', data),
+  updateTask: (data)    => ipcRenderer.invoke('tasks:update', data),
+  deleteTask: (id)      => ipcRenderer.invoke('tasks:delete', id),
 })
