@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import bridge from '../lib/bridge'
 
-// Goal↔investment linking, contribution history and investment-sync are
-// Electron-only (no web routes). In web mode every window.electronAPI.* call
+// Goal↔investment linking and investment-sync are Electron-only (no web
+// routes); contributions go through the bridge and work in both modes. In web mode every window.electronAPI.* call
 // below is skipped so goal CRUD still works and nothing throws.
 const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
 
@@ -1403,7 +1403,10 @@ export function GoalsContent() {
     setSelectedGoal(goal)
     setContributions([])
     setDetailInvestments([])
-    if (!IS_ELECTRON) return
+    if (!IS_ELECTRON) {
+      try { setContributions((await bridge.getGoalContributions(goal.id)) || []) } catch (e) { console.error(e) }
+      return
+    }
     try {
       const res = await window.electronAPI.syncGoalInvestment(goal.id)
       if (res?.synced) {
@@ -1415,7 +1418,7 @@ export function GoalsContent() {
     } catch (e) { console.error(e) }
     try {
       const [c, inv] = await Promise.all([
-        window.electronAPI.getGoalContributions(goal.id),
+        bridge.getGoalContributions(goal.id),
         window.electronAPI.getGoalInvestments(goal.id),
       ])
       setContributions(c || [])
@@ -1493,18 +1496,20 @@ export function GoalsContent() {
   }
 
   const handleAddContribution = async (payload) => {
-    if (!IS_ELECTRON) {
-      showToast('Logging contributions is available in the desktop app', 'warn')
-      closeContribution()
+    try {
+      await bridge.addGoalContribution(payload)
+    } catch (e) {
+      console.error(e)
+      showToast('Could not save contribution', 'warn')
       return
     }
-    await window.electronAPI.addGoalContribution(payload)
     closeContribution()
+    showToast('Contribution saved')
     await load()
     if (selectedGoal?.id === payload.goal_id) {
       const [fresh, c] = await Promise.all([
         bridge.getAllGoals(),
-        window.electronAPI.getGoalContributions(payload.goal_id),
+        bridge.getGoalContributions(payload.goal_id),
       ])
       setSelectedGoal(fresh.find(g => g.id === payload.goal_id) || null)
       setContributions(c || [])

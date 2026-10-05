@@ -68,4 +68,50 @@ router.delete('/:id', async (req, res) => {
   res.json({ success: true })
 })
 
+// GET /api/goals/:id/contributions — mirrors goalContributions:getAll
+router.get('/:id/contributions', async (req, res) => {
+  const db = getDb()
+  const { rows } = await db.query(
+    'SELECT * FROM goal_contributions WHERE goal_id = ? AND deleted_at IS NULL ORDER BY contributed_at DESC, id DESC',
+    [req.params.id]
+  )
+  res.json(rows)
+})
+
+// POST /api/goals/:id/contributions — mirrors goalContributions:create
+router.post('/:id/contributions', async (req, res) => {
+  const d = req.body || {}
+  const db = getDb()
+  const now = new Date().toISOString()
+  const amount = Number(d.amount) || 0
+  const { rows } = await db.query(
+    `INSERT INTO goal_contributions (sync_id, goal_id, amount, note, contributed_at, contribution_type, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING id`,
+    [randomUUID(), req.params.id, amount, d.note ?? null, d.contributed_at || now, d.contribution_type || 'manual', now, now]
+  )
+  await db.query(
+    'UPDATE goals SET current_amount = COALESCE(current_amount, 0) + ?, updated_at = ? WHERE id = ?',
+    [amount, now, req.params.id]
+  )
+  res.json({ id: rows[0].id, success: true })
+})
+
+// DELETE /api/goals/:id/contributions/:cid — mirrors goalContributions:delete
+router.delete('/:id/contributions/:cid', async (req, res) => {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const { rows } = await db.query(
+    'SELECT amount FROM goal_contributions WHERE id = ? AND goal_id = ? AND deleted_at IS NULL',
+    [req.params.cid, req.params.id]
+  )
+  if (!rows.length) return res.json({ success: true })
+  await db.query('UPDATE goal_contributions SET deleted_at = ?, updated_at = ? WHERE id = ?', [now, now, req.params.cid])
+  await db.query(
+    'UPDATE goals SET current_amount = COALESCE(current_amount, 0) - ?, updated_at = ? WHERE id = ?',
+    [rows[0].amount, now, req.params.id]
+  )
+  res.json({ success: true })
+})
+
 module.exports = router
