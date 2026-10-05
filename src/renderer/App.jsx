@@ -12,7 +12,7 @@ import Expenses from './pages/Expenses'
 import SalaryAllocator from './pages/SalaryAllocator'
 import NetWorth from './pages/NetWorth'
 import FirePlannerPage from './pages/FirePlannerPage'
-import GoalsAndWishlist from './pages/GoalsAndWishlist'
+import Goals from './pages/Goals'
 import TravelPage from './pages/TravelPage'
 import Settings from './pages/Settings'
 import TrackerApp from './components/TrackerApp'
@@ -26,9 +26,9 @@ const adminPages = {
   expenses:    Expenses,
   networth:    NetWorth,
   fire:        FirePlannerPage,
-  'goals-wishlist': GoalsAndWishlist,
-  goals:       GoalsAndWishlist,   // fallback alias → unified page
-  wishlist:    GoalsAndWishlist,   // fallback alias → unified page
+  'goals-wishlist': Goals,  // legacy id kept so saved navigation still lands here
+  goals:       Goals,
+  wishlist:    Goals,          // wishlist was merged into goals
   salary:      SalaryAllocator,
   travel:      TravelPage,
   settings:    Settings,

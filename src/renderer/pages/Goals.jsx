@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import bridge from '../lib/bridge'
 
 // Goal↔investment linking and investment-sync are Electron-only (no web
-// routes); contributions go through the bridge and work in both modes. In web mode every window.electronAPI.* call
-// below is skipped so goal CRUD still works and nothing throws.
+// routes); contributions and goal items go through the bridge and work in both
+// modes. In web mode every window.electronAPI.* call below is skipped so goal
+// CRUD still works and nothing throws.
 const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
 
 function fmtCr(v) {
@@ -374,6 +375,17 @@ function SummaryBar({ activeCount, achievedCount, totalTarget, totalSaved, overa
 }
 
 // ── Card grid view ───────────────────────────────────────────────────────────
+function ItemCountBadge({ goal, className = '' }) {
+  const total = Number(goal.item_count) || 0
+  if (total === 0) return null
+  const bought = Number(goal.item_bought_count) || 0
+  return (
+    <p className={`text-[11px] text-gray-400 truncate ${className}`}>
+      🛍️ {bought}/{total} item{total !== 1 ? 's' : ''} bought
+    </p>
+  )
+}
+
 function LinkedInvestmentChips({ linkedInvestments, className = 'mb-3' }) {
   if (!linkedInvestments || linkedInvestments.length === 0) return null
   const visible = linkedInvestments.slice(0, 2)
@@ -430,6 +442,7 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onCon
         </div>
 
         {goal.bank_or_provider && <p className="text-xs text-gray-400 mb-1.5 truncate">📍 {goal.bank_or_provider}</p>}
+        <ItemCountBadge goal={goal} className="mb-1.5" />
         <LinkedInvestmentChips linkedInvestments={linkedInvestments} />
 
         {achieved && (
@@ -503,6 +516,7 @@ function GoalListRow({ goal, linkedInvestments, onView, onEdit, onDelete, onCont
           <div className="flex items-center gap-1.5 mt-0.5">
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold shrink-0" style={typeBadgeStyle(goal, accent)}>{meta.label}</span>
             {goal.bank_or_provider && <span className="text-[11px] text-gray-400 truncate">{goal.bank_or_provider}</span>}
+            <ItemCountBadge goal={goal} />
           </div>
           <LinkedInvestmentChips linkedInvestments={linkedInvestments} className="mt-1" />
         </div>
@@ -1089,6 +1103,159 @@ function AddContributionModal({ goal, onSave, onClose }) {
   )
 }
 
+// ── Goal item (shopping checklist) modal ───────────────────────────────────
+function GoalItemModal({ goal, item, onSave, onClose }) {
+  const [form, setForm] = useState(() => ({
+    name: item?.name || '',
+    brand: item?.brand || '',
+    price: item?.price != null ? String(item.price) : '',
+    url: item?.url || '',
+    priority: item?.priority || 'medium',
+    notes: item?.notes || '',
+  }))
+  const [saving, setSaving] = useState(false)
+  const accent = goal.color || (TYPE_META[goal.type] || TYPE_META.life_goal).color
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave({ ...item, ...form, goal_id: goal.id, name: form.name.trim() })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const inputCls = 'w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2'
+  const labelCls = 'block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5'
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="font-bold text-gray-900">{item?.id ? 'Edit Item' : 'Add Item'}</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className={labelCls}>Item</label>
+            <input autoFocus className={inputCls} placeholder="e.g. Saddle Bags" value={form.name} onChange={e => set('name', e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelCls}>Price (₹)</label>
+              <input type="number" className={inputCls} placeholder="e.g. 12000" value={form.price} onChange={e => set('price', e.target.value)} />
+            </div>
+            <div>
+              <label className={labelCls}>Brand <span className="font-normal normal-case text-gray-400">optional</span></label>
+              <input className={inputCls} value={form.brand} onChange={e => set('brand', e.target.value)} />
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Priority</label>
+            <div className="flex gap-2">
+              {['high', 'medium', 'low'].map(p => (
+                <button key={p} type="button" onClick={() => set('priority', p)}
+                  className="flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors capitalize"
+                  style={form.priority === p ? { backgroundColor: accent, borderColor: accent, color: '#fff' } : { borderColor: '#e5e7eb', color: '#6b7280' }}>
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className={labelCls}>Link <span className="font-normal normal-case text-gray-400">optional</span></label>
+            <input type="url" className={inputCls} placeholder="https://" value={form.url} onChange={e => set('url', e.target.value)} />
+          </div>
+          <div>
+            <label className={labelCls}>Notes <span className="font-normal normal-case text-gray-400">optional</span></label>
+            <textarea rows={3} className={inputCls} value={form.notes} onChange={e => set('notes', e.target.value)} />
+          </div>
+        </div>
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+          <button onClick={handleSave} disabled={saving || !form.name.trim()}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-opacity" style={{ backgroundColor: accent }}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+const PRIORITY_DOT = { high: '#EF4444', medium: '#F59E0B', low: '#9CA3AF' }
+
+// Checklist of things to buy with this goal's savings — what used to be the
+// standalone Wishlist. Ticking an item marks it bought; it doesn't touch the
+// saved amount (log the spend as a negative contribution if you want that).
+function GoalItemsSection({ goal, items, accent, onAdd, onEdit, onToggle, onDelete, onUseTotalAsTarget }) {
+  const open = items.filter(i => !i.is_purchased)
+  const total = items.reduce((s, i) => s + (Number(i.price) || 0), 0)
+  const remainingCost = open.reduce((s, i) => s + (Number(i.price) || 0), 0)
+  const bought = items.length - open.length
+  const targetDiffers = total > 0 && Math.round(total) !== Math.round(goal.target_amount || 0)
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-gray-800">Items to Buy</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            {items.length === 0 ? 'Nothing added yet' : `${bought}/${items.length} bought · ${fmtCr(remainingCost)} still to buy of ${fmtCr(total)}`}
+          </p>
+        </div>
+        <button onClick={onAdd} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-gray-200 hover:bg-gray-50 transition-colors shrink-0">
+          <span>+</span> Add Item
+        </button>
+      </div>
+      {items.length === 0 ? (
+        <div className="flex items-center justify-center py-8 px-5 text-center text-sm text-gray-400">
+          Break this goal into the things you'll buy — e.g. engine guard, saddle bags, riding jacket.
+        </div>
+      ) : (
+        <div className="divide-y divide-gray-50">
+          {items.map(it => (
+            <div key={it.id} className="flex items-start gap-3 px-5 py-3 group">
+              <input type="checkbox" checked={Boolean(it.is_purchased)} onChange={() => onToggle(it)}
+                className="mt-1 w-4 h-4 rounded shrink-0 cursor-pointer" style={{ accentColor: accent }}
+                aria-label={`Mark ${it.name} as bought`} />
+              <button className="flex-1 min-w-0 text-left" onClick={() => onEdit(it)}>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_DOT[it.priority] || PRIORITY_DOT.medium }} title={`${it.priority} priority`} />
+                  <p className={`text-sm font-medium truncate ${it.is_purchased ? 'line-through text-gray-400' : 'text-gray-800'}`}>{it.name}</p>
+                </div>
+                {(it.brand || it.notes) && (
+                  <p className="text-xs text-gray-400 mt-0.5 truncate">{[it.brand, it.notes].filter(Boolean).join(' · ')}</p>
+                )}
+              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                {it.url && (
+                  <a href={it.url} target="_blank" rel="noreferrer" title="Open link"
+                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-xs">↗</a>
+                )}
+                <span className={`text-sm font-semibold w-20 text-right ${it.is_purchased ? 'text-gray-400' : 'text-gray-800'}`}>
+                  {it.price != null ? fmtCr(it.price) : '—'}
+                </span>
+                <button onClick={() => onDelete(it)} title="Delete item"
+                  className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"><TrashIcon /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {targetDiffers && (
+        <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between gap-3">
+          <p className="text-xs text-gray-500">Items add up to {fmtCr(total)}; goal target is {fmtCr(goal.target_amount || 0)}.</p>
+          <button onClick={() => onUseTotalAsTarget(total)} className="text-xs font-semibold shrink-0 hover:underline" style={{ color: accent }}>
+            Use {fmtCr(total)} as target
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Goal detail screen ───────────────────────────────────────────────────────
 const NUDGE_STYLE = {
   success: { bg: '#ecfdf5', border: '#a7f3d0', text: '#047857' },
@@ -1115,7 +1282,7 @@ function fmtDateTime(d) {
   return dt.toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' })
 }
 
-function GoalDetailScreen({ goal, linkedInvestments, contributions, syncing, onBack, onEdit, onAchieve, onAddContribution, onSyncAll }) {
+function GoalDetailScreen({ goal, linkedInvestments, contributions, items, syncing, onBack, onEdit, onAchieve, onAddContribution, onSyncAll, itemHandlers }) {
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
@@ -1264,6 +1431,8 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, syncing, onB
         )}
       </div>
 
+      {!isDebt && <GoalItemsSection goal={goal} items={items} accent={accent} {...itemHandlers} />}
+
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
         <h2 className="font-semibold text-gray-800 mb-3">Where the Money Sits</h2>
         <div className="flex items-center justify-between">
@@ -1351,9 +1520,6 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, syncing, onB
 }
 
 // ── Main Goals page ──────────────────────────────────────────────────────────
-// Inner content is exported as <GoalsContent /> so the unified Goals & Wishlist
-// page can render it verbatim inside its "Goals" section. The default export is
-// a thin wrapper kept for the standalone route / fallback alias.
 export function GoalsContent() {
   const [goals, setGoals] = useState([])
   const [investments, setInvestments] = useState([])
@@ -1367,6 +1533,8 @@ export function GoalsContent() {
   const [showWizard, setShowWizard] = useState(false)
   const [editGoal, setEditGoal] = useState(null)
   const [contribGoal, setContribGoal] = useState(null)
+  const [items, setItems] = useState([])
+  const [itemModal, setItemModal] = useState(null) // null | {} (new) | item (edit)
   const [toast, setToast] = useState(null)
 
   const showToast = (msg, type = 'ok') => {
@@ -1403,6 +1571,8 @@ export function GoalsContent() {
     setSelectedGoal(goal)
     setContributions([])
     setDetailInvestments([])
+    setItems([])
+    bridge.getGoalItems(goal.id).then(r => setItems(r || [])).catch(e => console.error(e))
     if (!IS_ELECTRON) {
       try { setContributions((await bridge.getGoalContributions(goal.id)) || []) } catch (e) { console.error(e) }
       return
@@ -1426,7 +1596,7 @@ export function GoalsContent() {
     } catch (e) { console.error(e) }
   }, [])
 
-  const closeDetail = () => { setSelectedGoal(null); setContributions([]); setDetailInvestments([]) }
+  const closeDetail = () => { setSelectedGoal(null); setContributions([]); setDetailInvestments([]); setItems([]) }
   const openWizard = (goal = null) => { setEditGoal(goal); setShowWizard(true) }
   const closeWizard = () => { setEditGoal(null); setShowWizard(false) }
   const openContribution = (goal) => setContribGoal(goal)
@@ -1516,6 +1686,57 @@ export function GoalsContent() {
     }
   }
 
+  const reloadItems = async (goalId) => {
+    setItems((await bridge.getGoalItems(goalId)) || [])
+    setGoals((await bridge.getAllGoals()) || [])
+  }
+
+  const runItemAction = async (fn, goalId, okMsg) => {
+    try {
+      await fn()
+    } catch (e) {
+      console.error(e)
+      showToast('Could not save item', 'error')
+      return false
+    }
+    if (okMsg) showToast(okMsg)
+    await reloadItems(goalId)
+    return true
+  }
+
+  const handleSaveItem = async (data) => {
+    const ok = await runItemAction(
+      () => (data.id ? bridge.updateGoalItem(data) : bridge.createGoalItem(data)),
+      data.goal_id,
+      data.id ? 'Item updated' : 'Item added',
+    )
+    if (ok) setItemModal(null)
+  }
+
+  const itemHandlers = selectedGoal && {
+    onAdd: () => setItemModal({}),
+    onEdit: (it) => setItemModal(it),
+    onToggle: (it) => runItemAction(
+      () => bridge.updateGoalItem({ ...it, is_purchased: !it.is_purchased }), it.goal_id,
+    ),
+    onDelete: (it) => {
+      if (!window.confirm(`Remove "${it.name}" from this goal?`)) return
+      runItemAction(() => bridge.deleteGoalItem(it), it.goal_id, 'Item removed')
+    },
+    onUseTotalAsTarget: async (total) => {
+      const live = goals.find(g => g.id === selectedGoal.id) || selectedGoal
+      try {
+        await bridge.updateGoal({ ...live, target_amount: Math.round(total) })
+      } catch (e) {
+        console.error(e)
+        showToast('Could not update target', 'error')
+        return
+      }
+      showToast(`Target set to ${fmtCr(total)}`)
+      await load()
+    },
+  }
+
   const sorted = useMemo(() => {
     const active = goals.filter(g => !g.is_achieved)
     const achieved = goals.filter(g => g.is_achieved)
@@ -1545,6 +1766,8 @@ export function GoalsContent() {
           goal={live}
           linkedInvestments={detailInvestments}
           contributions={contributions}
+          items={items}
+          itemHandlers={itemHandlers}
           syncing={syncing}
           onBack={closeDetail}
           onEdit={() => openWizard(live)}
@@ -1557,6 +1780,9 @@ export function GoalsContent() {
         )}
         {contribGoal && (
           <AddContributionModal goal={contribGoal} onSave={handleAddContribution} onClose={closeContribution} />
+        )}
+        {itemModal && (
+          <GoalItemModal goal={live} item={itemModal} onSave={handleSaveItem} onClose={() => setItemModal(null)} />
         )}
         {toast && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white animate-in"
@@ -1635,6 +1861,12 @@ export function GoalsContent() {
       )}
       {contribGoal && (
         <AddContributionModal goal={contribGoal} onSave={handleAddContribution} onClose={closeContribution} />
+      )}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white animate-in"
+          style={{ backgroundColor: toast.type === 'error' ? '#EF4444' : toast.type === 'warn' ? '#F59E0B' : '#10B981' }}>
+          {toast.type === 'error' ? '✗' : '✓'} {toast.msg}
+        </div>
       )}
     </div>
   )

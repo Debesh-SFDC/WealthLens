@@ -555,7 +555,12 @@ function setupIpcHandlers() {
 
   // ── Goals ─────────────────────────────────────────────────────────────────
   ipcMain.handle('goals:getAll', () => {
-    return db.prepare('SELECT * FROM goals WHERE deleted_at IS NULL ORDER BY created_at DESC').all()
+    return db.prepare(`
+      SELECT g.*,
+        (SELECT COUNT(*) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL) AS item_count,
+        (SELECT COUNT(*) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL AND i.is_purchased = 1) AS item_bought_count
+      FROM goals g WHERE g.deleted_at IS NULL ORDER BY g.created_at DESC
+    `).all()
   })
 
   ipcMain.handle('goals:create', (_, d) => {
@@ -681,6 +686,43 @@ function setupIpcHandlers() {
         .run(d.amount, deviceId, d.goal_id)
     })
     tx()
+    return { success: true }
+  })
+
+  // ── Goal items — the shopping checklist inside a goal ─────────────────────
+  ipcMain.handle('goalItems:getAll', (_, goalId) => {
+    return db.prepare(
+      'SELECT * FROM goal_items WHERE goal_id = ? AND deleted_at IS NULL ORDER BY is_purchased ASC, id ASC'
+    ).all(goalId)
+  })
+
+  ipcMain.handle('goalItems:create', (_, d = {}) => {
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      INSERT INTO goal_items (sync_id, goal_id, name, brand, url, price, priority, notes, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(randomUUID(), d.goal_id, String(d.name || '').trim(), d.brand || null, d.url || null,
+      d.price === '' || d.price == null ? null : Number(d.price), d.priority || 'medium', d.notes || null, now, now)
+    return { id: info.lastInsertRowid }
+  })
+
+  ipcMain.handle('goalItems:update', (_, d = {}) => {
+    const now = new Date().toISOString()
+    const purchased = d.is_purchased ? 1 : 0
+    db.prepare(`
+      UPDATE goal_items SET name = ?, brand = ?, url = ?, price = ?, priority = ?, notes = ?,
+        is_purchased = ?, purchased_at = ?, updated_at = ?
+      WHERE id = ? AND goal_id = ?
+    `).run(String(d.name || '').trim(), d.brand || null, d.url || null,
+      d.price === '' || d.price == null ? null : Number(d.price), d.priority || 'medium', d.notes || null,
+      purchased, purchased ? (d.purchased_at || now) : null, now, d.id, d.goal_id)
+    return { success: true }
+  })
+
+  ipcMain.handle('goalItems:delete', (_, d = {}) => {
+    const now = new Date().toISOString()
+    db.prepare('UPDATE goal_items SET deleted_at = ?, updated_at = ? WHERE id = ? AND goal_id = ?')
+      .run(now, now, d.id, d.goal_id)
     return { success: true }
   })
 

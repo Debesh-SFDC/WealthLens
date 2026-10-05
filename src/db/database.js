@@ -47,6 +47,7 @@ export function initDatabase() {
   createTasksTable()
   seedPlanningGoals()
   seedDreamVehicles()
+  migrateWishlistToGoals()
   return db
 }
 
@@ -1304,6 +1305,122 @@ Trigger: Retired + Own house built.`,
       now, now
     )
   }
+}
+
+// Wishlist → Goals merge. Each admin wishlist collection becomes a "Want" goal
+// (with its own contribution bank) and its items move into goal_items as a
+// checklist. The wishlist_* tables are left untouched as an archive. Guarded by
+// goals.source_collection_id / goal_items.source_wishlist_item_id so it runs
+// once per collection/item, even after the resulting goal is edited or deleted.
+// Mirrors the same step in scripts/setup-postgres.sql.
+function migrateWishlistToGoals() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS goal_items (
+      id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id                 TEXT UNIQUE,
+      goal_id                 INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+      name                    TEXT NOT NULL,
+      brand                   TEXT,
+      url                     TEXT,
+      price                   REAL,
+      priority                TEXT DEFAULT 'medium' CHECK (priority IN ('high','medium','low')),
+      is_purchased            INTEGER DEFAULT 0,
+      purchased_at            TEXT,
+      notes                   TEXT,
+      sort_order              INTEGER DEFAULT 0,
+      source_wishlist_item_id INTEGER UNIQUE,
+      created_at              TEXT,
+      updated_at              TEXT,
+      deleted_at              TEXT
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_goal_items_goal ON goal_items(goal_id)') } catch {}
+  try { db.exec('ALTER TABLE goals ADD COLUMN source_collection_id INTEGER') } catch {}
+
+  const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+  if (!admin) return
+  const uid = admin.id
+  const now = new Date().toISOString()
+
+  const liveItems = db.prepare(
+    "SELECT * FROM wishlist_items WHERE user_id = ? AND deleted_at IS NULL AND status <> 'dropped' ORDER BY id"
+  ).all(uid)
+  if (liveItems.length === 0) return
+
+  const goalByTitle = db.prepare('SELECT id FROM goals WHERE title = ? AND deleted_at IS NULL ORDER BY id LIMIT 1')
+  const goalBySource = db.prepare('SELECT id FROM goals WHERE source_collection_id = ? AND deleted_at IS NULL ORDER BY id LIMIT 1')
+  const sourceEverMigrated = db.prepare('SELECT 1 FROM goals WHERE source_collection_id = ?')
+  const linkedGoal = db.prepare(`
+    SELECT MIN(l.goal_id) AS id FROM goal_wishlist_links l
+    JOIN goals g ON g.id = l.goal_id AND g.deleted_at IS NULL
+    WHERE l.collection_id = ?
+  `)
+  const itemMigrated = db.prepare('SELECT 1 FROM goal_items WHERE source_wishlist_item_id = ?')
+  const insertGoal = db.prepare(`
+    INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount,
+      emoji, color, notes, source_collection_id, created_at, updated_at)
+    VALUES (?, ?, 'custom', 'want', ?, 0, ?, ?, ?, ?, ?, ?)
+  `)
+  const insertItem = db.prepare(`
+    INSERT INTO goal_items (sync_id, goal_id, name, brand, url, price, priority, is_purchased,
+      notes, sort_order, source_wishlist_item_id, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+
+  const DREAM_FUNDS = [
+    ['Dream All-India Tourer', 'Dream Bike Fund — All India Tourer'],
+    ['Dream Family Road Trip SUV', 'Dream Car Fund — Family Road Trip SUV'],
+  ]
+  // Collections that duplicate a goal that already exists — fold into it.
+  const COLLECTION_GOALS = { 'Ford EcoSport': 'EcoSport Repainting', 'Gaming PC': 'Work + Gaming Setup' }
+  const collectionName = db.prepare('SELECT name FROM wishlist_collections WHERE id = ?')
+  const existingGoalFor = (collId) => {
+    const title = COLLECTION_GOALS[collectionName.get(collId)?.name]
+    return title ? goalByTitle.get(title)?.id : undefined
+  }
+  const dreamGoalFor = (item) => {
+    const match = DREAM_FUNDS.find(([prefix]) => (item.name || '').startsWith(prefix))
+    return match ? goalByTitle.get(match[1])?.id : undefined
+  }
+
+  const tx = db.transaction(() => {
+    // Group live items by collection (0 = uncategorised).
+    const byCollection = new Map()
+    for (const it of liveItems) {
+      const key = it.collection_id || 0
+      if (!byCollection.has(key)) byCollection.set(key, [])
+      byCollection.get(key).push(it)
+    }
+
+    // Step 1: one goal per collection that needs one.
+    for (const [collId, items] of byCollection) {
+      if (sourceEverMigrated.get(collId)) continue
+      if (collId && (linkedGoal.get(collId)?.id || existingGoalFor(collId))) continue
+      if (items.every(it => dreamGoalFor(it))) continue
+      const coll = collId
+        ? db.prepare('SELECT * FROM wishlist_collections WHERE id = ? AND deleted_at IS NULL').get(collId)
+        : { name: 'Wishlist — Misc', emoji: '🛍️', color: '#EC4899', description: null }
+      if (!coll) continue
+      const total = items.reduce((s, it) => s + (Number(it.price) || 0), 0)
+      insertGoal.run(randomUUID(), coll.name, total, coll.emoji, coll.color, coll.description ?? null, collId, now, now)
+    }
+
+    // Step 2: copy each item into its goal.
+    for (const it of liveItems) {
+      if (itemMigrated.get(it.id)) continue
+      const collId = it.collection_id || 0
+      const goalId = dreamGoalFor(it)
+        ?? (collId ? linkedGoal.get(collId)?.id ?? existingGoalFor(collId) : null)
+        ?? goalBySource.get(collId)?.id
+      if (!goalId) continue
+      insertItem.run(
+        randomUUID(), goalId, it.name, it.brand ?? null, it.url ?? null, it.price ?? null,
+        it.priority || 'medium', it.status === 'purchased' ? 1 : 0, it.notes ?? null,
+        it.id, it.id, now, now
+      )
+    }
+  })
+  tx()
 }
 
 export function logSyncEvent(db, { deviceId, status, rowsUploaded = 0, rowsDownloaded = 0, errorMessage = null }) {

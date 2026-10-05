@@ -50,6 +50,18 @@ const bridge = {
   deleteGoalContribution: (data) => IS_ELECTRON
     ? window.electronAPI.deleteGoalContribution(data)
     : webCall('DELETE', `/goals/${data.goal_id}/contributions/${data.id}`),
+  getGoalItems: (goalId) => IS_ELECTRON
+    ? window.electronAPI.getGoalItems(goalId)
+    : webCall('GET', `/goals/${goalId}/items`),
+  createGoalItem: (data) => IS_ELECTRON
+    ? window.electronAPI.createGoalItem(data)
+    : webCall('POST', `/goals/${data.goal_id}/items`, data),
+  updateGoalItem: (data) => IS_ELECTRON
+    ? window.electronAPI.updateGoalItem(data)
+    : webCall('PUT', `/goals/${data.goal_id}/items/${data.id}`, data),
+  deleteGoalItem: (data) => IS_ELECTRON
+    ? window.electronAPI.deleteGoalItem(data)
+    : webCall('DELETE', `/goals/${data.goal_id}/items/${data.id}`),
 
   // Investments — real preload names
   getAllInvestments: (goalId) => IS_ELECTRON

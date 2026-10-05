@@ -4,12 +4,17 @@ const { getDb } = require('../db')
 
 const router = express.Router()
 
+// Goals plus their checklist counts (CAST keeps Postgres COUNT from coming back as a string).
+const GOALS_WITH_ITEM_COUNTS = `
+  SELECT g.*,
+    (SELECT CAST(COUNT(*) AS INTEGER) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL) AS item_count,
+    (SELECT CAST(COUNT(*) AS INTEGER) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL AND i.is_purchased = 1) AS item_bought_count
+  FROM goals g WHERE g.deleted_at IS NULL ORDER BY g.created_at DESC`
+
 // GET /api/goals — mirrors goals:getAll
 router.get('/', async (req, res) => {
   const db = getDb()
-  const { rows } = await db.query(
-    'SELECT * FROM goals WHERE deleted_at IS NULL ORDER BY created_at DESC'
-  )
+  const { rows } = await db.query(GOALS_WITH_ITEM_COUNTS)
   res.json(rows)
 })
 
@@ -111,6 +116,59 @@ router.delete('/:id/contributions/:cid', async (req, res) => {
     'UPDATE goals SET current_amount = COALESCE(current_amount, 0) - ?, updated_at = ? WHERE id = ?',
     [rows[0].amount, now, req.params.id]
   )
+  res.json({ success: true })
+})
+
+// ── Goal items — the shopping checklist inside a goal ───────────────────────
+// GET /api/goals/:id/items — mirrors goalItems:getAll
+router.get('/:id/items', async (req, res) => {
+  const db = getDb()
+  const { rows } = await db.query(
+    'SELECT * FROM goal_items WHERE goal_id = ? AND deleted_at IS NULL ORDER BY is_purchased ASC, id ASC',
+    [req.params.id]
+  )
+  res.json(rows)
+})
+
+// POST /api/goals/:id/items — mirrors goalItems:create
+router.post('/:id/items', async (req, res) => {
+  const d = req.body || {}
+  if (!d.name || !String(d.name).trim()) return res.status(400).json({ error: 'name is required' })
+  const db = getDb()
+  const now = new Date().toISOString()
+  const { rows } = await db.query(
+    `INSERT INTO goal_items (sync_id, goal_id, name, brand, url, price, priority, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING id`,
+    [randomUUID(), req.params.id, String(d.name).trim(), d.brand || null, d.url || null,
+      d.price === '' || d.price == null ? null : Number(d.price), d.priority || 'medium', d.notes || null, now, now]
+  )
+  res.json({ id: rows[0].id })
+})
+
+// PUT /api/goals/:id/items/:itemId — mirrors goalItems:update
+router.put('/:id/items/:itemId', async (req, res) => {
+  const d = req.body || {}
+  const db = getDb()
+  const now = new Date().toISOString()
+  const purchased = d.is_purchased ? 1 : 0
+  await db.query(
+    `UPDATE goal_items SET name = ?, brand = ?, url = ?, price = ?, priority = ?, notes = ?,
+       is_purchased = ?, purchased_at = ?, updated_at = ?
+     WHERE id = ? AND goal_id = ?`,
+    [String(d.name || '').trim(), d.brand || null, d.url || null,
+      d.price === '' || d.price == null ? null : Number(d.price), d.priority || 'medium', d.notes || null,
+      purchased, purchased ? (d.purchased_at || now) : null, now, req.params.itemId, req.params.id]
+  )
+  res.json({ success: true })
+})
+
+// DELETE /api/goals/:id/items/:itemId — mirrors goalItems:delete (soft delete)
+router.delete('/:id/items/:itemId', async (req, res) => {
+  const db = getDb()
+  const now = new Date().toISOString()
+  await db.query('UPDATE goal_items SET deleted_at = ?, updated_at = ? WHERE id = ? AND goal_id = ?',
+    [now, now, req.params.itemId, req.params.id])
   res.json({ success: true })
 })
 

@@ -1,8 +1,8 @@
 const PAGE_TITLES = {
   dashboard:   'Dashboard',
-  'goals-wishlist': 'Goals & Wishlist',
-  goals:       'Goals & Wishlist',
-  wishlist:    'Goals & Wishlist',
+  'goals-wishlist': 'Goals',
+  goals:       'Goals',
+  wishlist:    'Goals',
   investments: 'Investments',
   expenses:    'Expenses',
   salary:      'Salary Allocator',

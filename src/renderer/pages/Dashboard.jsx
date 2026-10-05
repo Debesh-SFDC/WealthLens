@@ -418,7 +418,7 @@ export default function Dashboard({ onNavigate, currentUser }) {
     latestWeight: null, weightLogs: [], heightCm: 0, totalInvested: 0, activeGoals: 0, netWorth: 0,
   })
   const [categories, setCategories] = useState(DEFAULT_CATS)
-  const [gwSummary, setGwSummary]   = useState({ goalsActive: 0, collections: 0, planned: 0 })
+  const [gwSummary, setGwSummary]   = useState({ goalsActive: 0, planned: 0 })
   const [loading, setLoading]       = useState(true)
   const [showAddExpense, setShowAddExpense] = useState(false)
   const [showLogWeight, setShowLogWeight]   = useState(false)
@@ -431,13 +431,12 @@ export default function Dashboard({ onNavigate, currentUser }) {
   async function loadData() {
     setLoading(true)
     try {
-      const [s, profile, session, cats, goals, collections] = await Promise.all([
+      const [s, profile, session, cats, goals] = await Promise.all([
         bridge.getDashboardStats(),
         bridge.getProfile(),
         IS_ELECTRON ? window.electronAPI.getSession() : null,
         bridge.getExpenseCategories(),
         isTracker ? Promise.resolve([]) : bridge.getAllGoals().catch(() => []),
-        bridge.getWishlistCollections().catch(() => []),
       ])
       setStats(s || {})
       setProfileName(profile?.name || '')
@@ -446,9 +445,7 @@ export default function Dashboard({ onNavigate, currentUser }) {
       const activeGoals = (goals || []).filter(g => !g.is_achieved)
       setGwSummary({
         goalsActive: activeGoals.length,
-        collections: (collections || []).length,
-        planned: activeGoals.reduce((t, g) => t + (Number(g.target_amount) || 0), 0)
-          + (collections || []).reduce((t, c) => t + (Number(c.total_value) || 0), 0),
+        planned: activeGoals.reduce((t, g) => t + (Number(g.target_amount) || 0), 0),
       })
     } catch (e) {
       console.error(e)
@@ -555,8 +552,8 @@ export default function Dashboard({ onNavigate, currentUser }) {
           {/* 6. Secondary chips row — horizontally scrollable */}
           <div className="flex gap-2 overflow-x-auto -mx-3 px-3 sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' }}>
             <Chip icon="💰" label={`Invested ${fmtCompact(stats.totalInvested)}`} />
-            <Chip icon="🎯" label={`${gwSummary.goalsActive} goals • ${gwSummary.collections} wish collections`} />
-            <Chip icon="🧮" label={`Planned ${fmtCompact(gwSummary.planned)} across both`} />
+            <Chip icon="🎯" label={`${gwSummary.goalsActive} active goals`} />
+            <Chip icon="🧮" label={`Planned ${fmtCompact(gwSummary.planned)} across goals`} />
             <Chip icon="📈" label={`Net Worth ${fmtCompact(stats.netWorth)}`} />
           </div>
         </>

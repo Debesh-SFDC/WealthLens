@@ -37,7 +37,7 @@ const navItems = [
   },
   {
     id: 'goals-wishlist',
-    label: 'Goals & Wishlist',
+    label: 'Goals',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
         <circle cx="12" cy="12" r="9" />

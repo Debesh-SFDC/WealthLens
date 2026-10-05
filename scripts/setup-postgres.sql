@@ -732,3 +732,98 @@ CREATE TABLE IF NOT EXISTS tasks (
   updated_at  TEXT DEFAULT (now()::text)
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id);
+
+-- ── Goal items — the shopping checklist inside a goal ───────────────────────
+-- Replaces the standalone Wishlist: each wishlist collection became a "Want"
+-- goal (with its own contribution bank) and its items live here. The old
+-- wishlist_* tables are left untouched as an archive.
+CREATE TABLE IF NOT EXISTS goal_items (
+  id                      SERIAL PRIMARY KEY,
+  sync_id                 TEXT UNIQUE,
+  goal_id                 INTEGER NOT NULL REFERENCES goals(id) ON DELETE CASCADE,
+  name                    TEXT NOT NULL,
+  brand                   TEXT,
+  url                     TEXT,
+  price                   REAL,
+  priority                TEXT DEFAULT 'medium' CHECK (priority IN ('high','medium','low')),
+  is_purchased            INTEGER DEFAULT 0,
+  purchased_at            TEXT,
+  notes                   TEXT,
+  sort_order              INTEGER DEFAULT 0,
+  source_wishlist_item_id INTEGER UNIQUE,
+  created_at              TEXT,
+  updated_at              TEXT,
+  deleted_at              TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_goal_items_goal ON goal_items(goal_id);
+
+-- Which wishlist collection a goal was migrated from (0 = uncategorised items).
+-- Guards the migration below so it runs once per collection, even after the
+-- user edits or deletes the resulting goal.
+ALTER TABLE goals ADD COLUMN IF NOT EXISTS source_collection_id INTEGER;
+
+-- Step 1: one "Want" goal per admin collection that has live items and isn't
+-- already covered by a goal — either linked to one, or one of the collections
+-- that duplicate an existing goal (Ford EcoSport → EcoSport Repainting, Gaming
+-- PC → Work + Gaming Setup). Items matching the Dream Bike / Dream Car funds
+-- attach to those instead, so Dream Vehicles gets no goal of its own.
+INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount,
+  emoji, color, notes, source_collection_id, created_at, updated_at)
+SELECT md5(random()::text || c.id::text), c.name, 'custom', 'want',
+  COALESCE((SELECT SUM(COALESCE(i.price, 0)) FROM wishlist_items i
+            WHERE i.collection_id = c.id AND i.deleted_at IS NULL AND i.status <> 'dropped'), 0),
+  0, c.emoji, c.color, c.description, c.id, now()::text, now()::text
+FROM wishlist_collections c
+WHERE c.user_id = 1 AND c.deleted_at IS NULL
+  -- at least one live item that won't attach to a Dream fund
+  AND EXISTS (
+    SELECT 1 FROM wishlist_items i
+    WHERE i.collection_id = c.id AND i.deleted_at IS NULL AND i.status <> 'dropped'
+      AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.deleted_at IS NULL AND g.title =
+        CASE WHEN i.name LIKE 'Dream All-India Tourer%' THEN 'Dream Bike Fund — All India Tourer'
+             WHEN i.name LIKE 'Dream Family Road Trip SUV%' THEN 'Dream Car Fund — Family Road Trip SUV' END))
+  AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.source_collection_id = c.id)
+  AND NOT EXISTS (SELECT 1 FROM goal_wishlist_links l JOIN goals g ON g.id = l.goal_id AND g.deleted_at IS NULL
+                  WHERE l.collection_id = c.id)
+  AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.deleted_at IS NULL AND g.title =
+                  CASE c.name WHEN 'Ford EcoSport' THEN 'EcoSport Repainting'
+                         WHEN 'Gaming PC' THEN 'Work + Gaming Setup' END);
+
+-- Uncategorised wishlist items get a single "Wishlist — Misc" goal.
+INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount,
+  emoji, color, source_collection_id, created_at, updated_at)
+SELECT md5(random()::text), 'Wishlist — Misc', 'custom', 'want',
+  COALESCE((SELECT SUM(COALESCE(i.price, 0)) FROM wishlist_items i
+            WHERE i.user_id = 1 AND i.collection_id IS NULL AND i.deleted_at IS NULL AND i.status <> 'dropped'), 0),
+  0, '🛍️', '#EC4899', 0, now()::text, now()::text
+WHERE EXISTS (SELECT 1 FROM wishlist_items i WHERE i.user_id = 1 AND i.collection_id IS NULL
+              AND i.deleted_at IS NULL AND i.status <> 'dropped')
+  AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.source_collection_id = 0);
+
+-- Step 2: copy every live item into its goal. Target goal, in order: the
+-- matching Dream fund, a goal already linked to the collection, the existing
+-- goal the collection duplicates, the goal migrated from the collection.
+INSERT INTO goal_items (sync_id, goal_id, name, brand, url, price, priority, is_purchased,
+  notes, sort_order, source_wishlist_item_id, created_at, updated_at)
+SELECT md5(random()::text || m.id::text), m.goal_id, m.name, m.brand, m.url, m.price, m.priority,
+  CASE WHEN m.status = 'purchased' THEN 1 ELSE 0 END, m.notes, m.id, m.id, now()::text, now()::text
+FROM (
+  SELECT i.*, COALESCE(
+    (SELECT g.id FROM goals g WHERE g.deleted_at IS NULL AND g.title =
+       CASE WHEN i.name LIKE 'Dream All-India Tourer%' THEN 'Dream Bike Fund — All India Tourer'
+            WHEN i.name LIKE 'Dream Family Road Trip SUV%' THEN 'Dream Car Fund — Family Road Trip SUV' END
+     ORDER BY g.id LIMIT 1),
+    (SELECT MIN(l.goal_id) FROM goal_wishlist_links l JOIN goals g ON g.id = l.goal_id AND g.deleted_at IS NULL
+     WHERE l.collection_id = i.collection_id),
+    (SELECT g.id FROM wishlist_collections c JOIN goals g ON g.deleted_at IS NULL AND g.title =
+                  CASE c.name WHEN 'Ford EcoSport' THEN 'EcoSport Repainting'
+                         WHEN 'Gaming PC' THEN 'Work + Gaming Setup' END
+     WHERE c.id = i.collection_id ORDER BY g.id LIMIT 1),
+    (SELECT g.id FROM goals g WHERE g.deleted_at IS NULL AND g.source_collection_id = COALESCE(i.collection_id, 0)
+     ORDER BY g.id LIMIT 1)
+  ) AS goal_id
+  FROM wishlist_items i
+  WHERE i.user_id = 1 AND i.deleted_at IS NULL AND i.status <> 'dropped'
+) m
+WHERE m.goal_id IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM goal_items gi WHERE gi.source_wishlist_item_id = m.id);

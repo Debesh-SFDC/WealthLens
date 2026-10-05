@@ -37,7 +37,7 @@ const TABS = [
 
 const MORE_ITEMS = [
   { id: 'tasks',    label: 'Tasks & Ideas' },
-  { id: 'goals-wishlist', label: 'Goals & Wishlist' },
+  { id: 'goals-wishlist', label: 'Goals' },
   { id: 'travel',   label: 'Travel' },
   { id: 'salary',  label: 'Salary Allocator' },
   { id: 'networth',label: 'Net Worth' },
