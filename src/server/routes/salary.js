@@ -43,7 +43,7 @@ router.get('/', async (req, res) => {
 // GET /api/salary-plans/active — mirrors plans:getActive
 router.get('/active', async (req, res) => {
   const db = getDb()
-  const { rows } = await db.query('SELECT * FROM salary_plans WHERE is_active = 1 LIMIT 1')
+  const { rows } = await db.query('SELECT * FROM salary_plans WHERE is_active = 1 AND deleted_at IS NULL LIMIT 1')
   res.json(await planWithItems(db, rows[0]))
 })
 
@@ -101,20 +101,79 @@ router.post('/', async (req, res) => {
   res.json({ id: planId })
 })
 
-// PUT /api/salary-plans/:id — mirrors plans:updateItems
+// Make one plan active and every other plan inactive in a single statement
+// (atomic on both engines — the adapter has no shared-connection transactions).
+// The profile salary follows the active plan, same as on create.
+async function activatePlan(db, planId, now) {
+  const { rows } = await db.query('SELECT * FROM salary_plans WHERE id = ? AND deleted_at IS NULL', [planId])
+  const plan = rows[0]
+  if (!plan) return null
+  await db.query(
+    'UPDATE salary_plans SET is_active = CASE WHEN id = ? THEN 1 ELSE 0 END, updated_at = ? WHERE id = ? OR is_active = 1',
+    [planId, now, planId]
+  )
+  const { rows: profRows } = await db.query('SELECT id FROM profile LIMIT 1')
+  if (profRows[0]) {
+    await db.query(
+      'UPDATE profile SET monthly_salary = ?, salary_updated_at = ?, updated_at = ? WHERE id = ?',
+      [plan.monthly_salary, now, now, profRows[0].id]
+    )
+  }
+  return plan
+}
+
+// POST /api/salary-plans/:id/clone — mirrors plans:clone (new plan is never auto-activated)
+router.post('/:id/clone', async (req, res) => {
+  const db = getDb()
+  const now = new Date().toISOString()
+  const { rows } = await db.query('SELECT * FROM salary_plans WHERE id = ? AND deleted_at IS NULL', [req.params.id])
+  const source = rows[0]
+  if (!source) return res.status(404).json({ error: 'Plan not found' })
+
+  const label = (req.body?.label || '').trim() || `Copy of ${source.label}`
+  const { rows: planRows } = await db.query(
+    `INSERT INTO salary_plans (sync_id, label, monthly_salary, effective_from, effective_to, is_active, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, NULL, 0, ?, ?, ?) RETURNING id`,
+    [randomUUID(), label, source.monthly_salary, new Date().toLocaleDateString('en-CA'), `Cloned from: ${source.label}`, now, now]
+  )
+  const newId = planRows[0].id
+
+  const { rows: items } = await db.query(
+    'SELECT * FROM salary_plan_items WHERE plan_id = ? AND deleted_at IS NULL ORDER BY sort_order',
+    [source.id]
+  )
+  for (const it of items) {
+    await db.query(
+      `INSERT INTO salary_plan_items (sync_id, plan_id, name, amount, category, bank_or_provider, sort_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [randomUUID(), newId, it.name, it.amount, it.category, it.bank_or_provider ?? null, it.sort_order, now, now]
+    )
+  }
+
+  const { rows: newRows } = await db.query('SELECT * FROM salary_plans WHERE id = ?', [newId])
+  res.json(await planWithItems(db, newRows[0]))
+})
+
+// PUT /api/salary-plans/:id — mirrors plans:updateItems, plus plans:setActive when { is_active: true }
 router.put('/:id', async (req, res) => {
-  const { items, monthly_salary, label } = req.body || {}
+  const { items, monthly_salary, label, is_active } = req.body || {}
   const db = getDb()
   const planId = req.params.id
   const now = new Date().toISOString()
+
+  if (is_active === true || is_active === 1) {
+    const plan = await activatePlan(db, planId, now)
+    if (!plan) return res.status(404).json({ error: 'Plan not found' })
+  }
 
   if (label != null) {
     await db.query('UPDATE salary_plans SET label = ?, updated_at = ? WHERE id = ?', [label, now, planId])
   }
   if (monthly_salary != null) {
     await db.query('UPDATE salary_plans SET monthly_salary = ?, updated_at = ? WHERE id = ?', [monthly_salary, now, planId])
+    const { rows: planRows } = await db.query('SELECT is_active FROM salary_plans WHERE id = ?', [planId])
     const { rows: profRows } = await db.query('SELECT id FROM profile LIMIT 1')
-    if (profRows[0]) {
+    if (planRows[0]?.is_active && profRows[0]) {
       await db.query(
         'UPDATE profile SET monthly_salary = ?, salary_updated_at = ?, updated_at = ? WHERE id = ?',
         [monthly_salary, now, now, profRows[0].id]
@@ -122,14 +181,18 @@ router.put('/:id', async (req, res) => {
     }
   }
 
-  await db.query('DELETE FROM salary_plan_items WHERE plan_id = ?', [planId])
-  let sortOrder = 0
-  for (const it of items || []) {
-    await db.query(
-      `INSERT INTO salary_plan_items (sync_id, plan_id, name, amount, category, bank_or_provider, sort_order, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [randomUUID(), planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, sortOrder++, now, now]
-    )
+  // Only replace line items when the caller sent them — an activate-only or
+  // label-only update must not wipe the plan's items.
+  if (Array.isArray(items)) {
+    await db.query('DELETE FROM salary_plan_items WHERE plan_id = ?', [planId])
+    let sortOrder = 0
+    for (const it of items) {
+      await db.query(
+        `INSERT INTO salary_plan_items (sync_id, plan_id, name, amount, category, bank_or_provider, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [randomUUID(), planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, sortOrder++, now, now]
+      )
+    }
   }
 
   res.json({ success: true })

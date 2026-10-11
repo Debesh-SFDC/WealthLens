@@ -124,6 +124,15 @@ const bridge = {
   updatePlanItems: (data) => IS_ELECTRON
     ? window.electronAPI.updatePlanItems(data)
     : webCall('PUT', `/salary-plans/${data.planId}`, data),
+  setActivePlan: (id) => IS_ELECTRON
+    ? window.electronAPI.setActivePlan(id)
+    : webCall('PUT', `/salary-plans/${id}`, { is_active: true }),
+  cloneSalaryPlan: (planId, label) => IS_ELECTRON
+    ? window.electronAPI.cloneSalaryPlan(planId, label)
+    : webCall('POST', `/salary-plans/${planId}/clone`, { label }),
+  deletePlan: (id) => IS_ELECTRON
+    ? window.electronAPI.deletePlan(id)
+    : webCall('DELETE', `/salary-plans/${id}`),
 
   // Profile — real preload names
   getProfile: () => IS_ELECTRON

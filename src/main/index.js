@@ -966,12 +966,12 @@ function setupIpcHandlers() {
   }
 
   ipcMain.handle('plans:getAll', () => {
-    const plans = db.prepare('SELECT * FROM salary_plans ORDER BY effective_from DESC').all()
+    const plans = db.prepare('SELECT * FROM salary_plans WHERE deleted_at IS NULL ORDER BY effective_from DESC').all()
     return plans.map(planSummary)
   })
 
   ipcMain.handle('plans:getActive', () => {
-    const plan = db.prepare('SELECT * FROM salary_plans WHERE is_active = 1 LIMIT 1').get()
+    const plan = db.prepare('SELECT * FROM salary_plans WHERE is_active = 1 AND deleted_at IS NULL LIMIT 1').get()
     return planWithItems(plan)
   })
 
@@ -1026,8 +1026,9 @@ function setupIpcHandlers() {
       if (monthly_salary != null) {
         db.prepare(`UPDATE salary_plans SET monthly_salary = ?, updated_at = datetime('now'), device_id = ? WHERE id = ?`)
           .run(monthly_salary, deviceId, planId)
+        const isActive = db.prepare('SELECT is_active FROM salary_plans WHERE id = ?').get(planId)?.is_active
         const prof = db.prepare('SELECT id FROM profile LIMIT 1').get()
-        if (prof) {
+        if (isActive && prof) {
           db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now'), updated_at = datetime('now'), device_id = ? WHERE id = ?`)
             .run(monthly_salary, deviceId, prof.id)
         }
@@ -1041,6 +1042,56 @@ function setupIpcHandlers() {
         ins.run(randomUUID(), planId, it.name, it.amount, it.category, it.bank_or_provider ?? null, i, deviceId)
       })
     })()
+    return { success: true }
+  })
+
+  // Only one plan can be active: flip every other active plan off, this one on.
+  // The profile salary follows the active plan, same as plans:create.
+  ipcMain.handle('plans:setActive', (_, id) => {
+    const deviceId = getOrCreateDeviceId()
+    return db.transaction(() => {
+      const plan = db.prepare('SELECT * FROM salary_plans WHERE id = ? AND deleted_at IS NULL').get(id)
+      if (!plan) throw new Error('Plan not found')
+      db.prepare(`UPDATE salary_plans SET is_active = 0, updated_at = datetime('now'), device_id = ? WHERE is_active = 1 AND id != ?`)
+        .run(deviceId, id)
+      db.prepare(`UPDATE salary_plans SET is_active = 1, updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+        .run(deviceId, id)
+      const prof = db.prepare('SELECT id FROM profile LIMIT 1').get()
+      if (prof) {
+        db.prepare(`UPDATE profile SET monthly_salary = ?, salary_updated_at = datetime('now'), updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+          .run(plan.monthly_salary, deviceId, prof.id)
+      }
+      return { success: true }
+    })()
+  })
+
+  // Copy a plan and all its line items into a new, inactive plan starting today.
+  ipcMain.handle('plans:clone', (_, { planId, label }) => {
+    const deviceId = getOrCreateDeviceId()
+    const newId = db.transaction(() => {
+      const source = db.prepare('SELECT * FROM salary_plans WHERE id = ? AND deleted_at IS NULL').get(planId)
+      if (!source) throw new Error('Plan not found')
+      const { lastInsertRowid } = db.prepare(
+        `INSERT INTO salary_plans (sync_id, label, monthly_salary, effective_from, effective_to, is_active, notes, updated_at, device_id)
+         VALUES (?, ?, ?, ?, NULL, 0, ?, datetime('now'), ?)`
+      ).run(randomUUID(), (label || '').trim() || `Copy of ${source.label}`, source.monthly_salary,
+        new Date().toLocaleDateString('en-CA'), `Cloned from: ${source.label}`, deviceId)
+      const items = db.prepare('SELECT * FROM salary_plan_items WHERE plan_id = ? AND deleted_at IS NULL ORDER BY sort_order').all(planId)
+      const ins = db.prepare(`
+        INSERT INTO salary_plan_items (sync_id, plan_id, name, amount, category, bank_or_provider, sort_order, updated_at, device_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), ?)
+      `)
+      for (const it of items) {
+        ins.run(randomUUID(), lastInsertRowid, it.name, it.amount, it.category, it.bank_or_provider ?? null, it.sort_order, deviceId)
+      }
+      return lastInsertRowid
+    })()
+    return planWithItems(db.prepare('SELECT * FROM salary_plans WHERE id = ?').get(newId))
+  })
+
+  ipcMain.handle('plans:delete', (_, id) => {
+    db.prepare(`UPDATE salary_plans SET deleted_at = datetime('now'), updated_at = datetime('now'), device_id = ? WHERE id = ?`)
+      .run(getOrCreateDeviceId(), id)
     return { success: true }
   })
 

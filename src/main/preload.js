@@ -64,6 +64,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getPlanById: (id) => ipcRenderer.invoke('plans:getById', id),
   createPlan: (data) => ipcRenderer.invoke('plans:create', data),
   updatePlanItems: (data) => ipcRenderer.invoke('plans:updateItems', data),
+  setActivePlan: (id) => ipcRenderer.invoke('plans:setActive', id),
+  cloneSalaryPlan: (planId, label) => ipcRenderer.invoke('plans:clone', { planId, label }),
+  deletePlan: (id) => ipcRenderer.invoke('plans:delete', id),
 
   // FIRE Planner
   getFireSettings: () => ipcRenderer.invoke('fire:getSettings'),

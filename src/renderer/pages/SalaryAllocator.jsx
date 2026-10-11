@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
+import Toast from '../components/Toast'
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
 const fmt = v => INR.format(v || 0)
@@ -596,7 +597,7 @@ function EditPlanModal({ plan, onUpdated, onClose }) {
       <div className="bg-white rounded-2xl w-[660px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">Edit Active Plan</h2>
+            <h2 className="text-lg font-bold text-gray-900">{plan.is_active ? 'Edit Active Plan' : 'Edit Plan'}</h2>
             <p className="text-xs text-gray-400 mt-0.5">{plan.label}</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
@@ -642,6 +643,65 @@ function EditPlanModal({ plan, onUpdated, onClose }) {
             className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
             style={{ backgroundColor: '#6C63FF' }}>
             {saving ? 'Saving…' : '✓ Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Clone Plan Modal ──────────────────────────────────────────────────────
+function ClonePlanModal({ plan, onCloned, onClose }) {
+  const [label, setLabel] = useState(`Copy of ${plan.label}`)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleClone() {
+    if (!label.trim()) return
+    setSaving(true)
+    setError('')
+    try {
+      const cloned = await bridge.cloneSalaryPlan(plan.id, label.trim())
+      onCloned(cloned)
+    } catch (e) {
+      console.error(e)
+      setError('Could not clone plan. Please try again.')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-white rounded-2xl w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Clone Plan</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{plan.label} · {plan.itemCount ?? plan.items?.length ?? 0} line items</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
+            <CloseIcon />
+          </button>
+        </div>
+        <div className="px-6 py-5">
+          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">New plan name</label>
+          <input type="text" value={label} autoFocus
+            onChange={e => setLabel(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleClone()}
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+          />
+          <p className="text-xs text-gray-400 mt-2">The copy starts today and stays inactive until you set it as active.</p>
+          {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
+        </div>
+        <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+          <button onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={handleClone} disabled={saving || !label.trim()}
+            className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+            style={{ backgroundColor: '#6C63FF' }}>
+            {saving ? 'Cloning…' : '📋 Clone Plan'}
           </button>
         </div>
       </div>
@@ -738,8 +798,15 @@ function CompareView({ plan1, plan2, onClose }) {
 }
 
 // ── Plan History List ─────────────────────────────────────────────────────
-function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare }) {
+function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare, onActivate, onEdit, onClone, onDelete }) {
   const [selectedIds, setSelectedIds] = useState([])
+  const [busyId, setBusyId] = useState(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null)
+
+  async function runBusy(id, fn) {
+    setBusyId(id)
+    try { await fn() } finally { setBusyId(null) }
+  }
 
   const toggleSelect = (id) => {
     setSelectedIds(prev => {
@@ -790,8 +857,16 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare })
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <p className="font-semibold text-gray-900">{plan.label}</p>
-                    {isActive && (
-                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-[#6C63FF]/10 text-[#6C63FF]">Active</span>
+                    {isActive ? (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Active ✓</span>
+                    ) : (
+                      <button
+                        onClick={() => runBusy(plan.id, () => onActivate(plan))}
+                        disabled={busyId === plan.id}
+                        className="px-2 py-0.5 rounded-full text-xs font-semibold text-emerald-700 border border-emerald-300 hover:bg-emerald-50 disabled:opacity-50 transition-colors"
+                      >
+                        {busyId === plan.id ? 'Activating…' : 'Set as Active'}
+                      </button>
                     )}
                   </div>
                   <p className="text-xs text-gray-500">
@@ -808,10 +883,6 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare })
                     <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5 align-middle" />Invest: {fmt(plan.totalInvestment)}</p>
                   </div>
                   <div className="flex flex-col gap-2">
-                    <button onClick={() => onViewPlan(plan.id)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#6C63FF] border border-[#6C63FF]/20 hover:bg-[#6C63FF]/5 transition-colors">
-                      View
-                    </button>
                     <button
                       onClick={() => toggleSelect(plan.id)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
@@ -824,6 +895,41 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare })
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-50 flex-wrap">
+                <button onClick={() => onViewPlan(plan.id)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#6C63FF] border border-[#6C63FF]/20 hover:bg-[#6C63FF]/5 transition-colors">
+                  View
+                </button>
+                <button onClick={() => onEdit(plan.id)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+                  ✎ Edit
+                </button>
+                <button onClick={() => onClone(plan)}
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+                  📋 Clone
+                </button>
+                {!isActive && (confirmDeleteId === plan.id ? (
+                  <span className="flex items-center gap-2 text-xs text-gray-500">
+                    Delete this plan?
+                    <button
+                      onClick={() => runBusy(plan.id, async () => { await onDelete(plan); setConfirmDeleteId(null) })}
+                      disabled={busyId === plan.id}
+                      className="px-2.5 py-1.5 rounded-lg font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 transition-colors">
+                      Delete
+                    </button>
+                    <button onClick={() => setConfirmDeleteId(null)}
+                      className="px-2.5 py-1.5 rounded-lg font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+                      Cancel
+                    </button>
+                  </span>
+                ) : (
+                  <button onClick={() => setConfirmDeleteId(plan.id)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-500 border border-red-200 hover:bg-red-50 transition-colors">
+                    Delete
+                  </button>
+                ))}
               </div>
             </div>
           )
@@ -1440,7 +1546,13 @@ export default function SalaryAllocator() {
   const [profileSalary, setProfileSalary] = useState(0)
   const [view, setView]                 = useState('detail') // 'detail' | 'history' | 'viewPlan' | 'compare'
   const [showNewWizard, setShowNewWizard] = useState(false)
-  const [showEdit, setShowEdit]         = useState(false)
+  const [editingPlan, setEditingPlan]   = useState(null) // plan with items
+  const [cloningPlan, setCloningPlan]   = useState(null)
+  const [toast, setToast]               = useState({ visible: false, message: '', type: 'success' })
+
+  function showToast(message, type = 'success') {
+    setToast({ visible: true, message, type })
+  }
   const [viewingPlan, setViewingPlan]   = useState(null)
   const [comparePlans, setComparePlans] = useState(null) // [plan1, plan2]
 
@@ -1470,6 +1582,40 @@ export default function SalaryAllocator() {
     const plan = await bridge.getPlanById(id)
     setViewingPlan(plan)
     setView('viewPlan')
+  }
+
+  async function handleEditPlan(id) {
+    setEditingPlan(await bridge.getPlanById(id))
+  }
+
+  async function handleActivate(plan) {
+    try {
+      await bridge.setActivePlan(plan.id)
+      if (viewingPlan?.id === plan.id) setViewingPlan({ ...viewingPlan, is_active: 1 })
+      await loadData()
+      showToast('Plan activated ✓')
+    } catch (e) {
+      console.error(e)
+      showToast('Could not activate plan', 'error')
+    }
+  }
+
+  async function handleCloned(cloned) {
+    setCloningPlan(null)
+    await loadData()
+    showToast('Plan cloned! Edit it to make your changes.')
+    if (cloned?.id) setEditingPlan(cloned)
+  }
+
+  async function handleDelete(plan) {
+    try {
+      await bridge.deletePlan(plan.id)
+      await loadData()
+      showToast('Plan deleted')
+    } catch (e) {
+      console.error(e)
+      showToast('Could not delete plan', 'error')
+    }
   }
 
   async function handleCompare(ids) {
@@ -1520,7 +1666,7 @@ export default function SalaryAllocator() {
           plan={activePlan}
           investments={investments}
           profileSalary={profileSalary}
-          onEdit={() => setShowEdit(true)}
+          onEdit={() => setEditingPlan(activePlan)}
           onNewPlan={() => setShowNewWizard(true)}
           onHistory={() => setView('history')}
           onUpdated={loadData}
@@ -1534,6 +1680,10 @@ export default function SalaryAllocator() {
           onBack={() => setView('detail')}
           onViewPlan={handleViewPlan}
           onCompare={handleCompare}
+          onActivate={handleActivate}
+          onEdit={handleEditPlan}
+          onClone={setCloningPlan}
+          onDelete={handleDelete}
         />
       )}
 
@@ -1547,9 +1697,15 @@ export default function SalaryAllocator() {
             <div className="flex items-center gap-2">
               <h2 className="text-xl font-bold text-gray-900">{viewingPlan.label}</h2>
               {viewingPlan.is_active ? (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#6C63FF]/10 text-[#6C63FF]">Active</span>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">Active ✓</span>
               ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Inactive</span>
+                <>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-gray-100 text-gray-500">Inactive</span>
+                  <button onClick={() => handleActivate(viewingPlan)}
+                    className="px-2.5 py-0.5 rounded-full text-xs font-semibold text-emerald-700 border border-emerald-300 hover:bg-emerald-50 transition-colors">
+                    Set as Active
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -1581,13 +1737,34 @@ export default function SalaryAllocator() {
         />
       )}
 
-      {showEdit && activePlan && (
+      {editingPlan && (
         <EditPlanModal
-          plan={activePlan}
-          onUpdated={() => { setShowEdit(false); loadData() }}
-          onClose={() => setShowEdit(false)}
+          key={editingPlan.id}
+          plan={editingPlan}
+          onUpdated={async () => {
+            const id = editingPlan.id
+            setEditingPlan(null)
+            await loadData()
+            if (viewingPlan?.id === id) setViewingPlan(await bridge.getPlanById(id))
+          }}
+          onClose={() => setEditingPlan(null)}
         />
       )}
+
+      {cloningPlan && (
+        <ClonePlanModal
+          plan={cloningPlan}
+          onCloned={handleCloned}
+          onClose={() => setCloningPlan(null)}
+        />
+      )}
+
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => setToast(t => ({ ...t, visible: false }))}
+      />
     </div>
   )
 }
