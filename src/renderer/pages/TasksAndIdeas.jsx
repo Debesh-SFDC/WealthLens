@@ -50,8 +50,8 @@ function TaskModal({ initial, defaultType, onClose, onSaved }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl w-full max-w-[460px] shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-dark-card rounded-2xl w-full max-w-[460px] shadow-2xl overflow-hidden">
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">
             {editing ? 'Edit' : 'New'} {form.type === 'idea' ? 'Idea' : 'Task'}
@@ -68,18 +68,18 @@ function TaskModal({ initial, defaultType, onClose, onSaved }) {
               <button
                 key={id} type="button" onClick={() => set('type', id)}
                 className="flex-1 py-2 rounded-lg text-sm font-semibold transition-colors"
-                style={form.type === id ? { backgroundColor: '#fff', color: '#6C63FF', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' } : { color: '#6B7280' }}
+                style={form.type === id ? { backgroundColor: '#1A1A1A', color: '#D4AF37', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' } : { color: '#8A8A8A' }}
               >{label}</button>
             ))}
           </div>
           <input
             autoFocus placeholder="Title" value={form.title} onChange={e => set('title', e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-semibold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-semibold text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
           />
           <textarea
             rows={form.type === 'idea' ? 5 : 3} placeholder="Description (optional)"
             value={form.description} onChange={e => set('description', e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 resize-none focus:outline-none focus:border-[#6C63FF]"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 resize-none focus:outline-none focus:border-[#D4AF37]"
           />
           {form.type === 'task' && (
             <>
@@ -92,7 +92,7 @@ function TaskModal({ initial, defaultType, onClose, onSaved }) {
                       className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border text-sm font-semibold transition-colors"
                       style={form.priority === p.id
                         ? { borderColor: PRIORITY_COLORS[p.id], backgroundColor: PRIORITY_COLORS[p.id] + '15', color: PRIORITY_COLORS[p.id] }
-                        : { borderColor: '#E5E7EB', color: '#6B7280' }}
+                        : { borderColor: '#2A2A2A', color: '#8A8A8A' }}
                     >
                       <span className="w-2 h-2 rounded-full" style={{ backgroundColor: PRIORITY_COLORS[p.id] }} />
                       {p.label}
@@ -105,11 +105,11 @@ function TaskModal({ initial, defaultType, onClose, onSaved }) {
                 <div className="flex gap-2">
                   <input
                     type="date" value={form.date} onChange={e => set('date', e.target.value)}
-                    className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                    className="flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
                   />
                   <input
                     type="time" value={form.time} disabled={!form.date} onChange={e => set('time', e.target.value)}
-                    className="w-32 px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] disabled:opacity-40"
+                    className="w-32 px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] disabled:opacity-40"
                   />
                 </div>
                 <div className="flex gap-2 mt-2">
@@ -130,7 +130,7 @@ function TaskModal({ initial, defaultType, onClose, onSaved }) {
           {error && <p className="text-xs font-semibold text-red-500">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60" style={{ backgroundColor: '#6C63FF' }}>{saving ? 'Saving…' : editing ? 'Save' : 'Add'}</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>{saving ? 'Saving…' : editing ? 'Save' : 'Add'}</button>
           </div>
         </form>
       </div>
@@ -158,7 +158,7 @@ function RowMenu({ items }) {
         <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><circle cx="12" cy="5" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="12" cy="19" r="1.8"/></svg>
       </button>
       {open && (
-        <div className="absolute right-0 top-9 z-20 w-36 py-1 bg-white rounded-xl shadow-lg border border-gray-100">
+        <div className="absolute right-0 top-9 z-20 w-36 py-1 bg-dark-card rounded-xl shadow-lg border border-gray-100">
           {items.map(it => (
             <button
               key={it.label}
@@ -202,11 +202,11 @@ function TaskRow({ task, today, onToggle, onEdit, onDelete }) {
     >
       {/* Swipe-revealed actions sit underneath the card */}
       <div className="absolute inset-y-0 right-0 flex" style={{ visibility: revealed ? 'visible' : 'hidden' }}>
-        <button onClick={() => { setRevealed(false); onEdit(task) }} className="w-20 bg-[#6C63FF] text-white text-sm font-semibold">Edit</button>
+        <button onClick={() => { setRevealed(false); onEdit(task) }} className="w-20 bg-[#D4AF37] text-[#0A0A0A] text-sm font-semibold">Edit</button>
         <button onClick={() => { setRevealed(false); onDelete(task) }} className="w-20 bg-red-500 text-white text-sm font-semibold">Delete</button>
       </div>
       <div
-        className="relative flex items-start gap-3 px-3 py-3 bg-white border border-gray-100 rounded-xl transition-all duration-300"
+        className="relative flex items-start gap-3 px-3 py-3 bg-dark-card border border-gray-100 rounded-xl transition-all duration-300"
         style={{ transform: revealed ? 'translateX(-160px)' : 'none', opacity: done ? 0.55 : 1 }}
       >
         <button
@@ -214,12 +214,12 @@ function TaskRow({ task, today, onToggle, onEdit, onDelete }) {
           aria-label={done ? 'Mark as pending' : 'Mark as done'}
           className="mt-0.5 w-6 h-6 shrink-0 rounded-md border-2 flex items-center justify-center transition-all duration-300"
           style={{
-            borderColor: checked ? '#10B981' : '#D1D5DB',
-            backgroundColor: checked ? '#10B981' : 'transparent',
+            borderColor: checked ? '#2ECC71' : '#3A3A3A',
+            backgroundColor: checked ? '#2ECC71' : 'transparent',
             transform: completing ? 'scale(1.15)' : 'scale(1)',
           }}
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round"
+          <svg viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round"
             className="w-3.5 h-3.5 transition-opacity duration-200" style={{ opacity: checked ? 1 : 0 }}>
             <polyline points="20 6 9 17 4 12" />
           </svg>
@@ -227,20 +227,20 @@ function TaskRow({ task, today, onToggle, onEdit, onDelete }) {
         <div className="flex-1 min-w-0" onClick={() => !done && onEdit(task)} role="button">
           <p
             className="text-sm font-semibold text-gray-900 break-words line-through"
-            style={{ textDecorationColor: checked ? '#6B7280' : 'transparent', transition: 'text-decoration-color 0.3s ease' }}
+            style={{ textDecorationColor: checked ? '#8A8A8A' : 'transparent', transition: 'text-decoration-color 0.3s ease' }}
           >
             {task.title}
           </p>
           {task.description && !done && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{task.description}</p>}
           {(task.due_date || done) && (
-            <p className="text-xs mt-1 font-medium" style={{ color: overdue ? '#EF4444' : '#9CA3AF' }}>
+            <p className="text-xs mt-1 font-medium" style={{ color: overdue ? '#E74C3C' : '#6B6B6B' }}>
               {done
                 ? `Done ${task.done_at ? formatDue(localDateStr(new Date(task.done_at)), today) : ''}`
                 : `${overdue ? 'Overdue · ' : 'Due: '}${formatDue(task.due_date, today)}`}
             </p>
           )}
         </div>
-        <span className="mt-2 w-2 h-2 rounded-full shrink-0" title={`${task.priority} priority`} style={{ backgroundColor: PRIORITY_COLORS[task.priority] || '#D1D5DB' }} />
+        <span className="mt-2 w-2 h-2 rounded-full shrink-0" title={`${task.priority} priority`} style={{ backgroundColor: PRIORITY_COLORS[task.priority] || '#3A3A3A' }} />
         <div className="hidden lg:group-hover:flex items-center gap-1 shrink-0">
           {!done && <button onClick={() => onEdit(task)} className="px-2 py-1 rounded-md text-xs font-semibold text-gray-500 hover:bg-gray-100">Edit</button>}
           <button onClick={() => onDelete(task)} className="px-2 py-1 rounded-md text-xs font-semibold text-red-500 hover:bg-red-50">Delete</button>
@@ -258,7 +258,7 @@ function Section({ title, count, accent, children }) {
   return (
     <div>
       <div className="flex items-center gap-2 mb-2 px-1">
-        <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: accent || '#6B7280' }}>{title}</h3>
+        <h3 className="text-xs font-bold uppercase tracking-wider" style={{ color: accent || '#8A8A8A' }}>{title}</h3>
         <span className="text-xs font-semibold text-gray-400">{count}</span>
       </div>
       <div className="space-y-2">{children}</div>
@@ -287,9 +287,9 @@ function QuickInput({ type, onAdded, onError }) {
       <input
         value={text} onChange={e => setText(e.target.value)} enterKeyHint="done"
         placeholder={type === 'idea' ? '💡 Capture an idea… (Enter to save)' : '📝 Quick add a task… (Enter to save)'}
-        className="flex-1 min-w-0 h-12 sm:h-11 px-4 rounded-xl border border-gray-200 bg-white text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF]"
+        className="flex-1 min-w-0 h-12 sm:h-11 px-4 rounded-xl border border-gray-200 bg-dark-card text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 focus:border-[#D4AF37]"
       />
-      <button type="submit" disabled={!text.trim() || saving} className="shrink-0 h-12 sm:h-11 px-5 rounded-xl text-white text-sm font-bold disabled:opacity-40" style={{ backgroundColor: '#6C63FF' }}>Add</button>
+      <button type="submit" disabled={!text.trim() || saving} className="shrink-0 h-12 sm:h-11 px-5 rounded-xl text-[#0A0A0A] text-sm font-bold disabled:opacity-40" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>Add</button>
     </form>
   )
 }
@@ -374,17 +374,17 @@ export default function TasksAndIdeas() {
             <button
               key={id} onClick={() => setTab(id)}
               className="px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-1.5"
-              style={tab === id ? { backgroundColor: '#fff', color: '#1a1a2e', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } : { color: '#6B7280' }}
+              style={tab === id ? { backgroundColor: '#1A1A1A', color: '#F5F5F5', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' } : { color: '#8A8A8A' }}
             >
               {label}
-              {n > 0 && <span className="px-1.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: tab === id ? '#6C63FF' : '#D1D5DB', color: '#fff' }}>{n}</span>}
+              {n > 0 && <span className="px-1.5 rounded-full text-[10px] font-bold" style={{ backgroundColor: tab === id ? '#D4AF37' : '#3A3A3A', color: '#0A0A0A' }}>{n}</span>}
             </button>
           ))}
         </div>
         <button
           onClick={() => setModal({ type: tab === 'ideas' ? 'idea' : 'task' })}
-          className="h-10 px-4 rounded-xl text-white text-sm font-bold hover:opacity-90 flex items-center gap-1.5 shadow-sm"
-          style={{ backgroundColor: '#6C63FF' }}
+          className="h-10 px-4 rounded-xl text-[#0A0A0A] text-sm font-bold hover:opacity-90 flex items-center gap-1.5 shadow-sm"
+          style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
         >
           <span className="text-base leading-none">+</span> {tab === 'ideas' ? 'New Idea' : 'Add Task'}
         </button>
@@ -394,7 +394,7 @@ export default function TasksAndIdeas() {
 
       {loading ? (
         <div className="space-y-2">
-          {[0, 1, 2].map(i => <div key={i} className="h-16 bg-white rounded-xl border border-gray-100 animate-pulse" />)}
+          {[0, 1, 2].map(i => <div key={i} className="h-16 bg-dark-card rounded-xl border border-gray-100 animate-pulse" />)}
         </div>
       ) : tab === 'tasks' ? (
         <div className="space-y-6">
@@ -412,7 +412,7 @@ export default function TasksAndIdeas() {
             </div>
           )}
           {taskGroups.today.length > 0 && (
-            <Section title="Today" count={taskGroups.today.length} accent="#6C63FF">
+            <Section title="Today" count={taskGroups.today.length} accent="#D4AF37">
               {taskGroups.today.map(t => <TaskRow key={t.id} task={t} {...rowProps} />)}
             </Section>
           )}
@@ -427,7 +427,7 @@ export default function TasksAndIdeas() {
             </Section>
           )}
           {taskGroups.done.length > 0 && (
-            <Section title="Completed" count={taskGroups.done.length} accent="#10B981">
+            <Section title="Completed" count={taskGroups.done.length} accent="#2ECC71">
               {taskGroups.done.map(t => <TaskRow key={t.id} task={t} {...rowProps} />)}
             </Section>
           )}
@@ -440,7 +440,7 @@ export default function TasksAndIdeas() {
                 <button
                   key={id} onClick={() => setIdeaSort(id)}
                   className="px-3 py-1.5 rounded-full text-xs font-semibold transition-colors"
-                  style={ideaSort === id ? { backgroundColor: '#1a1a2e', color: '#fff' } : { backgroundColor: '#F3F4F6', color: '#6B7280' }}
+                  style={ideaSort === id ? { backgroundColor: '#D4AF37', color: '#0A0A0A' } : { backgroundColor: '#1A1A1A', color: '#8A8A8A' }}
                 >{label}</button>
               ))}
             </div>

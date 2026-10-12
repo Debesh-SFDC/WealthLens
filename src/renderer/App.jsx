@@ -205,7 +205,7 @@ export default function App() {
   const PageComponent = adminPages[activePage]
 
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
+    <div className="flex h-screen overflow-hidden bg-[#0A0A0A]">
       {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
       <Sidebar activePage={activePage} onNavigate={setActivePage} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">

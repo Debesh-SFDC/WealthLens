@@ -13,10 +13,10 @@ const PAGE_TITLES = {
 }
 
 const SYNC_META = {
-  synced:       { color: '#10B981', label: 'Synced with Google Drive' },
-  unsynced:     { color: '#F59E0B', label: 'Unsynced changes — backup recommended' },
-  failed:       { color: '#EF4444', label: 'Last backup failed' },
-  auth_expired: { color: '#EF4444', label: 'Drive disconnected — reconnect in Settings' },
+  synced:       { color: '#2ECC71', label: 'Synced with Google Drive' },
+  unsynced:     { color: '#F39C12', label: 'Unsynced changes — backup recommended' },
+  failed:       { color: '#E74C3C', label: 'Last backup failed' },
+  auth_expired: { color: '#E74C3C', label: 'Drive disconnected — reconnect in Settings' },
   disconnected: null,
 }
 
@@ -33,25 +33,25 @@ export default function TopBar({ activePage, profileName, syncStatus, onSignOut,
   const syncMeta = syncStatus ? SYNC_META[syncStatus.status] : null
 
   return (
-    <header className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4 bg-white border-b border-gray-100 shrink-0">
+    <header className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4 shrink-0" style={{ backgroundColor: '#0A0A0A', borderBottom: '1px solid #2A2A2A' }}>
       <div>
         <h1 className="text-lg sm:text-xl font-bold text-gray-900">{PAGE_TITLES[activePage]}</h1>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4">
         {/* Month/Year badge — hidden on mobile, Dashboard's own header already shows the date compactly */}
-        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-50 border border-gray-200">
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg" style={{ backgroundColor: '#1A1A1A', border: '1px solid #D4AF3750' }}>
           <svg
             viewBox="0 0 24 24" fill="none" stroke="currentColor"
             strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round"
-            className="w-4 h-4 text-gray-400"
+            className="w-4 h-4 text-[#D4AF37]"
           >
             <rect x="3" y="4" width="18" height="18" rx="2"/>
             <line x1="16" y1="2" x2="16" y2="6"/>
             <line x1="8" y1="2" x2="8" y2="6"/>
             <line x1="3" y1="10" x2="21" y2="10"/>
           </svg>
-          <span className="text-sm font-medium text-gray-600">{getMonthYear()}</span>
+          <span className="text-sm font-semibold text-[#D4AF37]">{getMonthYear()}</span>
         </div>
 
         {/* Drive sync status dot */}
@@ -84,7 +84,7 @@ export default function TopBar({ activePage, profileName, syncStatus, onSignOut,
           <button
             onClick={onDeskMode}
             title="Desk Mode"
-            className="flex items-center gap-1.5 h-8 px-2 sm:px-2.5 rounded-lg text-gray-500 hover:text-[#6C63FF] hover:bg-[#6C63FF]/10 transition-colors"
+            className="flex items-center gap-1.5 h-8 px-2 sm:px-2.5 rounded-lg text-gray-500 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
               <rect x="2" y="3" width="20" height="14" rx="2" />
@@ -98,11 +98,11 @@ export default function TopBar({ activePage, profileName, syncStatus, onSignOut,
         {/* Avatar */}
         <div className="flex items-center gap-2">
           {profileName && (
-            <span className="hidden sm:inline text-sm font-medium text-gray-600">{profileName}</span>
+            <span className="hidden sm:inline text-sm font-medium text-[#F5F5F5]">{profileName}</span>
           )}
           <div
-            className="flex items-center justify-center w-8 h-8 rounded-full text-white text-xs font-bold shrink-0"
-            style={{ backgroundColor: '#6C63FF' }}
+            className="flex items-center justify-center w-8 h-8 rounded-full text-[#0A0A0A] text-xs font-bold shrink-0"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)', boxShadow: '0 0 12px rgba(212,175,55,0.25)' }}
             title={profileName || 'User'}
           >
             {getInitials(profileName)}

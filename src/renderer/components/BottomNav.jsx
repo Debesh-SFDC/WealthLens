@@ -49,9 +49,10 @@ function TabButton({ active, onClick, icon, label }) {
   return (
     <button
       onClick={onClick}
-      className="flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-[44px] min-h-[44px]"
-      style={{ color: active ? '#6C63FF' : 'rgba(255,255,255,0.45)' }}
+      className="relative flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-[44px] min-h-[44px]"
+      style={{ color: active ? '#D4AF37' : '#404040' }}
     >
+      {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-b-full" style={{ backgroundColor: '#D4AF37', boxShadow: '0 0 10px rgba(212,175,55,0.6)' }} />}
       {icon}
       <span className="text-[10px] font-semibold">{label}</span>
     </button>
@@ -71,9 +72,9 @@ export default function BottomNav({ activePage, onNavigate }) {
     <>
       {moreOpen && (
         <div className="fixed inset-0 z-40 lg:hidden" onClick={() => setMoreOpen(false)}>
-          <div className="absolute inset-0 bg-black/40" />
+          <div className="absolute inset-0 bg-black/85" />
           <div
-            className="absolute bottom-[64px] left-0 right-0 bg-white rounded-t-2xl shadow-2xl overflow-hidden"
+            className="absolute bottom-[64px] left-0 right-0 bg-dark-card border-t border-x border-[#2A2A2A] rounded-t-2xl shadow-2xl overflow-hidden"
             onClick={e => e.stopPropagation()}
           >
             <div className="px-2 py-2">
@@ -83,8 +84,8 @@ export default function BottomNav({ activePage, onNavigate }) {
                   onClick={() => go(item.id)}
                   className="w-full flex items-center px-4 py-3.5 min-h-[44px] rounded-xl text-sm font-semibold transition-colors"
                   style={{
-                    backgroundColor: activePage === item.id ? '#F0EFFF' : 'transparent',
-                    color: activePage === item.id ? '#6C63FF' : '#374151',
+                    backgroundColor: activePage === item.id ? '#282416' : 'transparent',
+                    color: activePage === item.id ? '#D4AF37' : '#C4C4C4',
                   }}
                 >
                   {item.label}
@@ -97,7 +98,7 @@ export default function BottomNav({ activePage, onNavigate }) {
 
       <nav
         className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch h-16 lg:hidden"
-        style={{ backgroundColor: '#1a1a2e', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+        style={{ backgroundColor: '#050505', borderTop: '1px solid #2A2A2A' }}
       >
         {TABS.map(tab => (
           <TabButton

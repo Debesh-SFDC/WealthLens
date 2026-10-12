@@ -18,18 +18,18 @@
 
 /* ── Glass cards ─────────────────────────────────────────────────────────── */
 .desk-glass {
-  background: rgba(0, 0, 0, 0.3);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  backdrop-filter: blur(18px) saturate(140%);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(0, 0, 0, 0.6);
+  -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
+  border: 1px solid rgba(212, 175, 55, 0.2);
   border-radius: 24px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
 }
 .desk-scroll { overflow-y: auto; scrollbar-width: none; }
 .desk-scroll::-webkit-scrollbar { display: none; }
 
 .desk-input::placeholder { color: rgba(255, 255, 255, 0.55); }
-.desk-input:focus { outline: none; border-color: rgba(255, 255, 255, 0.5); }
+.desk-input:focus { outline: none; border-color: rgba(212, 175, 55, 0.7); box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15); }
 
 /* ── Layout: landscape = three columns, portrait/narrow = stacked ──────── */
 .desk-layout {
@@ -52,7 +52,11 @@
 .desk-area-tasks { grid-area: tasks; min-height: 0; }
 .desk-area-time  { grid-area: time;  min-height: 0; }
 .desk-area-ideas { grid-area: ideas; min-height: 0; }
-.desk-clock { font-size: clamp(4rem, 7vw, 6rem); }
+.desk-clock {
+  font-size: clamp(4rem, 7vw, 6rem);
+  color: #D4AF37;
+  text-shadow: 0 0 28px rgba(212, 175, 55, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
 
 /* Below lg the corner controls sit under the quick-add bar; at lg+ they sit
    beside it (the bar reserves room with lg:mr-[200px]). */

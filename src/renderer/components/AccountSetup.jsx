@@ -65,7 +65,7 @@ export default function AccountSetup({ onComplete }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: '#1a1a2e' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: '#0A0A0A' }}>
       <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center gap-3 justify-center mb-8">
           <AppLogoIcon size={40} />
@@ -79,8 +79,8 @@ export default function AccountSetup({ onComplete }) {
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
                   style={{
-                    backgroundColor: i < step ? '#22C55E' : i === step ? '#6C63FF' : 'rgba(255,255,255,0.1)',
-                    color: i <= step ? '#fff' : 'rgba(255,255,255,0.4)',
+                    backgroundColor: i < step ? '#22C55E' : i === step ? '#D4AF37' : 'rgba(255,255,255,0.1)',
+                    color: i <= step ? '#0A0A0A' : 'rgba(255,255,255,0.4)',
                   }}
                 >
                   {i < step ? '✓' : i + 1}
@@ -94,7 +94,7 @@ export default function AccountSetup({ onComplete }) {
           ))}
         </div>
 
-        <div className="bg-white rounded-2xl p-8 shadow-2xl mx-4">
+        <div className="bg-dark-card rounded-2xl p-8 shadow-2xl mx-4">
           {/* ── Step 0: Admin account ── */}
           {step === 0 && (
             <>
@@ -107,7 +107,7 @@ export default function AccountSetup({ onComplete }) {
                   <input
                     autoFocus type="text" placeholder="e.g. Rahul Sharma"
                     value={name} onChange={e => setName(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
                 <div>
@@ -115,7 +115,7 @@ export default function AccountSetup({ onComplete }) {
                   <input
                     type="tel" inputMode="numeric" placeholder="9000000001"
                     value={mobile} onChange={e => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -124,7 +124,7 @@ export default function AccountSetup({ onComplete }) {
                     <input
                       type="password" placeholder="6+ characters"
                       value={password} onChange={e => setPassword(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                     />
                   </div>
                   <div>
@@ -132,7 +132,7 @@ export default function AccountSetup({ onComplete }) {
                     <input
                       type="password" placeholder="Repeat password"
                       value={confirm} onChange={e => setConfirm(e.target.value)}
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                     />
                   </div>
                 </div>
@@ -143,8 +143,8 @@ export default function AccountSetup({ onComplete }) {
               <button
                 onClick={handleCreateAdmin}
                 disabled={!step0Valid || saving}
-                className="w-full py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                style={{ backgroundColor: '#6C63FF' }}
+                className="w-full py-3 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
               >
                 {saving ? 'Creating…' : 'Continue →'}
               </button>
@@ -163,7 +163,7 @@ export default function AccountSetup({ onComplete }) {
                   <input
                     type="text" placeholder="e.g. Spouse"
                     value={tName} onChange={e => setTName(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
                 <div>
@@ -171,7 +171,7 @@ export default function AccountSetup({ onComplete }) {
                   <input
                     type="tel" inputMode="numeric" placeholder="9000000002"
                     value={tMobile} onChange={e => setTMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -180,7 +180,7 @@ export default function AccountSetup({ onComplete }) {
                     <input
                       type="password" placeholder="6+ characters"
                       value={tPassword} onChange={e => setTPassword(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                     />
                   </div>
                   <div>
@@ -188,7 +188,7 @@ export default function AccountSetup({ onComplete }) {
                     <input
                       type="password" placeholder="Repeat password"
                       value={tConfirm} onChange={e => setTConfirm(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                     />
                   </div>
                 </div>
@@ -203,8 +203,8 @@ export default function AccountSetup({ onComplete }) {
                 <button
                   onClick={() => handleAddTracker(true)}
                   disabled={!tName.trim() || !validMobile(tMobile) || !validPassword(tPassword) || tPassword !== tConfirm || saving}
-                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                  style={{ backgroundColor: '#6C63FF' }}
+                  className="flex-1 py-3 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                 >
                   {saving ? 'Adding…' : 'Add →'}
                 </button>
@@ -220,8 +220,8 @@ export default function AccountSetup({ onComplete }) {
 
               <button
                 onClick={() => onComplete(adminUser)}
-                className="w-full py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-                style={{ backgroundColor: '#6C63FF' }}
+                className="w-full py-3 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+                style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
               >
                 Get Started 🚀
               </button>

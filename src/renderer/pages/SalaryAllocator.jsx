@@ -12,9 +12,9 @@ const fmtDate = iso => iso
   : ''
 
 const CATEGORY_DEFS = {
-  needs:      { label: 'Needs',      color: '#3B82F6', bg: '#eff6ff', icon: '🏠' },
-  wants:      { label: 'Wants',      color: '#8B5CF6', bg: '#f5f3ff', icon: '🎭' },
-  investment: { label: 'Investment', color: '#10B981', bg: '#ecfdf5', icon: '📈' },
+  needs:      { label: 'Needs',      color: '#E74C3C', bg: '#2A1614', icon: '🏠' },
+  wants:      { label: 'Wants',      color: '#2ECC71', bg: '#13261B', icon: '🎭' },
+  investment: { label: 'Investment', color: '#D4AF37', bg: '#282416', icon: '📈' },
 }
 
 // ── Investment monthly helpers ────────────────────────────────────────────
@@ -96,18 +96,18 @@ function PlanDonut({ plan }) {
 
   if (surplus > 0 && salary > 0) {
     const pct = (surplus / salary) * 100
-    segs.push({ cat: 'unallocated', amount: surplus, pct, start: cum, label: 'Unallocated', color: '#E5E7EB', icon: '⬜', bg: '#f9fafb' })
+    segs.push({ cat: 'unallocated', amount: surplus, pct, start: cum, label: 'Unallocated', color: '#2A2A2A', icon: '⬜', bg: '#1A1A1A' })
   }
 
   const gradient = segs.length
     ? segs.map(s => `${s.color} ${s.start.toFixed(2)}% ${(s.start + s.pct).toFixed(2)}%`).join(', ')
-    : '#E5E7EB 0% 100%'
+    : '#2A2A2A 0% 100%'
 
   return (
     <div className="flex items-center gap-8">
       <div className="relative shrink-0 w-36 h-36">
         <div className="w-36 h-36 rounded-full" style={{ background: `conic-gradient(${gradient})` }} />
-        <div className="absolute inset-6 bg-white rounded-full flex flex-col items-center justify-center">
+        <div className="absolute inset-6 bg-dark-card rounded-full flex flex-col items-center justify-center">
           <p className="text-[9px] text-gray-400 leading-none">Monthly</p>
           <p className="text-xs font-bold text-gray-800 mt-0.5">{fmt(salary)}</p>
         </div>
@@ -168,7 +168,7 @@ function RunningBalanceTable({ plan, investments = [] }) {
 
   return (
     <div>
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {/* Column headers */}
         <div className="grid grid-cols-12 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
           <div className="col-span-3">Name</div>
@@ -194,7 +194,7 @@ function RunningBalanceTable({ plan, investments = [] }) {
             const isInv = row.cat === 'investment'
             const diff = row.currentTotal - row.targetTotal
             const headerCurrentColor = !isInv ? row.def.color
-              : diff > 0 ? '#10B981' : diff < 0 ? '#F59E0B' : row.def.color
+              : diff > 0 ? '#2ECC71' : diff < 0 ? '#F39C12' : row.def.color
             return (
               <div key={`h-${i}`} className="grid grid-cols-12 px-5 py-2.5 border-b border-gray-50"
                 style={{ backgroundColor: row.def.bg }}>
@@ -221,11 +221,11 @@ function RunningBalanceTable({ plan, investments = [] }) {
 
           // Item row
           const isInv = row.cat === 'investment'
-          const itemCurrentColor = !isInv ? '#6b7280'
-            : row.currentAmt === null ? '#d1d5db'
-            : row.currentAmt > row.item.amount ? '#10B981'
-            : row.currentAmt < row.item.amount ? '#F59E0B'
-            : '#6b7280'
+          const itemCurrentColor = !isInv ? '#8A8A8A'
+            : row.currentAmt === null ? '#3A3A3A'
+            : row.currentAmt > row.item.amount ? '#2ECC71'
+            : row.currentAmt < row.item.amount ? '#F39C12'
+            : '#8A8A8A'
 
           return (
             <div key={`i-${i}`} className="grid grid-cols-12 px-5 py-3 border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
@@ -245,7 +245,7 @@ function RunningBalanceTable({ plan, investments = [] }) {
                 }
               </div>
               <div className="col-span-2 text-right text-sm font-semibold"
-                style={{ color: row.balance >= 0 ? '#374151' : '#EF4444' }}>
+                style={{ color: row.balance >= 0 ? '#C4C4C4' : '#E74C3C' }}>
                 {fmt(row.balance)}
               </div>
             </div>
@@ -298,7 +298,7 @@ function ItemsEditor({ items, onChange, salary }) {
           <div key={idx} className="grid grid-cols-12 gap-2 items-center">
             <div className="col-span-4">
               <input
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF]"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37]"
                 placeholder="Name (e.g. Rent)"
                 value={item.name}
                 onChange={e => update(idx, 'name', e.target.value)}
@@ -306,7 +306,7 @@ function ItemsEditor({ items, onChange, salary }) {
             </div>
             <div className="col-span-3">
               <select
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 bg-white focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF]"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 bg-dark-card focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37]"
                 value={item.category}
                 onChange={e => update(idx, 'category', e.target.value)}
               >
@@ -318,7 +318,7 @@ function ItemsEditor({ items, onChange, salary }) {
             <div className="col-span-2">
               <input
                 type="number" min="0"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF]"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37]"
                 placeholder="Amount"
                 value={item.amount}
                 onChange={e => update(idx, 'amount', e.target.value)}
@@ -326,7 +326,7 @@ function ItemsEditor({ items, onChange, salary }) {
             </div>
             <div className="col-span-2">
               <input
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/20 focus:border-[#6C63FF]"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/20 focus:border-[#D4AF37]"
                 placeholder="Bank"
                 value={item.bank_or_provider}
                 onChange={e => update(idx, 'bank_or_provider', e.target.value)}
@@ -346,7 +346,7 @@ function ItemsEditor({ items, onChange, salary }) {
 
       <button
         onClick={() => onChange([...items, { name: '', amount: '', category: 'needs', bank_or_provider: '' }])}
-        className="flex items-center gap-1.5 text-sm font-medium text-[#6C63FF] hover:text-[#5a52e0] transition-colors"
+        className="flex items-center gap-1.5 text-sm font-medium text-[#D4AF37] hover:text-[#5a52e0] transition-colors"
       >
         <PlusIcon /> Add item
       </button>
@@ -409,9 +409,9 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl w-[660px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-dark-card rounded-2xl w-[660px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <div>
@@ -430,8 +430,8 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
               <div
                 className="px-3 py-1 rounded-full text-xs font-semibold transition-colors"
                 style={{
-                  backgroundColor: i < step ? '#10B981' : i === step ? '#6C63FF' : '#F3F4F6',
-                  color: i <= step ? '#fff' : '#6B7280',
+                  backgroundColor: i < step ? '#2ECC71' : i === step ? '#D4AF37' : '#1A1A1A',
+                  color: i <= step ? '#0A0A0A' : '#8A8A8A',
                 }}
               >
                 {i < step ? `✓ ${s}` : `${i + 1}. ${s}`}
@@ -450,7 +450,7 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
                 <input
                   autoFocus type="text" placeholder="e.g. Plan 2 - Jan 2027"
                   value={meta.label} onChange={e => setMeta(m => ({ ...m, label: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                 />
               </div>
               <div>
@@ -458,7 +458,7 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
                 <input
                   type="number" min="0" step="1000" placeholder="e.g. 200000"
                   value={meta.monthly_salary} onChange={e => setMeta(m => ({ ...m, monthly_salary: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                 />
               </div>
               <div>
@@ -466,7 +466,7 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
                 <input
                   type="date" value={meta.effective_from}
                   onChange={e => setMeta(m => ({ ...m, effective_from: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                 />
               </div>
               <div>
@@ -474,7 +474,7 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
                 <textarea
                   rows={2} placeholder="e.g. Post salary hike, changed allocations"
                   value={meta.notes} onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))}
-                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 resize-none"
+                  className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-700 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 resize-none"
                 />
               </div>
             </div>
@@ -504,13 +504,13 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
                     </p>
                     {meta.notes && <p className="text-xs text-gray-400 mt-1 italic">{meta.notes}</p>}
                   </div>
-                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#6C63FF]/10 text-[#6C63FF]">
+                  <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-[#D4AF37]/10 text-[#D4AF37]">
                     {previewPlan.items.length} items
                   </span>
                 </div>
               </div>
 
-              <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm mb-5">
+              <div className="bg-dark-card rounded-2xl p-5 border border-gray-100 shadow-sm mb-5">
                 <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Overview</p>
                 <PlanDonut plan={previewPlan} />
               </div>
@@ -538,8 +538,8 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
             <button
               onClick={() => setStep(s => s + 1)}
               disabled={step === 0 && !metaValid}
-              className="px-6 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
-              style={{ backgroundColor: '#6C63FF' }}
+              className="px-6 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 disabled:opacity-40 transition-opacity"
+              style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
             >
               Continue →
             </button>
@@ -547,7 +547,7 @@ function NewPlanWizard({ activePlan, onCreated, onClose }) {
             <button
               onClick={handleCreate} disabled={saving}
               className="px-6 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
-              style={{ backgroundColor: '#10B981' }}
+              style={{ backgroundColor: '#2ECC71' }}
             >
               {saving ? 'Creating…' : '✓ Create Plan'}
             </button>
@@ -594,9 +594,9 @@ function EditPlanModal({ plan, onUpdated, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl w-[660px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-dark-card rounded-2xl w-[660px] max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-bold text-gray-900">{plan.is_active ? 'Edit Active Plan' : 'Edit Plan'}</h2>
@@ -612,13 +612,13 @@ function EditPlanModal({ plan, onUpdated, onClose }) {
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Plan Label</label>
               <input type="text" value={label} onChange={e => setLabel(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Monthly Salary (₹)</label>
               <input type="number" min="0" value={salary} onChange={e => setSalary(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
             </div>
           </div>
@@ -642,8 +642,8 @@ function EditPlanModal({ plan, onUpdated, onClose }) {
             Cancel
           </button>
           <button onClick={handleSave} disabled={saving}
-            className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
-            style={{ backgroundColor: '#6C63FF' }}>
+            className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
             {saving ? 'Saving…' : '✓ Save Changes'}
           </button>
         </div>
@@ -673,9 +673,9 @@ function ClonePlanModal({ plan, onCloned, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl overflow-hidden">
+      <div className="bg-dark-card rounded-2xl w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between px-6 py-5 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-bold text-gray-900">Clone Plan</h2>
@@ -690,7 +690,7 @@ function ClonePlanModal({ plan, onCloned, onClose }) {
           <input type="text" value={label} autoFocus
             onChange={e => setLabel(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleClone()}
-            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+            className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm font-medium focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
           />
           <p className="text-xs text-gray-400 mt-2">The copy starts today and stays inactive until you set it as active.</p>
           {error && <p className="text-xs text-red-500 mt-2">{error}</p>}
@@ -701,8 +701,8 @@ function ClonePlanModal({ plan, onCloned, onClose }) {
             Cancel
           </button>
           <button onClick={handleClone} disabled={saving || !label.trim()}
-            className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
-            style={{ backgroundColor: '#6C63FF' }}>
+            className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
             {saving ? 'Cloning…' : '📋 Clone Plan'}
           </button>
         </div>
@@ -739,7 +739,7 @@ function computeDiff(plan1, plan2) {
 function CompareView({ plan1, plan2, onClose }) {
   const diff = computeDiff(plan1, plan2)
 
-  const ROW_BG = { added: '#F0FDF4', removed: '#FFF5F5', changed: '#FFFBEB', same: 'transparent' }
+  const ROW_BG = { added: '#13271A', removed: '#2C1717', changed: '#2C2210', same: 'transparent' }
   const STATUS_LABEL = {
     added:   <span className="text-green-600 font-semibold">✦ Added</span>,
     removed: <span className="text-red-600 font-semibold">✖ Removed</span>,
@@ -759,7 +759,7 @@ function CompareView({ plan1, plan2, onClose }) {
 
       <div className="grid grid-cols-2 gap-4 mb-5">
         {[plan1, plan2].map((plan, i) => (
-          <div key={i} className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+          <div key={i} className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
             <p className="font-semibold text-gray-900">{plan.label}</p>
             <p className="text-xs text-gray-500 mt-0.5">
               {fmt(plan.monthly_salary)}/month · {fmtDate(plan.effective_from)}
@@ -768,7 +768,7 @@ function CompareView({ plan1, plan2, onClose }) {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="grid grid-cols-12 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-semibold text-gray-500 uppercase tracking-wide">
           <div className="col-span-3">Name</div>
           <div className="col-span-2 text-right">Old Amount</div>
@@ -785,7 +785,7 @@ function CompareView({ plan1, plan2, onClose }) {
             <div className="col-span-2 text-right text-sm text-gray-600">{row.oldAmt > 0 ? fmt(row.oldAmt) : '—'}</div>
             <div className="col-span-2 text-center text-xs font-semibold">
               {row.status === 'changed' && (
-                <span style={{ color: row.newAmt > row.oldAmt ? '#10B981' : '#EF4444' }}>
+                <span style={{ color: row.newAmt > row.oldAmt ? '#2ECC71' : '#E74C3C' }}>
                   {row.newAmt > row.oldAmt ? '+' : ''}{fmt(row.newAmt - row.oldAmt)}
                 </span>
               )}
@@ -832,7 +832,7 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare, o
             <button
               onClick={() => onCompare(selectedIds)}
               className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: '#F59E0B' }}
+              style={{ backgroundColor: '#F39C12' }}
             >
               ↔ Compare Selected
             </button>
@@ -851,8 +851,8 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare, o
 
           return (
             <div key={plan.id}
-              className={`bg-white rounded-2xl p-5 border shadow-sm transition-all ${
-                isSel ? 'border-amber-400 ring-2 ring-amber-200' : isActive ? 'border-[#6C63FF]/40' : 'border-gray-100'
+              className={`bg-dark-card rounded-2xl p-5 border shadow-sm transition-all ${
+                isSel ? 'border-amber-400 ring-2 ring-amber-200' : isActive ? 'border-[#D4AF37]/40' : 'border-gray-100'
               }`}
             >
               <div className="flex items-start justify-between">
@@ -880,9 +880,9 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare, o
 
                 <div className="flex items-start gap-4 ml-4 shrink-0">
                   <div className="text-right text-xs text-gray-500 space-y-1 pt-0.5">
-                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#3B82F6] mr-1.5 align-middle" />Needs: {fmt(plan.totalNeeds)}</p>
-                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#8B5CF6] mr-1.5 align-middle" />Wants: {fmt(plan.totalWants)}</p>
-                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#10B981] mr-1.5 align-middle" />Invest: {fmt(plan.totalInvestment)}</p>
+                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#E74C3C] mr-1.5 align-middle" />Needs: {fmt(plan.totalNeeds)}</p>
+                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#2ECC71] mr-1.5 align-middle" />Wants: {fmt(plan.totalWants)}</p>
+                    <p><span className="inline-block w-1.5 h-1.5 rounded-full bg-[#D4AF37] mr-1.5 align-middle" />Invest: {fmt(plan.totalInvestment)}</p>
                   </div>
                   <div className="flex flex-col gap-2">
                     <button
@@ -901,7 +901,7 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare, o
 
               <div className="flex items-center gap-2 mt-4 pt-3 border-t border-gray-50 flex-wrap">
                 <button onClick={() => onViewPlan(plan.id)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#6C63FF] border border-[#6C63FF]/20 hover:bg-[#6C63FF]/5 transition-colors">
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/5 transition-colors">
                   View
                 </button>
                 <button onClick={() => onEdit(plan.id)}
@@ -942,7 +942,7 @@ function PlanHistoryList({ plans, activePlanId, onBack, onViewPlan, onCompare, o
 }
 
 // ── Bank Allocation Dashboard ─────────────────────────────────────────────
-const BANK_COLORS = ['#6C63FF','#10B981','#F59E0B','#3B82F6','#EF4444','#8B5CF6','#06B6D4','#F97316','#84CC16','#EC4899']
+const BANK_COLORS = ['#D4AF37','#2ECC71','#F39C12','#3498DB','#E74C3C','#8B5CF6','#06B6D4','#F97316','#84CC16','#EC4899']
 
 function BankAllocationDashboard({ plan }) {
   const salary = plan.monthly_salary || 0
@@ -981,16 +981,16 @@ function BankAllocationDashboard({ plan }) {
     <div>
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+        <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Monthly Salary</p>
           <p className="text-xl font-bold text-gray-900">{fmt(salary)}</p>
         </div>
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+        <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Total Allocated</p>
           <p className="text-xl font-bold text-gray-900">{fmt(totalAllocated)}</p>
           <p className="text-xs text-gray-400 mt-0.5">{salary > 0 ? ((totalAllocated / salary) * 100).toFixed(1) : 0}% of salary</p>
         </div>
-        <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+        <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Banks / Providers</p>
           <p className="text-xl font-bold text-gray-900">{banks.length}</p>
           <p className="text-xs text-gray-400 mt-0.5">{items.length} line item{items.length !== 1 ? 's' : ''}</p>
@@ -999,14 +999,14 @@ function BankAllocationDashboard({ plan }) {
 
       {/* Stacked salary bar */}
       {salary > 0 && banks.length > 0 && (
-        <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm mb-6">
+        <div className="bg-dark-card rounded-2xl p-5 border border-gray-100 shadow-sm mb-6">
           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Salary Allocation by Bank</p>
           <div className="h-7 rounded-full overflow-hidden flex mb-4">
             {barSegs.map((seg, i) => (
               <div key={i} style={{ width: `${seg.pct}%`, backgroundColor: seg.color }} title={`${seg.name}: ${fmt(seg.total)}`} />
             ))}
             {unallocated > 0 && (
-              <div style={{ flex: 1, backgroundColor: '#E5E7EB' }} title={`Unallocated: ${fmt(unallocated)}`} />
+              <div style={{ flex: 1, backgroundColor: '#2A2A2A' }} title={`Unallocated: ${fmt(unallocated)}`} />
             )}
           </div>
           <div className="flex flex-wrap gap-x-5 gap-y-2">
@@ -1034,7 +1034,7 @@ function BankAllocationDashboard({ plan }) {
           const color = BANK_COLORS[bi % BANK_COLORS.length]
           const pct = salary > 0 ? (bank.total / salary) * 100 : 0
           return (
-            <div key={bank.name} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+            <div key={bank.name} className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
               {/* Bank header */}
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
                 <div className="flex items-center gap-3">
@@ -1115,10 +1115,10 @@ function BankAllocationDashboard({ plan }) {
 
 // ── Allocation Suggestions ────────────────────────────────────────────────
 const SUGGESTION_KINDS = {
-  critical: { icon: '🔴', border: '#FECACA', bg: '#FEF2F2', color: '#B91C1C' },
-  warning:  { icon: '⚠️', border: '#FDE68A', bg: '#FFFBEB', color: '#B45309' },
-  tip:      { icon: '💡', border: '#BFDBFE', bg: '#EFF6FF', color: '#1D4ED8' },
-  good:     { icon: '✅', border: '#A7F3D0', bg: '#ECFDF5', color: '#047857' },
+  critical: { icon: '🔴', border: '#542020', bg: '#2C1717', color: '#F87171' },
+  warning:  { icon: '⚠️', border: '#553B0F', bg: '#2C2210', color: '#FBBF24' },
+  tip:      { icon: '💡', border: '#1E3356', bg: '#161F2C', color: '#60A5FA' },
+  good:     { icon: '✅', border: '#114333', bg: '#11251E', color: '#34D399' },
 }
 const SUGGESTION_ORDER = { critical: 0, warning: 1, tip: 2, good: 3 }
 const LIMIT_80C_MONTHLY = 12500 // ₹1.5L / year
@@ -1289,9 +1289,9 @@ function analyzePlan(plan, fallbackSalary = 0) {
 
 function scoreLabel(score) {
   if (score >= 90) return { text: 'Excellent 🌟', color: '#059669' }
-  if (score >= 75) return { text: 'Good ✅', color: '#10B981' }
-  if (score >= 60) return { text: 'Fair 💡', color: '#F59E0B' }
-  return { text: 'Needs attention ⚠️', color: '#EF4444' }
+  if (score >= 75) return { text: 'Good ✅', color: '#2ECC71' }
+  if (score >= 60) return { text: 'Fair 💡', color: '#F39C12' }
+  return { text: 'Needs attention ⚠️', color: '#E74C3C' }
 }
 
 function SuggestionCard({ s, onApply, applying }) {
@@ -1318,8 +1318,8 @@ function SuggestionCard({ s, onApply, applying }) {
       {s.apply && (
         <button
           onClick={() => onApply(s.apply)} disabled={applying}
-          className="mt-3 px-3 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 transition-opacity"
-          style={{ backgroundColor: '#6C63FF' }}
+          className="mt-3 px-3 py-1.5 rounded-lg text-xs font-semibold text-[#0A0A0A] hover:opacity-90 disabled:opacity-50 transition-opacity"
+          style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
         >
           {applying ? 'Applying…' : s.apply.label}
         </button>
@@ -1348,7 +1348,7 @@ function BenchmarkComparison({ needsPct, wantsPct, investPct }) {
       <div className="space-y-3">
         {rows.map(r => {
           const better = r.higherIsBetter ? r.you >= r.bench : r.you <= r.bench
-          const color = better ? '#10B981' : '#EF4444'
+          const color = better ? '#2ECC71' : '#E74C3C'
           return (
             <div key={r.label} className="grid grid-cols-12 items-center">
               <div className="col-span-3 text-sm font-medium text-gray-700">{r.label}</div>
@@ -1407,7 +1407,7 @@ function AllocationSuggestions({ plan, fallbackSalary, onUpdated }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mt-6 overflow-hidden">
+    <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm mt-6 overflow-hidden">
       <button onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-6 py-4 text-left hover:bg-gray-50/60 transition-colors">
         <div>
@@ -1534,7 +1534,7 @@ function PlanDetailView({ plan, investments, profileSalary, onEdit, onNewPlan, o
         <div>
           <div className="flex items-center gap-2 mb-1">
             <h3 className="text-xl font-bold text-gray-900">{plan.label}</h3>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#6C63FF]/10 text-[#6C63FF]">Active</span>
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-[#D4AF37]/10 text-[#D4AF37]">Active</span>
           </div>
           <p className="text-sm text-gray-500">
             {fmt(plan.monthly_salary)}/month · effective {fmtDate(plan.effective_from)}
@@ -1542,12 +1542,12 @@ function PlanDetailView({ plan, investments, profileSalary, onEdit, onNewPlan, o
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <button onClick={onEdit}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-[#6C63FF] border border-[#6C63FF]/20 hover:bg-[#6C63FF]/5 transition-colors">
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-[#D4AF37] border border-[#D4AF37]/20 hover:bg-[#D4AF37]/5 transition-colors">
             ✎ Edit
           </button>
           <button onClick={onNewPlan}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#6C63FF' }}>
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
             + New Plan
           </button>
           <button onClick={onHistory}
@@ -1569,8 +1569,8 @@ function PlanDetailView({ plan, investments, profileSalary, onEdit, onNewPlan, o
             onClick={() => setTab(t.key)}
             className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
             style={tab === t.key
-              ? { backgroundColor: '#fff', color: '#6C63FF', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
-              : { color: '#6B7280' }}
+              ? { backgroundColor: '#1A1A1A', color: '#D4AF37', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }
+              : { color: '#8A8A8A' }}
           >
             {t.label}
           </button>
@@ -1580,7 +1580,7 @@ function PlanDetailView({ plan, investments, profileSalary, onEdit, onNewPlan, o
       {tab === 'overview' && (
         <>
           {/* Donut */}
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-5">
+          <div className="bg-dark-card rounded-2xl p-6 border border-gray-100 shadow-sm mb-5">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Allocation Overview</p>
             <PlanDonut plan={plan} />
           </div>
@@ -1695,7 +1695,7 @@ export default function SalaryAllocator() {
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center h-64">
-        <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: '#6C63FF', borderTopColor: 'transparent' }} />
+        <div className="w-6 h-6 rounded-full border-2 animate-spin" style={{ borderColor: '#D4AF37', borderTopColor: 'transparent' }} />
       </div>
     )
   }
@@ -1708,8 +1708,8 @@ export default function SalaryAllocator() {
         <p className="text-sm text-gray-500 mb-5">Create your first salary plan to get started</p>
         <button
           onClick={() => setShowNewWizard(true)}
-          className="px-6 py-3 rounded-xl text-white font-semibold text-sm hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#6C63FF' }}
+          className="px-6 py-3 rounded-xl text-[#0A0A0A] font-semibold text-sm hover:opacity-90 transition-opacity"
+          style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
         >
           + Create Plan
         </button>
@@ -1781,7 +1781,7 @@ export default function SalaryAllocator() {
             {fmt(viewingPlan.monthly_salary)}/month · {fmtDate(viewingPlan.effective_from)}
             {viewingPlan.effective_to ? ` → ${fmtDate(viewingPlan.effective_to)}` : ' → Present'}
           </p>
-          <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm mb-5">
+          <div className="bg-dark-card rounded-2xl p-6 border border-gray-100 shadow-sm mb-5">
             <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-4">Overview</p>
             <PlanDonut plan={viewingPlan} />
           </div>

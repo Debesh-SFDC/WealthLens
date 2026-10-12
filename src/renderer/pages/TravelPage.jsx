@@ -17,17 +17,17 @@ function dateRangeLabel(start, end) {
 // Same green/amber/red thresholds as Dashboard.jsx's MonthSpendCard.
 function budgetColor(spent, budget) {
   const pct = budget > 0 ? Math.min(100, (spent / budget) * 100) : 0
-  return budget <= 0 ? '#9CA3AF' : pct < 50 ? '#10B981' : pct <= 80 ? '#F59E0B' : '#EF4444'
+  return budget <= 0 ? '#6B6B6B' : pct < 50 ? '#2ECC71' : pct <= 80 ? '#F39C12' : '#E74C3C'
 }
 
 const STATUS_META = {
-  planned:   { label: 'Planned',   color: '#6366F1', bg: '#EEF2FF' },
-  ongoing:   { label: 'Ongoing',   color: '#F59E0B', bg: '#FFFBEB' },
-  completed: { label: 'Completed', color: '#10B981', bg: '#ECFDF5' },
+  planned:   { label: 'Planned',   color: '#D4AF37', bg: '#282416' },
+  ongoing:   { label: 'Ongoing',   color: '#F39C12', bg: '#2C2210' },
+  completed: { label: 'Completed', color: '#2ECC71', bg: '#11251E' },
 }
 
 const EMOJIS = ['✈️','🏖️','🏔️','🗺️','🎒','🚗','🚢','🏕️','🌴','🗽','🏰','🎡','🚂','⛰️','🌋','🏝️','🛶','🎿','🧳','🌍']
-const COLORS = ['#6C63FF','#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#14B8A6','#F97316','#6366F1','#84CC16','#06B6D4']
+const COLORS = ['#D4AF37','#3498DB','#2ECC71','#F39C12','#E74C3C','#8B5CF6','#EC4899','#14B8A6','#F97316','#D4AF37','#84CC16','#06B6D4']
 
 const ITINERARY_CATS = {
   activity:  { label: 'Activity',  icon: '🎯' },
@@ -62,7 +62,7 @@ const DOC_TYPES = {
 }
 
 const BLANK_TRIP = {
-  title: '', destination: '', emoji: '✈️', color: '#6C63FF',
+  title: '', destination: '', emoji: '✈️', color: '#D4AF37',
   start_date: '', end_date: '', status: 'planned', budget_amount: '', notes: '',
 }
 
@@ -91,11 +91,11 @@ function EmojiColorPicker({ emoji, color, onEmoji, onColor }) {
       <div className="relative shrink-0">
         <button type="button" onClick={() => setShowEmoji(v => !v)}
           className="w-14 h-14 rounded-xl border-2 text-2xl flex items-center justify-center transition-colors hover:border-gray-300"
-          style={{ borderColor: showEmoji ? color : '#e5e7eb' }}>
+          style={{ borderColor: showEmoji ? color : '#2A2A2A' }}>
           {emoji}
         </button>
         {showEmoji && (
-          <div className="absolute top-16 left-0 z-20 bg-white rounded-xl shadow-2xl border border-gray-100 p-3 grid grid-cols-6 gap-1 w-52">
+          <div className="absolute top-16 left-0 z-20 bg-dark-card rounded-xl shadow-2xl border border-gray-100 p-3 grid grid-cols-6 gap-1 w-52">
             {EMOJIS.map(e => (
               <button key={e} type="button" onClick={() => { onEmoji(e); setShowEmoji(false) }}
                 className="w-7 h-7 text-lg hover:bg-gray-100 rounded-lg flex items-center justify-center">
@@ -140,9 +140,9 @@ function TripFormModal({ trip, onSave, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
-        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-white z-10">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-dark-card rounded-2xl w-full max-w-[480px] shadow-2xl overflow-hidden max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between sticky top-0 bg-dark-card z-10">
           <h2 className="text-lg font-bold text-gray-900">{trip ? 'Edit Trip' : 'New Trip'}</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-500">
@@ -158,26 +158,26 @@ function TripFormModal({ trip, onSave, onClose }) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Trip Title *</label>
             <input autoFocus required type="text" placeholder="e.g. Goa Getaway"
               value={form.title} onChange={e => set('title', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20" />
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20" />
           </div>
 
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Destination</label>
             <input type="text" placeholder="e.g. Goa, India"
               value={form.destination || ''} onChange={e => set('destination', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20" />
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Start Date</label>
               <input type="date" value={form.start_date || ''} onChange={e => set('start_date', e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]" />
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]" />
             </div>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">End Date</label>
               <input type="date" value={form.end_date || ''} onChange={e => set('end_date', e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]" />
+                className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]" />
             </div>
           </div>
 
@@ -189,7 +189,7 @@ function TripFormModal({ trip, onSave, onClose }) {
                   className="px-4 py-2 text-xs font-semibold transition-colors"
                   style={form.status === key
                     ? { backgroundColor: meta.color, color: '#fff' }
-                    : { backgroundColor: '#fff', color: '#6B7280' }}>
+                    : { backgroundColor: '#1A1A1A', color: '#8A8A8A' }}>
                   {meta.label}
                 </button>
               ))}
@@ -200,14 +200,14 @@ function TripFormModal({ trip, onSave, onClose }) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Total Budget (₹)</label>
             <input type="number" min="0" step="1" placeholder="0"
               value={form.budget_amount} onChange={e => set('budget_amount', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-lg font-bold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20" />
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-lg font-bold text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20" />
           </div>
 
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Notes <span className="font-normal normal-case text-gray-400">optional</span></label>
             <textarea rows={2} placeholder="Optional notes…"
               value={form.notes || ''} onChange={e => set('notes', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] resize-none" />
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] resize-none" />
           </div>
 
           <div className="flex gap-3 pt-2">
@@ -215,8 +215,8 @@ function TripFormModal({ trip, onSave, onClose }) {
               Cancel
             </button>
             <button type="submit" disabled={saving || !form.title.trim()}
-              className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-              style={{ backgroundColor: '#6C63FF' }}>
+              className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
               {saving ? 'Saving…' : trip ? 'Save Changes' : 'Create Trip'}
             </button>
           </div>
@@ -236,14 +236,14 @@ function TripCard({ trip, onView, onEdit, onDelete }) {
 
   return (
     <div
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group overflow-hidden"
+      className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group overflow-hidden"
       onClick={() => onView(trip)}
     >
-      <div className="h-1" style={{ backgroundColor: trip.color || '#6C63FF' }} />
+      <div className="h-1" style={{ backgroundColor: trip.color || '#D4AF37' }} />
       <div className="p-5">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 select-none" style={{ backgroundColor: (trip.color || '#6C63FF') + '18' }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 select-none" style={{ backgroundColor: (trip.color || '#D4AF37') + '18' }}>
               {trip.emoji || '✈️'}
             </div>
             <div className="min-w-0">
@@ -319,14 +319,14 @@ function ItineraryTab({ tripId, items, onReload, showToast }) {
 
   return (
     <div className="space-y-4">
-      <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>
+      <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
         <span className="text-base leading-none">+</span> Add Itinerary Item
       </button>
 
       {days.length === 0 ? (
         <p className="text-sm text-gray-400 text-center py-10">No itinerary items yet</p>
       ) : days.map(day => (
-        <div key={day} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div key={day} className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="px-5 py-2.5 bg-gray-50 border-b border-gray-100">
             <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">Day {day}</span>
           </div>
@@ -354,8 +354,8 @@ function ItineraryTab({ tripId, items, onReload, showToast }) {
       ))}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-[420px] shadow-2xl p-6 space-y-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
+          <div className="bg-dark-card rounded-2xl w-full max-w-[420px] shadow-2xl p-6 space-y-3">
             <h3 className="text-base font-bold text-gray-900 mb-1">{editItem ? 'Edit Item' : 'Add Itinerary Item'}</h3>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -377,7 +377,7 @@ function ItineraryTab({ tripId, items, onReload, showToast }) {
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Category</label>
               <select value={form.category} onChange={e => set('category', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white">
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-dark-card">
                 {Object.entries(ITINERARY_CATS).map(([k, m]) => <option key={k} value={k}>{m.icon} {m.label}</option>)}
               </select>
             </div>
@@ -393,7 +393,7 @@ function ItineraryTab({ tripId, items, onReload, showToast }) {
             </div>
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={save} disabled={!form.title.trim()} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ backgroundColor: '#6C63FF' }}>Save</button>
+              <button onClick={save} disabled={!form.title.trim()} className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>Save</button>
             </div>
           </div>
         </div>
@@ -441,7 +441,7 @@ function BudgetTab({ tripId, tripBudget, items, onReload, showToast }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-5">
         <div className="flex items-center justify-between mb-1">
           <span className="text-sm font-bold text-gray-800">{fmt(totalActual)} spent</span>
           <span className="text-xs text-gray-400">of {fmt(tripBudget)} budget</span>
@@ -452,14 +452,14 @@ function BudgetTab({ tripId, tripBudget, items, onReload, showToast }) {
         <p className="text-xs text-gray-400">Planned total: {fmt(totalPlanned)}</p>
       </div>
 
-      <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>
+      <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
         <span className="text-base leading-none">+</span> Add Budget Item
       </button>
 
       {items.length === 0 ? (
         <p className="text-sm text-gray-400 text-center py-10">No budget items yet</p>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
           {items.map(item => {
             const cat = BUDGET_CATS[item.category] || BUDGET_CATS.other
             return (
@@ -481,8 +481,8 @@ function BudgetTab({ tripId, tripBudget, items, onReload, showToast }) {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-[420px] shadow-2xl p-6 space-y-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
+          <div className="bg-dark-card rounded-2xl w-full max-w-[420px] shadow-2xl p-6 space-y-3">
             <h3 className="text-base font-bold text-gray-900 mb-1">{editItem ? 'Edit Budget Item' : 'Add Budget Item'}</h3>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Label *</label>
@@ -492,7 +492,7 @@ function BudgetTab({ tripId, tripBudget, items, onReload, showToast }) {
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Category</label>
               <select value={form.category} onChange={e => set('category', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white">
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-dark-card">
                 {Object.entries(BUDGET_CATS).map(([k, m]) => <option key={k} value={k}>{m.icon} {m.label}</option>)}
               </select>
             </div>
@@ -515,7 +515,7 @@ function BudgetTab({ tripId, tripBudget, items, onReload, showToast }) {
             </div>
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={save} disabled={!form.label.trim()} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ backgroundColor: '#6C63FF' }}>Save</button>
+              <button onClick={save} disabled={!form.label.trim()} className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>Save</button>
             </div>
           </div>
         </div>
@@ -560,26 +560,26 @@ function PackingTab({ tripId, items, onReload, showToast }) {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center justify-between">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-5 flex items-center justify-between">
         <span className="text-sm font-bold text-gray-800">{packedCount}/{items.length} packed</span>
         <div className="w-32 h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-full rounded-full bg-[#10B981] transition-all" style={{ width: `${items.length ? (packedCount / items.length) * 100 : 0}%` }} />
+          <div className="h-full rounded-full bg-[#2ECC71] transition-all" style={{ width: `${items.length ? (packedCount / items.length) * 100 : 0}%` }} />
         </div>
       </div>
 
       {!showForm ? (
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
           <span className="text-base leading-none">+</span> Add Packing Item
         </button>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex gap-2 flex-wrap items-center">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-4 flex gap-2 flex-wrap items-center">
           <input autoFocus type="text" placeholder="Item name" value={name} onChange={e => setName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && add()}
             className="flex-1 min-w-[140px] px-3 py-2 rounded-xl border border-gray-200 text-sm" />
-          <select value={category} onChange={e => setCategory(e.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white">
+          <select value={category} onChange={e => setCategory(e.target.value)} className="px-3 py-2 rounded-xl border border-gray-200 text-sm bg-dark-card">
             {Object.entries(PACKING_CATS).map(([k, m]) => <option key={k} value={k}>{m.icon} {m.label}</option>)}
           </select>
-          <button onClick={add} disabled={!name.trim()} className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ backgroundColor: '#6C63FF' }}>Add</button>
+          <button onClick={add} disabled={!name.trim()} className="px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>Add</button>
           <button onClick={() => setShowForm(false)} className="px-3 py-2 rounded-xl text-sm font-semibold text-gray-500 hover:bg-gray-50">Cancel</button>
         </div>
       )}
@@ -589,7 +589,7 @@ function PackingTab({ tripId, items, onReload, showToast }) {
       ) : Object.entries(byCat).map(([catKey, catItems]) => {
         const cat = PACKING_CATS[catKey] || PACKING_CATS.other
         return (
-          <div key={catKey} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div key={catKey} className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="px-5 py-2.5 bg-gray-50 border-b border-gray-100">
               <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{cat.icon} {cat.label}</span>
             </div>
@@ -598,9 +598,9 @@ function PackingTab({ tripId, items, onReload, showToast }) {
                 <div key={item.id} className="flex items-center gap-3 px-5 py-3 group">
                   <button onClick={() => toggle(item)}
                     className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition-colors"
-                    style={{ borderColor: item.is_packed ? '#10B981' : '#D1D5DB', backgroundColor: item.is_packed ? '#10B981' : 'transparent' }}>
+                    style={{ borderColor: item.is_packed ? '#2ECC71' : '#3A3A3A', backgroundColor: item.is_packed ? '#2ECC71' : 'transparent' }}>
                     {item.is_packed && (
-                      <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" className="w-3 h-3">
                         <polyline points="20 6 9 17 4 12" />
                       </svg>
                     )}
@@ -647,7 +647,7 @@ function DocumentsTab({ tripId, items, onReload, showToast }) {
 
   return (
     <div className="space-y-4">
-      <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>
+      <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
         <span className="text-base leading-none">+</span> Add Document
       </button>
 
@@ -658,7 +658,7 @@ function DocumentsTab({ tripId, items, onReload, showToast }) {
           {items.map(item => {
             const type = DOC_TYPES[item.doc_type] || DOC_TYPES.other
             return (
-              <div key={item.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 group">
+              <div key={item.id} className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-4 group">
                 <div className="flex items-start justify-between mb-2">
                   <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">{type.icon} {type.label}</span>
                   <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -675,13 +675,13 @@ function DocumentsTab({ tripId, items, onReload, showToast }) {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-[420px] shadow-2xl p-6 space-y-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setShowForm(false)}>
+          <div className="bg-dark-card rounded-2xl w-full max-w-[420px] shadow-2xl p-6 space-y-3">
             <h3 className="text-base font-bold text-gray-900 mb-1">{editItem ? 'Edit Document' : 'Add Document'}</h3>
             <div>
               <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1 block">Type</label>
               <select value={form.doc_type} onChange={e => set('doc_type', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white">
+                className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-dark-card">
                 {Object.entries(DOC_TYPES).map(([k, m]) => <option key={k} value={k}>{m.icon} {m.label}</option>)}
               </select>
             </div>
@@ -698,7 +698,7 @@ function DocumentsTab({ tripId, items, onReload, showToast }) {
             </div>
             <div className="flex gap-3 pt-2">
               <button onClick={() => setShowForm(false)} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-              <button onClick={save} disabled={!form.title.trim()} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ backgroundColor: '#6C63FF' }}>Save</button>
+              <button onClick={save} disabled={!form.title.trim()} className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>Save</button>
             </div>
           </div>
         </div>
@@ -730,17 +730,17 @@ function CompanionsTab({ tripId, items, onReload, showToast }) {
   return (
     <div className="space-y-4">
       {!showForm ? (
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>
+        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
           <span className="text-base leading-none">+</span> Add Companion
         </button>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 flex gap-2 flex-wrap items-center">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-4 flex gap-2 flex-wrap items-center">
           <input autoFocus type="text" placeholder="Name" value={name} onChange={e => setName(e.target.value)}
             className="flex-1 min-w-[120px] px-3 py-2 rounded-xl border border-gray-200 text-sm" />
           <input type="text" placeholder="Relation (optional)" value={relation} onChange={e => setRelation(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && add()}
             className="flex-1 min-w-[120px] px-3 py-2 rounded-xl border border-gray-200 text-sm" />
-          <button onClick={add} disabled={!name.trim()} className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ backgroundColor: '#6C63FF' }}>Add</button>
+          <button onClick={add} disabled={!name.trim()} className="px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>Add</button>
           <button onClick={() => setShowForm(false)} className="px-3 py-2 rounded-xl text-sm font-semibold text-gray-500 hover:bg-gray-50">Cancel</button>
         </div>
       )}
@@ -748,10 +748,10 @@ function CompanionsTab({ tripId, items, onReload, showToast }) {
       {items.length === 0 ? (
         <p className="text-sm text-gray-400 text-center py-10">No companions added yet</p>
       ) : (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm divide-y divide-gray-50 overflow-hidden">
           {items.map(item => (
             <div key={item.id} className="flex items-center gap-3 px-5 py-3 group">
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0" style={{ backgroundColor: '#6C63FF' }}>
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold text-[#0A0A0A] shrink-0" style={{ backgroundColor: '#D4AF37' }}>
                 {item.name.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -783,7 +783,7 @@ function TripDetail({ trip, loading, onBack, onEdit, onDelete, onReload, showToa
     return (
       <div className="p-4 sm:p-6 max-w-4xl mx-auto">
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-gray-800 mb-4"><BackIcon /> Back to Trips</button>
-        <div className="h-40 bg-white rounded-2xl border border-gray-100 animate-pulse" />
+        <div className="h-40 bg-dark-card rounded-2xl border border-gray-100 animate-pulse" />
       </div>
     )
   }
@@ -794,10 +794,10 @@ function TripDetail({ trip, loading, onBack, onEdit, onDelete, onReload, showToa
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-5">
       <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-semibold text-gray-500 hover:text-gray-800"><BackIcon /> Back to Trips</button>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-5 sm:p-6">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0" style={{ backgroundColor: (trip.color || '#6C63FF') + '18' }}>
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shrink-0" style={{ backgroundColor: (trip.color || '#D4AF37') + '18' }}>
               {trip.emoji || '✈️'}
             </div>
             <div className="min-w-0">
@@ -833,7 +833,7 @@ function TripDetail({ trip, loading, onBack, onEdit, onDelete, onReload, showToa
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             className="flex-1 min-w-[90px] py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap"
-            style={{ backgroundColor: tab === t.id ? '#6C63FF' : 'transparent', color: tab === t.id ? 'white' : '#6B7280' }}>
+            style={{ backgroundColor: tab === t.id ? '#D4AF37' : 'transparent', color: tab === t.id ? '#0A0A0A' : '#8A8A8A' }}>
             {t.label}
           </button>
         ))}
@@ -954,17 +954,17 @@ export default function TravelPage() {
           <h2 className="text-2xl font-bold text-gray-900">Travel</h2>
           <p className="text-sm text-gray-500 mt-0.5">Plan trips, track itineraries and budgets</p>
         </div>
-        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: '#6C63FF' }}>
+        <button onClick={openAdd} className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
           <span className="text-lg leading-none">+</span> New Trip
         </button>
       </div>
 
       {loading ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[1, 2, 3].map(i => <div key={i} className="h-48 bg-white rounded-2xl border border-gray-100 animate-pulse" />)}
+          {[1, 2, 3].map(i => <div key={i} className="h-48 bg-dark-card rounded-2xl border border-gray-100 animate-pulse" />)}
         </div>
       ) : trips.length === 0 ? (
-        <div className="flex flex-col items-center justify-center h-64 rounded-2xl bg-white border border-dashed border-gray-200">
+        <div className="flex flex-col items-center justify-center h-64 rounded-2xl bg-dark-card border border-dashed border-gray-200">
           <p className="text-4xl mb-3">🧳</p>
           <p className="text-base font-semibold text-gray-700">No trips yet</p>
           <p className="text-sm text-gray-400 mt-1">Plan your first trip to get started</p>

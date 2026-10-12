@@ -20,7 +20,7 @@ export default function BucketToggle({ value, onChange, hint }) {
               className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl text-sm font-semibold border-2 transition-colors"
               style={active
                 ? { backgroundColor: m.bg, borderColor: m.color, color: m.color }
-                : { backgroundColor: '#fff', borderColor: '#E5E7EB', color: '#6B7280' }}
+                : { backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', color: '#8A8A8A' }}
             >
               <span>{m.dot}</span>
               {m.label}

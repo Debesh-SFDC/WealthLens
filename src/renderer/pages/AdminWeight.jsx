@@ -19,10 +19,10 @@ function calcBMI(weightKg, heightCm) {
 
 function bmiMeta(bmi) {
   if (!bmi) return null
-  if (bmi < 18.5) return { label: 'Underweight', color: '#3B82F6', bg: '#EFF6FF' }
-  if (bmi < 25)   return { label: 'Normal',      color: '#10B981', bg: '#ECFDF5' }
-  if (bmi < 30)   return { label: 'Overweight',  color: '#F59E0B', bg: '#FFFBEB' }
-  return              { label: 'Obese',           color: '#EF4444', bg: '#FEF2F2' }
+  if (bmi < 18.5) return { label: 'Underweight', color: '#3498DB', bg: '#161F2C' }
+  if (bmi < 25)   return { label: 'Normal',      color: '#2ECC71', bg: '#11251E' }
+  if (bmi < 30)   return { label: 'Overweight',  color: '#F39C12', bg: '#2C2210' }
+  return              { label: 'Obese',           color: '#E74C3C', bg: '#2C1717' }
 }
 
 function idealRange(heightCm) {
@@ -119,19 +119,19 @@ function LineChart({ logs, from, to }) {
         const y = gy(gv)
         return (
           <g key={i}>
-            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#F3F4F6" strokeWidth={1} />
-            <text x={padL - 4} y={y + 3.5} fill="#D1D5DB" fontSize={8} textAnchor="end">{gv.toFixed(1)}</text>
+            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#1A1A1A" strokeWidth={1} />
+            <text x={padL - 4} y={y + 3.5} fill="#3A3A3A" fontSize={8} textAnchor="end">{gv.toFixed(1)}</text>
           </g>
         )
       })}
-      {segs.map((s, si) => <polyline key={si} points={s} fill="none" stroke="#6C63FF" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />)}
+      {segs.map((s, si) => <polyline key={si} points={s} fill="none" stroke="#D4AF37" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />)}
       {pts.map((p, i) => {
         if (p.w === null) return null
         const x = gx(i), y = gy(p.w)
         return (
           <g key={i}>
-            <circle cx={x} cy={y} r={p.isToday ? 6 : 4} fill={p.isToday ? '#F59E0B' : '#6C63FF'} />
-            <circle cx={x} cy={y} r={p.isToday ? 9 : 7} fill="none" stroke={p.isToday ? '#F59E0B' : '#6C63FF'} strokeWidth={1} opacity={0.25} />
+            <circle cx={x} cy={y} r={p.isToday ? 6 : 4} fill={p.isToday ? '#F39C12' : '#D4AF37'} />
+            <circle cx={x} cy={y} r={p.isToday ? 9 : 7} fill="none" stroke={p.isToday ? '#F39C12' : '#D4AF37'} strokeWidth={1} opacity={0.25} />
             <title>{`${p.date}: ${p.w} kg`}</title>
           </g>
         )
@@ -140,7 +140,7 @@ function LineChart({ logs, from, to }) {
         if (n > 7 && i % step !== 0 && i !== n - 1) return null
         const d = new Date(p.date + 'T12:00:00')
         const label = n <= 7 ? d.toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 3) : String(d.getDate())
-        return <text key={i} x={gx(i)} y={svgH - 4} textAnchor="middle" fill={p.isToday ? '#F59E0B' : '#9CA3AF'} fontSize={9} fontWeight={p.isToday ? '700' : '400'}>{label}</text>
+        return <text key={i} x={gx(i)} y={svgH - 4} textAnchor="middle" fill={p.isToday ? '#F39C12' : '#6B6B6B'} fontSize={9} fontWeight={p.isToday ? '700' : '400'}>{label}</text>
       })}
     </svg>
   )
@@ -161,8 +161,8 @@ function MiniLineChart({ logs }) {
   const last = recent[recent.length - 1]
   return (
     <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: h }} preserveAspectRatio="none">
-      <polyline points={points} fill="none" stroke="#6C63FF" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={gx(recent.length - 1)} cy={gy(last.weight_kg)} r={3} fill="#6C63FF" />
+      <polyline points={points} fill="none" stroke="#D4AF37" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx={gx(recent.length - 1)} cy={gy(last.weight_kg)} r={3} fill="#D4AF37" />
     </svg>
   )
 }
@@ -171,9 +171,9 @@ function trendInfo(logs) {
   const sorted = [...(logs || [])].sort((a, b) => a.date.localeCompare(b.date))
   if (sorted.length < 2) return null
   const diff = sorted[sorted.length - 1].weight_kg - sorted[sorted.length - 2].weight_kg
-  if (Math.abs(diff) < 0.05) return { symbol: '→', color: '#6B7280', label: 'stable' }
-  if (diff < 0) return { symbol: '↓', color: '#10B981', label: 'losing' }
-  return { symbol: '↑', color: '#EF4444', label: 'gaining' }
+  if (Math.abs(diff) < 0.05) return { symbol: '→', color: '#8A8A8A', label: 'stable' }
+  if (diff < 0) return { symbol: '↓', color: '#2ECC71', label: 'losing' }
+  return { symbol: '↑', color: '#E74C3C', label: 'gaining' }
 }
 
 function WeekTable({ logs }) {
@@ -196,8 +196,8 @@ function WeekTable({ logs }) {
         {rows.map(r => (
           <div key={r.dateStr}
             className="flex items-center justify-between px-2.5 py-1 text-xs"
-            style={{ backgroundColor: r.isToday ? '#F3F1FF' : 'transparent' }}>
-            <span className={r.isToday ? 'font-semibold text-[#6C63FF]' : 'text-gray-500'}>{r.label}</span>
+            style={{ backgroundColor: r.isToday ? '#282416' : 'transparent' }}>
+            <span className={r.isToday ? 'font-semibold text-[#D4AF37]' : 'text-gray-500'}>{r.label}</span>
             {r.w !== null
               ? <span className="font-bold text-gray-900">{r.w.toFixed(2)}kg</span>
               : <span className="text-gray-300">——</span>}
@@ -216,11 +216,11 @@ function FamilyWeightCard({ member, isYou }) {
   const trend = latestWeight !== null ? trendInfo(logs) : null
 
   return (
-    <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-50">
+    <div className="bg-dark-card rounded-2xl shadow-sm p-4 border border-gray-50">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-            style={{ backgroundColor: avatar_color || '#6C63FF' }}>
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-[#0A0A0A] shrink-0"
+            style={{ backgroundColor: avatar_color || '#D4AF37' }}>
             {name.charAt(0).toUpperCase()}
           </div>
           <p className="text-sm font-bold text-gray-900 truncate">{name}{isYou && <span className="text-gray-400 font-medium"> (You)</span>}</p>
@@ -365,11 +365,11 @@ export default function AdminWeight({ currentUser } = {}) {
               <button key={u.id} onClick={() => { setSelUserId(u.id); setWeightInput(''); setWeightSaved(false); setProfileSaved(false) }}
                 className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-semibold transition-all"
                 style={{
-                  backgroundColor: selUserId === u.id ? '#6C63FF' : '#F3F4F6',
-                  color: selUserId === u.id ? 'white' : '#374151',
+                  backgroundColor: selUserId === u.id ? '#D4AF37' : '#1A1A1A',
+                  color: selUserId === u.id ? '#0A0A0A' : '#C4C4C4',
                 }}>
-                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white"
-                  style={{ backgroundColor: u.avatar_color || '#6C63FF' }}>
+                <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-[#0A0A0A]"
+                  style={{ backgroundColor: u.avatar_color || '#D4AF37' }}>
                   {u.name.charAt(0).toUpperCase()}
                 </div>
                 {u.name}
@@ -384,7 +384,7 @@ export default function AdminWeight({ currentUser } = {}) {
           {familyLoading ? (
             <div className="text-sm text-gray-300 py-6 text-center">Loading…</div>
           ) : familyMembers.length === 0 ? (
-            <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50 text-center text-sm text-gray-400">
+            <div className="bg-dark-card rounded-2xl shadow-sm p-5 border border-gray-50 text-center text-sm text-gray-400">
               No family members yet
             </div>
           ) : (
@@ -401,7 +401,7 @@ export default function AdminWeight({ currentUser } = {}) {
         ) : (
           <>
             {/* Log weight card */}
-            <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+            <div className="bg-dark-card rounded-2xl shadow-sm p-5 border border-gray-50">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Log Today's Weight · {selUser.name}</p>
               <div className="flex gap-3 items-center">
                 <div className="flex items-center gap-2 flex-1 px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50">
@@ -417,8 +417,8 @@ export default function AdminWeight({ currentUser } = {}) {
                 <button
                   onClick={saveWeight}
                   disabled={!weightInput || weightSaving}
-                  className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                  style={{ backgroundColor: weightSaved ? '#10B981' : '#6C63FF' }}
+                  className="px-5 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                  style={{ backgroundColor: weightSaved ? '#2ECC71' : '#D4AF37' }}
                 >
                   {weightSaving ? 'Saving…' : weightSaved ? '✓ Saved' : 'Save'}
                 </button>
@@ -426,7 +426,7 @@ export default function AdminWeight({ currentUser } = {}) {
             </div>
 
             {/* Height & DOB profile card */}
-            <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+            <div className="bg-dark-card rounded-2xl shadow-sm p-5 border border-gray-50">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Health Profile · {selUser.name}</p>
               <div className="flex gap-3 items-end">
                 <div className="flex-1">
@@ -436,7 +436,7 @@ export default function AdminWeight({ currentUser } = {}) {
                     value={profileHeight}
                     onChange={e => setProfileHeight(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') saveProfile() }}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 outline-none text-sm font-bold text-gray-900 focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 outline-none text-sm font-bold text-gray-900 focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
                 <div className="flex-1">
@@ -445,14 +445,14 @@ export default function AdminWeight({ currentUser } = {}) {
                     type="date"
                     value={profileDob}
                     onChange={e => setProfileDob(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 outline-none text-sm font-bold text-gray-900 focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-gray-50 outline-none text-sm font-bold text-gray-900 focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
                 <button
                   onClick={saveProfile}
                   disabled={!profileHeight || profileSaving}
-                  className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                  style={{ backgroundColor: profileSaved ? '#10B981' : '#6C63FF' }}
+                  className="px-5 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                  style={{ backgroundColor: profileSaved ? '#2ECC71' : '#D4AF37' }}
                 >
                   {profileSaving ? 'Saving…' : profileSaved ? '✓ Saved' : 'Save'}
                 </button>
@@ -467,16 +467,16 @@ export default function AdminWeight({ currentUser } = {}) {
                 { label: 'Target Weight', value: ideal ? `${ideal.target} kg` : '—', sub: ideal ? `Range: ${ideal.min}–${ideal.max}` : 'Set height first' },
                 { label: 'Age', value: age !== null ? `${age} yrs` : '—', sub: selUser.height_cm ? `${selUser.height_cm} cm tall` : 'Profile incomplete' },
               ].map(c => (
-                <div key={c.label} className="bg-white rounded-2xl shadow-sm p-4 text-center border border-gray-50">
+                <div key={c.label} className="bg-dark-card rounded-2xl shadow-sm p-4 text-center border border-gray-50">
                   <p className="text-xs text-gray-400 mb-1">{c.label}</p>
-                  <p className="text-lg font-bold" style={{ color: c.color || '#111827' }}>{c.value}</p>
+                  <p className="text-lg font-bold" style={{ color: c.color || '#F5F5F5' }}>{c.value}</p>
                   <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
                 </div>
               ))}
             </div>
 
             {/* Chart section */}
-            <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+            <div className="bg-dark-card rounded-2xl shadow-sm p-5 border border-gray-50">
               <div className="flex items-center justify-between mb-4">
                 <p className="text-sm font-bold text-gray-800">Weight Progress · {selUser.name}</p>
                 <span className="text-xs text-gray-400">{userLogs.length} total logs</span>
@@ -486,7 +486,7 @@ export default function AdminWeight({ currentUser } = {}) {
                 {PERIOD_TABS.map(t => (
                   <button key={t.id} onClick={() => setPeriod(t.id)}
                     className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150"
-                    style={{ backgroundColor: period === t.id ? '#6C63FF' : 'transparent', color: period === t.id ? 'white' : '#6B7280' }}>
+                    style={{ backgroundColor: period === t.id ? '#D4AF37' : 'transparent', color: period === t.id ? '#0A0A0A' : '#8A8A8A' }}>
                     {t.label}
                   </button>
                 ))}
@@ -499,14 +499,14 @@ export default function AdminWeight({ currentUser } = {}) {
                   {[
                     { label: 'Start', value: `${stats.start.toFixed(1)} kg` },
                     { label: 'End',   value: `${stats.end.toFixed(1)} kg` },
-                    { label: 'Change', value: `${stats.end - stats.start >= 0 ? '+' : ''}${(stats.end - stats.start).toFixed(1)} kg`, color: stats.end - stats.start < 0 ? '#10B981' : stats.end - stats.start > 0 ? '#EF4444' : '#6B7280' },
+                    { label: 'Change', value: `${stats.end - stats.start >= 0 ? '+' : ''}${(stats.end - stats.start).toFixed(1)} kg`, color: stats.end - stats.start < 0 ? '#2ECC71' : stats.end - stats.start > 0 ? '#E74C3C' : '#8A8A8A' },
                     { label: 'Min', value: `${stats.min.toFixed(1)} kg` },
                     { label: 'Max', value: `${stats.max.toFixed(1)} kg` },
                     { label: 'Avg', value: `${stats.avg.toFixed(1)} kg` },
                   ].map(s => (
                     <div key={s.label} className="text-center py-2.5 rounded-2xl bg-gray-50">
                       <p className="text-xs text-gray-400 mb-0.5">{s.label}</p>
-                      <p className="text-sm font-bold" style={{ color: s.color || '#111827' }}>{s.value}</p>
+                      <p className="text-sm font-bold" style={{ color: s.color || '#F5F5F5' }}>{s.value}</p>
                     </div>
                   ))}
                 </div>
@@ -514,7 +514,7 @@ export default function AdminWeight({ currentUser } = {}) {
             </div>
 
             {/* Log history */}
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-50 overflow-hidden">
+            <div className="bg-dark-card rounded-2xl shadow-sm border border-gray-50 overflow-hidden">
               <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
                 <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Log History</p>
                 <p className="text-xs text-gray-400">{selUser.name}</p>
@@ -528,7 +528,7 @@ export default function AdminWeight({ currentUser } = {}) {
                     return (
                       <div key={log.id} className="flex items-center gap-3 px-5 py-3.5 hover:bg-gray-50 transition-colors">
                         <div className="flex items-center justify-center rounded-2xl shrink-0 text-xl"
-                          style={{ width: 40, height: 40, backgroundColor: '#F9FAFB' }}>⚖️</div>
+                          style={{ width: 40, height: 40, backgroundColor: '#1A1A1A' }}>⚖️</div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-bold text-gray-900">{log.weight_kg} kg</p>
                           <p className="text-xs text-gray-400">

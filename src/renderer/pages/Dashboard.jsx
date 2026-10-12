@@ -34,10 +34,10 @@ function calcBMI(weightKg, heightCm) {
 }
 function bmiMeta(bmi) {
   if (!bmi) return null
-  if (bmi < 18.5) return { label: 'Underweight', color: '#3B82F6', bg: '#EFF6FF' }
-  if (bmi < 25)   return { label: 'Normal',      color: '#10B981', bg: '#ECFDF5' }
-  if (bmi < 30)   return { label: 'Overweight',  color: '#F59E0B', bg: '#FFFBEB' }
-  return              { label: 'Obese',           color: '#EF4444', bg: '#FEF2F2' }
+  if (bmi < 18.5) return { label: 'Underweight', color: '#3498DB', bg: '#161F2C' }
+  if (bmi < 25)   return { label: 'Normal',      color: '#2ECC71', bg: '#11251E' }
+  if (bmi < 30)   return { label: 'Overweight',  color: '#F39C12', bg: '#2C2210' }
+  return              { label: 'Obese',           color: '#E74C3C', bg: '#2C1717' }
 }
 
 const DEFAULT_CATS = [
@@ -83,8 +83,8 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl w-full max-w-[420px] shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-dark-card rounded-2xl w-full max-w-[420px] shadow-2xl overflow-hidden">
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">Add Expense</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
@@ -97,11 +97,11 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
           <input
             autoFocus type="number" min="0" step="0.01" placeholder="₹ Amount" required
             value={form.amount} onChange={e => set('amount', e.target.value)}
-            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
           />
           <select
             value={form.category} onChange={e => setCategory(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-dark-card text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37]"
           >
             {categories.map(c => <option key={c.id} value={c.name}>{c.icon} {c.name}</option>)}
           </select>
@@ -116,12 +116,12 @@ function QuickAddExpense({ categories, onAdded, onClose }) {
           <input
             type="text" placeholder="Note (optional)"
             value={form.note} onChange={e => set('note', e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
           />
           {error && <p className="text-xs font-semibold text-red-500">{error}</p>}
           <div className="flex gap-3 pt-1">
             <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">Cancel</button>
-            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60" style={{ backgroundColor: '#6C63FF' }}>{saving ? 'Saving…' : 'Add'}</button>
+            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>{saving ? 'Saving…' : 'Add'}</button>
           </div>
         </form>
       </div>
@@ -179,8 +179,8 @@ function QuickLogWeight({ userId, weightLogs, onSaved, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl w-full max-w-[380px] shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="bg-dark-card rounded-2xl w-full max-w-[380px] shadow-2xl overflow-hidden">
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">Log Weight</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
@@ -222,7 +222,7 @@ function QuickLogWeight({ userId, weightLogs, onSaved, onClose }) {
                 <button
                   type="button" key={d} onClick={() => setLogDate(d)}
                   className="w-full flex items-center justify-between px-3 py-2 text-xs transition-colors"
-                  style={{ backgroundColor: logDate === d ? '#F0FDFA' : 'transparent' }}
+                  style={{ backgroundColor: logDate === d ? '#112523' : 'transparent' }}
                 >
                   <span className="font-semibold text-gray-600">{shortDateLabel(d, today)}</span>
                   <span className={log ? 'font-bold text-gray-900' : 'text-gray-300'}>
@@ -236,8 +236,8 @@ function QuickLogWeight({ userId, weightLogs, onSaved, onClose }) {
       </div>
 
       {confirmSwap && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4" onClick={e => e.target === e.currentTarget && setConfirmSwap(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-[320px] shadow-2xl">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4" onClick={e => e.target === e.currentTarget && setConfirmSwap(null)}>
+          <div className="bg-dark-card rounded-2xl p-6 w-full max-w-[320px] shadow-2xl">
             <p className="text-sm font-bold text-gray-900 mb-1">Already logged</p>
             <p className="text-sm text-gray-500 mb-5">
               You already logged {confirmSwap.existingKg}kg on {shortDateLabel(confirmSwap.date, today)}. Update it to {confirmSwap.kg}kg?
@@ -261,12 +261,12 @@ function QuickLogWeight({ userId, weightLogs, onSaved, onClose }) {
 // ── 3. Two stat cards side by side ──────────────────────────────────────────
 function MonthSpendCard({ spend, budget, needsSpend = 0, wantsSpend = 0, budgetedNeeds = 0, budgetedWants = 0 }) {
   const pct = budget > 0 ? Math.min(100, (spend / budget) * 100) : 0
-  const color = budget <= 0 ? '#9CA3AF' : pct < 50 ? '#10B981' : pct <= 80 ? '#F59E0B' : '#EF4444'
+  const color = budget <= 0 ? '#6B6B6B' : pct < 50 ? '#2ECC71' : pct <= 80 ? '#F39C12' : '#E74C3C'
 
   return (
-    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm min-w-0">
+    <div className="stat-card rounded-2xl p-3.5 sm:p-4 shadow-sm min-w-0">
       <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">This Month</p>
-      <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">
+      <p className="text-lg sm:text-xl font-bold text-[#D4AF37] truncate">
         {fmtCompact(spend)}{budget > 0 && <span className="text-xs font-medium text-gray-400"> / {fmtCompact(budget)}</span>}
       </p>
       {budget > 0 && (
@@ -290,9 +290,9 @@ function MonthSpendCard({ spend, budget, needsSpend = 0, wantsSpend = 0, budgete
 
 function TodaySpendCard({ spend, count }) {
   return (
-    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm min-w-0">
+    <div className="stat-card rounded-2xl p-3.5 sm:p-4 shadow-sm min-w-0">
       <p className="text-[11px] font-semibold text-gray-400 uppercase tracking-wide mb-1">Today</p>
-      <p className="text-lg sm:text-xl font-bold text-gray-900 truncate">{fmtCompact(spend)}</p>
+      <p className="text-lg sm:text-xl font-bold text-[#D4AF37] truncate">{fmtCompact(spend)}</p>
       <p className="text-xs text-gray-400 mt-2">{count} expense{count !== 1 ? 's' : ''} logged</p>
     </div>
   )
@@ -304,18 +304,18 @@ function DailySpendingChart({ dailySpend, dailyBudget }) {
   const data = dailySpend.map(d => ({ ...d, day: Number(d.date.slice(-2)) }))
 
   return (
-    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm min-w-0">
+    <div className="stat-card rounded-2xl p-3.5 sm:p-4 shadow-sm min-w-0">
       <h3 className="text-sm font-semibold text-gray-800 mb-2">Spending This Month</h3>
       <div className="w-full h-[160px] md:h-[180px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
-            <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#9CA3AF' }} interval={4} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
-            <YAxis tick={{ fontSize: 9, fill: '#9CA3AF' }} tickLine={false} axisLine={false} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
-            <Tooltip formatter={v => fmt(v)} labelFormatter={l => `Day ${l}`} contentStyle={{ borderRadius: 12, border: '1px solid #E5E7EB', fontSize: 12 }} />
-            {dailyBudget > 0 && <ReferenceLine y={dailyBudget} stroke="#EF4444" strokeDasharray="4 4" strokeWidth={1.5} />}
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1A1A1A" />
+            <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#6B6B6B' }} interval={4} tickLine={false} axisLine={{ stroke: '#2A2A2A' }} />
+            <YAxis tick={{ fontSize: 9, fill: '#6B6B6B' }} tickLine={false} axisLine={false} tickFormatter={v => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v} />
+            <Tooltip formatter={v => fmt(v)} labelFormatter={l => `Day ${l}`} contentStyle={{ borderRadius: 12, border: '1px solid #2A2A2A', fontSize: 12 }} />
+            {dailyBudget > 0 && <ReferenceLine y={dailyBudget} stroke="#E74C3C" strokeDasharray="4 4" strokeWidth={1.5} />}
             <Bar dataKey="amount" radius={[3, 3, 0, 0]}>
-              {data.map(d => <Cell key={d.date} fill={d.date === today ? '#6C63FF' : '#C7D2FE'} />)}
+              {data.map(d => <Cell key={d.date} fill={d.date === today ? '#D4AF37' : '#4C401C'} />)}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
@@ -330,7 +330,7 @@ function WeightTrendChart({ latestWeight, weightLogs, heightCm }) {
   const data = weightLogs.map(w => ({ ...w, day: Number(w.date.slice(-2)) }))
 
   return (
-    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm min-w-0">
+    <div className="stat-card rounded-2xl p-3.5 sm:p-4 shadow-sm min-w-0">
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <h3 className="text-sm font-semibold text-gray-800">Weight Trend</h3>
         {latestWeight && (
@@ -344,11 +344,11 @@ function WeightTrendChart({ latestWeight, weightLogs, heightCm }) {
         <div className="w-full h-[160px] md:h-[180px]">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={data} margin={{ top: 4, right: 4, left: -24, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F3F4F6" />
-              <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#9CA3AF' }} tickLine={false} axisLine={{ stroke: '#E5E7EB' }} />
-              <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fontSize: 9, fill: '#9CA3AF' }} tickLine={false} axisLine={false} />
-              <Tooltip formatter={v => `${v} kg`} labelFormatter={l => `Day ${l}`} contentStyle={{ borderRadius: 12, border: '1px solid #E5E7EB', fontSize: 12 }} />
-              <Line type="monotone" dataKey="weight_kg" stroke="#14B8A6" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#1A1A1A" />
+              <XAxis dataKey="day" tick={{ fontSize: 9, fill: '#6B6B6B' }} tickLine={false} axisLine={{ stroke: '#2A2A2A' }} />
+              <YAxis domain={['dataMin - 2', 'dataMax + 2']} tick={{ fontSize: 9, fill: '#6B6B6B' }} tickLine={false} axisLine={false} />
+              <Tooltip formatter={v => `${v} kg`} labelFormatter={l => `Day ${l}`} contentStyle={{ borderRadius: 12, border: '1px solid #2A2A2A', fontSize: 12 }} />
+              <Line type="monotone" dataKey="weight_kg" stroke="#D4AF37" strokeWidth={2.5} dot={false} activeDot={{ r: 4 }} />
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -365,11 +365,11 @@ function WeightTrendChart({ latestWeight, weightLogs, heightCm }) {
 function TodayExpensesCompact({ expenses, categoryIcons, onDelete, onViewAll }) {
   const shown = expenses.slice(0, 5)
   return (
-    <div className="bg-white rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm">
+    <div className="bg-dark-card rounded-2xl p-3.5 sm:p-4 border border-gray-100 shadow-sm">
       <div className="flex items-center justify-between mb-1.5">
         <h3 className="text-sm font-semibold text-gray-800">Today's Expenses</h3>
         {onViewAll && (
-          <button onClick={onViewAll} className="text-xs font-semibold shrink-0" style={{ color: '#6C63FF' }}>
+          <button onClick={onViewAll} className="text-xs font-semibold shrink-0" style={{ color: '#D4AF37' }}>
             View all →
           </button>
         )}
@@ -489,15 +489,13 @@ export default function Dashboard({ onNavigate, currentUser }) {
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={() => setShowAddExpense(true)}
-          className="h-[52px] md:h-12 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm"
-          style={{ backgroundColor: '#6C63FF' }}
+          className="btn-gold h-[52px] md:h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm"
         >
           <span className="text-base leading-none">+</span> Add Expense
         </button>
         <button
           onClick={() => setShowLogWeight(true)}
-          className="h-[52px] md:h-12 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity flex items-center justify-center gap-1.5 shadow-sm"
-          style={{ backgroundColor: '#14B8A6' }}
+          className="btn-gold h-[52px] md:h-12 rounded-xl text-sm font-bold flex items-center justify-center gap-1.5 shadow-sm"
         >
           <span className="text-base leading-none">+</span> Log Weight
         </button>
@@ -514,11 +512,11 @@ export default function Dashboard({ onNavigate, currentUser }) {
       {loading ? (
         <div className="space-y-3 sm:space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-2xl h-20 border border-gray-100 animate-pulse" />
-            <div className="bg-white rounded-2xl h-20 border border-gray-100 animate-pulse" />
+            <div className="bg-dark-card rounded-2xl h-20 border border-gray-100 animate-pulse" />
+            <div className="bg-dark-card rounded-2xl h-20 border border-gray-100 animate-pulse" />
           </div>
-          <div className="bg-white rounded-2xl h-48 border border-gray-100 animate-pulse" />
-          <div className="bg-white rounded-2xl h-32 border border-gray-100 animate-pulse" />
+          <div className="bg-dark-card rounded-2xl h-48 border border-gray-100 animate-pulse" />
+          <div className="bg-dark-card rounded-2xl h-32 border border-gray-100 animate-pulse" />
         </div>
       ) : (
         <>

@@ -2,15 +2,15 @@ import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
 
 const CATEGORIES = [
-  { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
-  { name: 'Transport',     icon: '🚗', color: '#06B6D4', bg: '#ECFEFF' },
-  { name: 'Shopping',      icon: '🛍️', color: '#A855F7', bg: '#FAF5FF' },
-  { name: 'Health',        icon: '💊', color: '#10B981', bg: '#ECFDF5' },
-  { name: 'Bills',         icon: '📄', color: '#6366F1', bg: '#EEF2FF' },
-  { name: 'Entertainment', icon: '🎬', color: '#EC4899', bg: '#FDF2F8' },
-  { name: 'Fuel',          icon: '⛽', color: '#F59E0B', bg: '#FFFBEB' },
-  { name: 'Dining',        icon: '🍽️', color: '#F97316', bg: '#FFF7ED' },
-  { name: 'Others',        icon: '💸', color: '#8B93A5', bg: '#F8FAFC' },
+  { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#2C1717' },
+  { name: 'Transport',     icon: '🚗', color: '#06B6D4', bg: '#102528' },
+  { name: 'Shopping',      icon: '🛍️', color: '#A855F7', bg: '#23192D' },
+  { name: 'Health',        icon: '💊', color: '#2ECC71', bg: '#11251E' },
+  { name: 'Bills',         icon: '📄', color: '#D4AF37', bg: '#282416' },
+  { name: 'Entertainment', icon: '🎬', color: '#EC4899', bg: '#2B1821' },
+  { name: 'Fuel',          icon: '⛽', color: '#F39C12', bg: '#2C2210' },
+  { name: 'Dining',        icon: '🍽️', color: '#F97316', bg: '#2D1D12' },
+  { name: 'Others',        icon: '💸', color: '#8B93A5', bg: '#1A1A1A' },
 ]
 
 const fmt = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0)
@@ -82,7 +82,7 @@ function generateTips(catTotals, monthTotal) {
 function InsightCard({ children, delay = 0 }) {
   return (
     <div
-      className="bg-white rounded-3xl shadow-sm p-5"
+      className="bg-dark-card rounded-3xl shadow-sm p-5"
       style={{ animation: `fadeInUp 0.35s ease both`, animationDelay: `${delay}ms` }}
     >
       {children}
@@ -201,8 +201,8 @@ export default function TrackerInsights({ user }) {
                 <span
                   className="flex items-center gap-1 text-sm font-semibold px-2 py-0.5 rounded-full"
                   style={{
-                    backgroundColor: diffUp ? '#FEE2E2' : '#DCFCE7',
-                    color: diffUp ? '#EF4444' : '#16A34A',
+                    backgroundColor: diffUp ? '#391A1A' : '#14311F',
+                    color: diffUp ? '#E74C3C' : '#16A34A',
                   }}
                 >
                   {diffUp ? '↑' : '↓'} {fmt(diffAbs)} {diffUp ? 'more' : 'less'}
@@ -211,12 +211,12 @@ export default function TrackerInsights({ user }) {
             </div>
             <div className="space-y-2">
               {[
-                { label: thisMonthLabel, value: thisTotal, color: '#6C63FF' },
-                { label: lastMonthLabel, value: lastTotal, color: '#D1D5DB' },
+                { label: thisMonthLabel, value: thisTotal, color: '#D4AF37' },
+                { label: lastMonthLabel, value: lastTotal, color: '#3A3A3A' },
               ].map(row => (
                 <div key={row.label} className="flex items-center gap-3">
                   <span className="text-xs font-semibold text-gray-500 w-8">{row.label}</span>
-                  <div className="flex-1 h-3 rounded-full" style={{ backgroundColor: '#F3F4F6' }}>
+                  <div className="flex-1 h-3 rounded-full" style={{ backgroundColor: '#1A1A1A' }}>
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{ width: `${(row.value / maxMoBar) * 100}%`, backgroundColor: row.color }}
@@ -235,7 +235,7 @@ export default function TrackerInsights({ user }) {
             <div className="mt-3 pt-3 border-t border-gray-50">
               <p className="text-sm text-gray-700">
                 Projected month-end:{' '}
-                <span className="font-bold" style={{ color: '#6C63FF' }}>{fmt(projectedEnd)}</span>
+                <span className="font-bold" style={{ color: '#D4AF37' }}>{fmt(projectedEnd)}</span>
               </p>
               <p className="text-xs text-gray-400 mt-0.5">
                 Based on {daysElapsed} day{daysElapsed !== 1 ? 's' : ''} of data
@@ -279,8 +279,8 @@ export default function TrackerInsights({ user }) {
                   key={i}
                   className="flex gap-3 pl-4 py-2 rounded-2xl"
                   style={{
-                    borderLeft: '3px solid #6C63FF',
-                    backgroundColor: '#F8F7FF',
+                    borderLeft: '3px solid #D4AF37',
+                    backgroundColor: '#252115',
                   }}
                 >
                   <p className="text-sm text-gray-700">{tip}</p>
@@ -293,7 +293,7 @@ export default function TrackerInsights({ user }) {
             <div className="flex items-center gap-4">
               <div
                 className="flex items-center justify-center rounded-2xl text-4xl shrink-0"
-                style={{ width: 64, height: 64, backgroundColor: '#FFF7ED' }}
+                style={{ width: 64, height: 64, backgroundColor: '#2D1D12' }}
               >
                 🔥
               </div>

@@ -97,7 +97,7 @@ const SCENARIOS = [
 ]
 
 const CARD_CLS = 'rounded-2xl p-5 sm:p-6 text-white shadow-lg'
-const CARD_STYLE = { background: 'linear-gradient(150deg, #1a1a2e 0%, #2b1f52 55%, #3a2270 100%)' }
+const CARD_STYLE = { background: 'linear-gradient(150deg, #111111 0%, #1A1A1A 55%, #2A2410 100%)', border: '1px solid #D4AF3740' }
 
 // ── Component ─────────────────────────────────────────────────────────────
 export default function RetirementCountdown({
@@ -229,7 +229,7 @@ export default function RetirementCountdown({
                     key={s.kids}
                     onClick={() => setScenarioKids(s.kids)}
                     className={`rounded-full px-3 py-1 text-[11px] font-semibold transition-colors ${
-                      active ? 'bg-white text-[#1a1a2e]' : 'bg-white/10 text-white/60 hover:bg-white/20'
+                      active ? 'bg-[#D4AF37] text-[#0A0A0A]' : 'bg-white/10 text-white/60 hover:bg-white/20'
                     }`}
                   >
                     {s.label}{active ? ' ✓' : ''}
@@ -264,7 +264,7 @@ export default function RetirementCountdown({
                     />
                   </div>
                 </div>
-                <p className="mt-2.5 text-sm font-medium" style={{ color: '#FCA5A5' }}>
+                <p className="mt-2.5 text-sm font-medium" style={{ color: '#6A2525' }}>
                   Need {fmtCr(gap)} more
                 </p>
               </>

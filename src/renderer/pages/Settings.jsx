@@ -67,7 +67,7 @@ function ImportPhoneButton() {
           <select
             value={targetUserId}
             onChange={e => setTargetUserId(e.target.value)}
-            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 bg-white"
+            className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 bg-dark-card"
           >
             {users.map(u => (
               <option key={u.id} value={String(u.id)}>
@@ -80,8 +80,8 @@ function ImportPhoneButton() {
       <button
         onClick={pick}
         disabled={importing}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-        style={{ backgroundColor: '#6C63FF' }}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+        style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -100,9 +100,9 @@ function ImportPhoneButton() {
 }
 
 const CATEGORY_COLORS = [
-  '#FF6B6B', '#FF8E53', '#F59E0B', '#FBBF24', '#A3E635', '#10B981',
-  '#06B6D4', '#3B82F6', '#6366F1', '#8B5CF6', '#A855F7', '#EC4899',
-  '#F43F5E', '#64748B', '#22C55E', '#0EA5E9', '#14B8A6', '#8B93A5',
+  '#FF6B6B', '#FF8E53', '#F39C12', '#FBBF24', '#A3E635', '#2ECC71',
+  '#06B6D4', '#3498DB', '#D4AF37', '#8B5CF6', '#A855F7', '#EC4899',
+  '#F43F5E', '#8A8A8A', '#22C55E', '#0EA5E9', '#14B8A6', '#8B93A5',
 ]
 
 function CategoryManager() {
@@ -112,7 +112,7 @@ function CategoryManager() {
   const [showForm, setShowForm] = useState(false)
   const [name, setName] = useState('')
   const [icon, setIcon] = useState('🏷️')
-  const [color, setColor] = useState('#6366F1')
+  const [color, setColor] = useState('#D4AF37')
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [confirmDelete, setConfirmDelete] = useState(null) // { id, name, count } | null
@@ -144,7 +144,7 @@ function CategoryManager() {
     setFormError('')
     try {
       await bridge.createExpenseCategory({ name: name.trim(), icon: icon.trim(), color })
-      setName(''); setIcon('🏷️'); setColor('#6366F1')
+      setName(''); setIcon('🏷️'); setColor('#D4AF37')
       setShowForm(false)
       load()
     } catch (err) {
@@ -213,12 +213,12 @@ function CategoryManager() {
             <input
               type="text" placeholder="🛒" maxLength={4}
               value={icon} onChange={e => setIcon(e.target.value)}
-              className="w-14 px-2 py-2 rounded-xl border border-gray-200 text-center text-lg focus:outline-none focus:border-[#6C63FF]"
+              className="w-14 px-2 py-2 rounded-xl border border-gray-200 text-center text-lg focus:outline-none focus:border-[#D4AF37]"
             />
             <input
               type="text" placeholder="Category name"
               value={name} onChange={e => { setName(e.target.value); setFormError('') }}
-              className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+              className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
             />
           </div>
           <div>
@@ -243,8 +243,8 @@ function CategoryManager() {
             </button>
             <button
               onClick={save} disabled={saving}
-              className="flex-1 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
-              style={{ backgroundColor: '#6C63FF' }}
+              className="flex-1 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
             >
               {saving ? 'Saving…' : 'Save'}
             </button>
@@ -253,8 +253,8 @@ function CategoryManager() {
       )}
 
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-[360px] shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={e => e.target === e.currentTarget && setConfirmDelete(null)}>
+          <div className="bg-dark-card rounded-2xl p-6 w-full max-w-[360px] shadow-2xl">
             <p className="text-sm font-bold text-gray-900 mb-1">Delete "{confirmDelete.name}"?</p>
             <p className="text-sm text-gray-500 mb-5">
               This category has {confirmDelete.count} expense{confirmDelete.count !== 1 ? 's' : ''}. Delete anyway?
@@ -301,11 +301,11 @@ export default function Settings({ onSyncRefresh, currentUser }) {
     if (/[0-9]/.test(p)) s++
     if (/[^A-Za-z0-9]/.test(p)) s++
     const levels = [
-      { label: 'Too Short',   color: '#9CA3AF', pct: 8   },
-      { label: 'Weak',        color: '#EF4444', pct: 22  },
-      { label: 'Fair',        color: '#F59E0B', pct: 45  },
-      { label: 'Good',        color: '#3B82F6', pct: 65  },
-      { label: 'Strong',      color: '#10B981', pct: 85  },
+      { label: 'Too Short',   color: '#6B6B6B', pct: 8   },
+      { label: 'Weak',        color: '#E74C3C', pct: 22  },
+      { label: 'Fair',        color: '#F39C12', pct: 45  },
+      { label: 'Good',        color: '#3498DB', pct: 65  },
+      { label: 'Strong',      color: '#2ECC71', pct: 85  },
       { label: 'Very Strong', color: '#059669', pct: 100 },
     ]
     return levels[Math.min(s, 5)]
@@ -752,7 +752,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
       {/* Toast */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-lg text-sm font-semibold text-white ${toast.type === 'error' ? 'bg-red-500' : 'bg-[#6C63FF]'}`}
+          className={`fixed bottom-6 right-6 z-50 flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-lg text-sm font-semibold text-[#0A0A0A] ${toast.type === 'error' ? 'bg-red-500' : 'bg-[#D4AF37]'}`}
         >
           {toast.type === 'error' ? '❌' : '✅'} {toast.msg}
         </div>
@@ -763,7 +763,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowBrowserPicker(false) }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
+          <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden">
             <div className="px-5 py-4 border-b border-gray-100">
               <p className="text-base font-bold text-gray-900">Open in browser</p>
               <p className="text-xs text-gray-400 mt-0.5">Choose which browser to use for Google sign-in</p>
@@ -797,9 +797,9 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
       {/* Restore overlay */}
       {restoring && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-10 shadow-2xl flex flex-col items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl" style={{ backgroundColor: '#f0efff' }}>⏳</div>
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/85 backdrop-blur-sm">
+          <div className="bg-dark-card rounded-2xl p-10 shadow-2xl flex flex-col items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl" style={{ backgroundColor: '#282416' }}>⏳</div>
             <p className="text-lg font-bold text-gray-900">Restoring…</p>
             <p className="text-sm text-gray-500 text-center">The app will restart automatically once the restore is complete.</p>
           </div>
@@ -812,11 +812,11 @@ export default function Settings({ onSyncRefresh, currentUser }) {
       </div>
 
       {/* ── My Profile ──────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-3">
           <div
-            className="w-11 h-11 rounded-full flex items-center justify-center text-base font-bold text-white shrink-0"
-            style={{ backgroundColor: currentUser?.avatar_color || '#6C63FF' }}
+            className="w-11 h-11 rounded-full flex items-center justify-center text-base font-bold text-[#0A0A0A] shrink-0"
+            style={{ backgroundColor: currentUser?.avatar_color || '#D4AF37' }}
           >
             {getInitials(profileForm.name || currentUser?.name)}
           </div>
@@ -833,7 +833,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 type="text" placeholder="Your name"
                 value={profileForm.name}
                 onChange={e => setProfileForm(f => ({ ...f, name: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
             </div>
             <div>
@@ -842,7 +842,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 type="tel" inputMode="numeric" placeholder="9000000001"
                 value={profileForm.mobile_number}
                 onChange={e => setProfileForm(f => ({ ...f, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
             </div>
           </div>
@@ -853,7 +853,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
               type="number" min="0" step="1000" placeholder="e.g. 100000"
               value={profileForm.monthly_salary}
               onChange={e => setProfileForm(f => ({ ...f, monthly_salary: e.target.value }))}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
             />
           </div>
 
@@ -864,7 +864,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 type="date"
                 value={profileForm.date_of_birth}
                 onChange={e => setProfileForm(f => ({ ...f, date_of_birth: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
               <p className="text-xs text-gray-400 mt-1">Powers age-based allocation guidance</p>
             </div>
@@ -874,7 +874,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 type="number" min="40" max="80" step="1" placeholder="60"
                 value={profileForm.retirement_age}
                 onChange={e => setProfileForm(f => ({ ...f, retirement_age: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
               <p className="text-xs text-gray-400 mt-1">Used in glide path chart</p>
             </div>
@@ -884,7 +884,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 type="date"
                 value={profileForm.retirement_date}
                 onChange={e => setProfileForm(f => ({ ...f, retirement_date: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
               <p className="text-xs text-gray-400 mt-1">Drives the Retirement Countdown — overrides date of birth + age</p>
             </div>
@@ -897,7 +897,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 type="number" min="50" max="250" step="0.1" placeholder="e.g. 175"
                 value={profileForm.height_cm}
                 onChange={e => setProfileForm(f => ({ ...f, height_cm: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
               <p className="text-xs text-gray-400 mt-1">Used to calculate BMI</p>
             </div>
@@ -907,7 +907,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 type="number" min="20" max="300" step="0.01" inputMode="decimal" placeholder="e.g. 70.5"
                 value={profileForm.target_weight_kg}
                 onChange={e => setProfileForm(f => ({ ...f, target_weight_kg: e.target.value }))}
-                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
               />
               <p className="text-xs text-gray-400 mt-1">Shown on the Weight Trend card</p>
             </div>
@@ -915,8 +915,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
           <button
             onClick={saveProfile}
-            className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#6C63FF' }}
+            className="px-5 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
           >
             {profileSaved ? '✓ Saved' : 'Save Profile'}
           </button>
@@ -925,7 +925,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
       {/* ── Security — Electron-only app-lock password (separate from user login) ── */}
       {IS_ELECTRON && (
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">Security</h3>
           <p className="text-xs text-gray-400 mt-0.5">App password encrypted with PBKDF2-HMAC-SHA256 + OS Keychain</p>
@@ -938,7 +938,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
               placeholder="Enter current password"
               value={pwForm.current}
               onChange={e => setPwField('current', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
             />
           </div>
           <div>
@@ -948,7 +948,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
               placeholder="New password (min 8 chars)"
               value={pwForm.next}
               onChange={e => setPwField('next', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
             />
             {pwForm.next && (() => {
               const s = pwStrength(pwForm.next)
@@ -969,7 +969,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
               placeholder="Confirm new password"
               value={pwForm.confirm}
               onChange={e => setPwField('confirm', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
             />
           </div>
 
@@ -995,8 +995,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
           <button
             onClick={changePassword}
             disabled={pwStatus === 'saving' || !pwForm.current || !pwForm.next || !pwForm.confirm}
-            className="px-5 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: '#6C63FF' }}
+            className="px-5 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
           >
             {pwStatus === 'saving' ? 'Changing…' : 'Change Password'}
           </button>
@@ -1005,7 +1005,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
       )}
 
       {/* ── User Management ─────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">👥 User Management</h3>
           <p className="text-xs text-gray-400 mt-0.5">Your account, plus family members who can log expenses and weight</p>
@@ -1016,8 +1016,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
           {!editingMyDetails ? (
             <div className="flex items-center gap-3 flex-wrap">
               <div
-                className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-white shrink-0"
-                style={{ backgroundColor: currentUser?.avatar_color || '#6C63FF' }}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-[#0A0A0A] shrink-0"
+                style={{ backgroundColor: currentUser?.avatar_color || '#D4AF37' }}
               >
                 {getInitials(myDetailsForm.name)}
               </div>
@@ -1042,7 +1042,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="text"
                     value={myDetailsForm.name}
                     onChange={e => setMyDetailsForm(f => ({ ...f, name: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
                 <div>
@@ -1051,7 +1051,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="tel" inputMode="numeric"
                     value={myDetailsForm.mobile_number}
                     onChange={e => setMyDetailsForm(f => ({ ...f, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
               </div>
@@ -1062,7 +1062,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="password" placeholder="Leave blank to keep"
                     value={myDetailsForm.password}
                     onChange={e => setMyDetailsForm(f => ({ ...f, password: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
                 <div>
@@ -1071,7 +1071,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="password" placeholder="Repeat password"
                     value={myDetailsForm.confirmPassword}
                     onChange={e => setMyDetailsForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
               </div>
@@ -1085,8 +1085,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 </button>
                 <button
                   onClick={saveMyDetails}
-                  className="flex-1 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: '#6C63FF' }}
+                  className="flex-1 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+                  style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                 >
                   Save Changes
                 </button>
@@ -1100,8 +1100,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
           <p className="text-sm font-semibold text-gray-800">Family Members</p>
           <button
             onClick={openAddMember}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-white text-xs font-semibold hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#6C63FF' }}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[#0A0A0A] text-xs font-semibold hover:opacity-90 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
           >
             + Add Family Member
           </button>
@@ -1156,12 +1156,12 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="number" min="0" step="100" placeholder="0"
                     value={trackerBudget}
                     onChange={e => setTrackerBudget(e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                    className="flex-1 px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
                   />
                   <button
                     onClick={saveTrackerBudget}
                     className="px-4 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity"
-                    style={{ backgroundColor: '#10B981' }}
+                    style={{ backgroundColor: '#2ECC71' }}
                   >
                     Save
                   </button>
@@ -1193,8 +1193,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
       {/* ── Edit family member modal ────────────────────────────────────── */}
       {editingUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+          <div className="bg-dark-card rounded-2xl p-6 shadow-2xl w-full max-w-sm">
             <div className="flex items-center gap-2 mb-4">
               <h3 className="text-base font-bold text-gray-900">Edit User</h3>
               <span className="text-xs px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 font-semibold">Tracker</span>
@@ -1207,7 +1207,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                   type="text"
                   value={editForm.name}
                   onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                 />
               </div>
               <div>
@@ -1216,7 +1216,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                   type="tel" inputMode="numeric"
                   value={editForm.mobile_number}
                   onChange={e => setEditForm(f => ({ ...f, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -1226,7 +1226,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="password" placeholder="Leave blank to keep"
                     value={editForm.password}
                     onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
                 <div>
@@ -1235,7 +1235,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="password" placeholder="Repeat password"
                     value={editForm.confirmPassword}
                     onChange={e => setEditForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
               </div>
@@ -1251,8 +1251,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 </button>
                 <button
                   onClick={saveUser}
-                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: '#6C63FF' }}
+                  className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+                  style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                 >
                   Save
                 </button>
@@ -1264,8 +1264,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
       {/* ── Add family member modal ─────────────────────────────────────── */}
       {showAddMember && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-2xl p-6 shadow-2xl w-full max-w-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-4">
+          <div className="bg-dark-card rounded-2xl p-6 shadow-2xl w-full max-w-sm">
             <div className="flex items-center gap-2 mb-4">
               <h3 className="text-base font-bold text-gray-900">Add Family Member</h3>
               <span className="text-xs px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 font-semibold">Tracker</span>
@@ -1278,7 +1278,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                   autoFocus type="text" placeholder="e.g. Spouse"
                   value={addMemberForm.name}
                   onChange={e => setAddMemberForm(f => ({ ...f, name: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                 />
               </div>
               <div>
@@ -1287,7 +1287,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                   type="tel" inputMode="numeric" placeholder="9000000002"
                   value={addMemberForm.mobile_number}
                   onChange={e => setAddMemberForm(f => ({ ...f, mobile_number: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
-                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                 />
               </div>
               <div className="grid grid-cols-2 gap-2">
@@ -1297,7 +1297,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="password" placeholder="8+ characters"
                     value={addMemberForm.password}
                     onChange={e => setAddMemberForm(f => ({ ...f, password: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
                 <div>
@@ -1306,7 +1306,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     type="password" placeholder="Repeat password"
                     value={addMemberForm.confirmPassword}
                     onChange={e => setAddMemberForm(f => ({ ...f, confirmPassword: e.target.value }))}
-                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+                    className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37]"
                   />
                 </div>
               </div>
@@ -1322,8 +1322,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 </button>
                 <button
                   onClick={createFamilyMember}
-                  className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-                  style={{ backgroundColor: '#6C63FF' }}
+                  className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+                  style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                 >
                   Create Account
                 </button>
@@ -1334,7 +1334,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
       )}
 
       {/* ── Expense Categories (Settings is admin-only end to end) ─────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">🏷️ Expense Categories</h3>
           <p className="text-xs text-gray-400 mt-0.5">Manage the categories available when logging an expense</p>
@@ -1344,7 +1344,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
       {/* ── Import from Phone — Electron-only (uses local file paths) ──────── */}
       {IS_ELECTRON && (
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">Import from Phone</h3>
           <p className="text-xs text-gray-400 mt-0.5">Import expenses and weight logs exported from the Lifelog mobile app</p>
@@ -1360,7 +1360,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
 
       {/* ── Google Drive Backup — Electron-only OAuth flow ──────────────── */}
       {!IS_ELECTRON ? (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
           <div className="px-6 py-4 border-b border-gray-100">
             <h3 className="text-base font-semibold text-gray-800">Google Drive Backup</h3>
             <p className="text-xs text-gray-400 mt-0.5">Securely back up and restore your financial data</p>
@@ -1370,7 +1370,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
           </div>
         </div>
       ) : (
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-6">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h3 className="text-base font-semibold text-gray-800">Google Drive Backup</h3>
@@ -1397,7 +1397,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
               onClick={reconnectDrive}
               disabled={driveOp === 'connecting'}
               className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 shrink-0"
-              style={{ backgroundColor: '#EF4444' }}
+              style={{ backgroundColor: '#E74C3C' }}
             >
               {driveOp === 'connecting' ? '⏳ Reconnecting…' : '🔄 Reconnect Google Drive'}
             </button>
@@ -1437,13 +1437,13 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                     <div className="space-y-2">
                       <div>
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Client ID</p>
-                        <p className="text-xs font-mono text-gray-700 break-all bg-white border border-gray-200 rounded-lg px-3 py-2 select-all">
+                        <p className="text-xs font-mono text-gray-700 break-all bg-dark-card border border-gray-200 rounded-lg px-3 py-2 select-all">
                           {storedCreds.clientId}
                         </p>
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Client Secret</p>
-                        <p className="text-xs font-mono text-gray-700 break-all bg-white border border-gray-200 rounded-lg px-3 py-2 select-all">
+                        <p className="text-xs font-mono text-gray-700 break-all bg-dark-card border border-gray-200 rounded-lg px-3 py-2 select-all">
                           {storedCreds.clientSecret}
                         </p>
                       </div>
@@ -1461,7 +1461,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                       type="text" placeholder="xxxx.apps.googleusercontent.com"
                       value={credsForm.clientId}
                       onChange={e => setCredsForm(f => ({ ...f, clientId: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                     />
                   </div>
                   <div>
@@ -1470,18 +1470,18 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                       type="password" placeholder="Your client secret"
                       value={credsForm.clientSecret}
                       onChange={e => setCredsForm(f => ({ ...f, clientSecret: e.target.value }))}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                     />
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => setShowCredsForm(false)} className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-white transition-colors">
+                    <button onClick={() => setShowCredsForm(false)} className="px-4 py-2 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-dark-card transition-colors">
                       Cancel
                     </button>
                     <button
                       onClick={saveCreds}
                       disabled={!credsForm.clientId.trim() || !credsForm.clientSecret.trim()}
-                      className="px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                      style={{ backgroundColor: '#6C63FF' }}
+                      className="px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                      style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                     >
                       Save Credentials
                     </button>
@@ -1504,8 +1504,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                   <button
                     onClick={connect}
                     disabled={driveOp === 'connecting'}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
-                    style={{ backgroundColor: '#6C63FF' }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                   >
                     {driveOp === 'connecting' ? '⏳ Opening browser…' : '🔗 Connect Google Drive'}
                   </button>
@@ -1563,8 +1563,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                   <button
                     onClick={syncNow}
                     disabled={syncing}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
-                    style={{ backgroundColor: '#6C63FF' }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                    style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                   >
                     {syncing ? '⏳ Syncing…' : '🔄 Sync Now'}
                   </button>
@@ -1614,10 +1614,10 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 <button
                   onClick={() => toggleAutoBackup(!autoBackup)}
                   className="relative w-12 h-6 rounded-full transition-colors duration-200"
-                  style={{ backgroundColor: autoBackup ? '#6C63FF' : '#D1D5DB' }}
+                  style={{ backgroundColor: autoBackup ? '#D4AF37' : '#3A3A3A' }}
                 >
                   <div
-                    className="absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200"
+                    className="absolute top-0.5 w-5 h-5 bg-dark-card rounded-full shadow transition-transform duration-200"
                     style={{ transform: autoBackup ? 'translateX(24px)' : 'translateX(2px)' }}
                   />
                 </button>
@@ -1628,8 +1628,8 @@ export default function Settings({ onSyncRefresh, currentUser }) {
                 <button
                   onClick={backupNow}
                   disabled={!!driveOp}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
-                  style={{ backgroundColor: '#6C63FF' }}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60"
+                  style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                 >
                   {driveOp === 'backing-up' ? '⏳ Backing up…' : '☁️ Backup Now'}
                 </button>
@@ -1697,7 +1697,7 @@ export default function Settings({ onSyncRefresh, currentUser }) {
       )}
 
       {/* ── About ────────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
           <h3 className="text-base font-semibold text-gray-800">About</h3>
           <p className="text-xs text-gray-400 mt-0.5">Device identity used for sync</p>

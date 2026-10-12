@@ -8,15 +8,15 @@ import { BUCKET_META, bucketForCategory } from '../lib/bucket'
 const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
 
 const DEFAULT_CATS = [
-  { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
-  { name: 'Transport',     icon: '🚗', color: '#06B6D4', bg: '#ECFEFF' },
-  { name: 'Shopping',      icon: '🛍️', color: '#A855F7', bg: '#FAF5FF' },
-  { name: 'Health',        icon: '💊', color: '#10B981', bg: '#ECFDF5' },
-  { name: 'Bills',         icon: '📄', color: '#6366F1', bg: '#EEF2FF' },
-  { name: 'Entertainment', icon: '🎬', color: '#EC4899', bg: '#FDF2F8' },
-  { name: 'Fuel',          icon: '⛽', color: '#F59E0B', bg: '#FFFBEB' },
-  { name: 'Dining',        icon: '🍽️', color: '#F97316', bg: '#FFF7ED' },
-  { name: 'Others',        icon: '💸', color: '#8B93A5', bg: '#F8FAFC' },
+  { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#2C1717' },
+  { name: 'Transport',     icon: '🚗', color: '#06B6D4', bg: '#102528' },
+  { name: 'Shopping',      icon: '🛍️', color: '#A855F7', bg: '#23192D' },
+  { name: 'Health',        icon: '💊', color: '#2ECC71', bg: '#11251E' },
+  { name: 'Bills',         icon: '📄', color: '#D4AF37', bg: '#282416' },
+  { name: 'Entertainment', icon: '🎬', color: '#EC4899', bg: '#2B1821' },
+  { name: 'Fuel',          icon: '⛽', color: '#F39C12', bg: '#2C2210' },
+  { name: 'Dining',        icon: '🍽️', color: '#F97316', bg: '#2D1D12' },
+  { name: 'Others',        icon: '💸', color: '#8B93A5', bg: '#1A1A1A' },
 ]
 
 const fmt = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0)
@@ -55,7 +55,7 @@ function timeStr(createdAt) {
 }
 
 function getCatMeta(allCats, name) {
-  return allCats.find(c => c.name === name) || { icon: '💸', color: '#8B93A5', bg: '#F8FAFC' }
+  return allCats.find(c => c.name === name) || { icon: '💸', color: '#8B93A5', bg: '#1A1A1A' }
 }
 
 export default function TrackerHome({ user }) {
@@ -99,7 +99,7 @@ export default function TrackerHome({ user }) {
         const merged = DEFAULT_CATS.map(m => ({ ...m, bucket: byName.get(m.name)?.bucket }))
         for (const c of cats) {
           if (!merged.find(m => m.name === c.name)) {
-            merged.push({ name: c.name, icon: c.icon || '💸', color: c.color || '#8B93A5', bg: '#F8FAFC', bucket: c.bucket })
+            merged.push({ name: c.name, icon: c.icon || '💸', color: c.color || '#8B93A5', bg: '#1A1A1A', bucket: c.bucket })
           }
         }
         setCategories(merged)
@@ -242,7 +242,7 @@ export default function TrackerHome({ user }) {
               {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
             </p>
             {budget > 0 && (
-              <p className="text-xs font-semibold mt-0.5" style={{ color: budgetLeft < 0 ? '#EF4444' : '#10B981' }}>
+              <p className="text-xs font-semibold mt-0.5" style={{ color: budgetLeft < 0 ? '#E74C3C' : '#2ECC71' }}>
                 {budgetLeft < 0 ? `Over by ${fmt(Math.abs(budgetLeft))}` : `${fmt(budgetLeft)} left`}
               </p>
             )}
@@ -252,7 +252,7 @@ export default function TrackerHome({ user }) {
         {/* ── Hero card ── */}
         <div
           className="rounded-3xl p-5 mb-5 relative overflow-hidden"
-          style={{ background: 'linear-gradient(135deg, #6C63FF 0%, #4338CA 100%)' }}
+          style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #F0D060 100%)' }}
         >
           {/* decorative circles */}
           <div className="absolute rounded-full" style={{ width: 200, height: 200, top: -80, right: -50, background: 'rgba(255,255,255,0.06)' }} />
@@ -284,7 +284,7 @@ export default function TrackerHome({ user }) {
                   className="h-full rounded-full transition-all duration-700"
                   style={{
                     width: `${budgetPct}%`,
-                    backgroundColor: budgetPct >= 90 ? '#FCA5A5' : budgetPct >= 70 ? '#FDE68A' : 'rgba(255,255,255,0.9)',
+                    backgroundColor: budgetPct >= 90 ? '#6A2525' : budgetPct >= 70 ? '#553B0F' : 'rgba(255,255,255,0.9)',
                   }}
                 />
               </div>
@@ -293,12 +293,12 @@ export default function TrackerHome({ user }) {
         </div>
 
         {/* ── Weight log card ── */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5 mb-4">
+        <div className="bg-dark-card rounded-3xl shadow-sm border border-gray-100 p-5 mb-4">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-bold text-gray-800">Morning Weight</p>
             {todayWeightLog && (
               <span className="flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full"
-                style={{ backgroundColor: '#ECFDF5', color: '#059669' }}>
+                style={{ backgroundColor: '#11251E', color: '#059669' }}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" style={{ width: 11, height: 11 }}>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -311,9 +311,9 @@ export default function TrackerHome({ user }) {
             <div
               className="flex items-center gap-2 rounded-2xl px-3 py-2.5 flex-1 min-w-0"
               style={{
-                backgroundColor: '#F9FAFB',
-                border: `2px solid ${wtFocused ? '#6C63FF' : 'transparent'}`,
-                boxShadow: wtFocused ? '0 0 0 4px rgba(108,99,255,0.08)' : 'none',
+                backgroundColor: '#1A1A1A',
+                border: `2px solid ${wtFocused ? '#D4AF37' : 'transparent'}`,
+                boxShadow: wtFocused ? '0 0 0 4px rgba(212,175,55,0.08)' : 'none',
                 transition: 'border-color 0.2s, box-shadow 0.2s',
               }}
             >
@@ -336,8 +336,8 @@ export default function TrackerHome({ user }) {
               onClick={() => setWeightShowPicker(v => !v)}
               className="shrink-0 flex items-center gap-1 px-2.5 py-2.5 rounded-2xl text-xs font-bold whitespace-nowrap transition-all"
               style={{
-                backgroundColor: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#EEF2FF' : '#F3F4F6',
-                color: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#6C63FF' : '#6B7280',
+                backgroundColor: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#282416' : '#1A1A1A',
+                color: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#D4AF37' : '#8A8A8A',
               }}
             >
               {compactDateLabel(weightLogDate, today)}
@@ -352,9 +352,9 @@ export default function TrackerHome({ user }) {
               className="px-4 py-2.5 rounded-2xl text-white text-sm font-bold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
               style={{
                 background: weightSaved
-                  ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
-                  : 'linear-gradient(135deg, #6C63FF 0%, #4338CA 100%)',
-                boxShadow: weightSaved ? '0 6px 16px rgba(16,185,129,0.3)' : weightInput ? '0 6px 16px rgba(108,99,255,0.3)' : 'none',
+                  ? 'linear-gradient(135deg, #2ECC71 0%, #059669 100%)'
+                  : 'linear-gradient(135deg, #D4AF37 0%, #F0D060 100%)',
+                boxShadow: weightSaved ? '0 6px 16px rgba(16,185,129,0.3)' : weightInput ? '0 6px 16px rgba(212,175,55,0.3)' : 'none',
               }}
             >
               {weightSaved ? '✓' : weightSaving ? '…' : todayWeightLog ? 'Update' : 'Log'}
@@ -371,8 +371,8 @@ export default function TrackerHome({ user }) {
               onClick={() => { setWeightLogDate(today); setWeightShowPicker(false) }}
               className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
               style={{
-                backgroundColor: weightLogDate === today && !weightShowPicker ? '#EEF2FF' : '#F3F4F6',
-                color: weightLogDate === today && !weightShowPicker ? '#6C63FF' : '#6B7280',
+                backgroundColor: weightLogDate === today && !weightShowPicker ? '#282416' : '#1A1A1A',
+                color: weightLogDate === today && !weightShowPicker ? '#D4AF37' : '#8A8A8A',
               }}
             >
               Today
@@ -382,8 +382,8 @@ export default function TrackerHome({ user }) {
               onClick={() => { setWeightLogDate(yesterday); setWeightShowPicker(false) }}
               className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
               style={{
-                backgroundColor: weightLogDate === yesterday && !weightShowPicker ? '#EEF2FF' : '#F3F4F6',
-                color: weightLogDate === yesterday && !weightShowPicker ? '#6C63FF' : '#6B7280',
+                backgroundColor: weightLogDate === yesterday && !weightShowPicker ? '#282416' : '#1A1A1A',
+                color: weightLogDate === yesterday && !weightShowPicker ? '#D4AF37' : '#8A8A8A',
               }}
             >
               Yesterday
@@ -393,8 +393,8 @@ export default function TrackerHome({ user }) {
               onClick={() => setWeightShowPicker(v => !v)}
               className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all"
               style={{
-                backgroundColor: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#EEF2FF' : '#F3F4F6',
-                color: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#6C63FF' : '#6B7280',
+                backgroundColor: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#282416' : '#1A1A1A',
+                color: weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday) ? '#D4AF37' : '#8A8A8A',
               }}
             >
               {weightShowPicker || (weightLogDate !== today && weightLogDate !== yesterday)
@@ -408,7 +408,7 @@ export default function TrackerHome({ user }) {
                 max={today}
                 min={weightMinDate}
                 onChange={e => { if (e.target.value) setWeightLogDate(e.target.value) }}
-                className="text-xs text-gray-700 outline-none border border-gray-200 rounded-xl px-2 py-1.5 bg-white"
+                className="text-xs text-gray-700 outline-none border border-gray-200 rounded-xl px-2 py-1.5 bg-dark-card"
                 style={{ maxWidth: 130 }}
               />
             )}
@@ -422,7 +422,7 @@ export default function TrackerHome({ user }) {
                 <button
                   type="button" key={d} onClick={() => setWeightLogDate(d)}
                   className="w-full flex items-center justify-between px-3 py-1.5 text-xs transition-colors"
-                  style={{ backgroundColor: weightLogDate === d ? '#EEF2FF' : 'transparent' }}
+                  style={{ backgroundColor: weightLogDate === d ? '#282416' : 'transparent' }}
                 >
                   <span className="font-semibold text-gray-500">{compactDateLabel(d, today)}</span>
                   <span className={log ? 'font-bold text-gray-800' : 'text-gray-300'}>
@@ -435,20 +435,20 @@ export default function TrackerHome({ user }) {
         </div>
 
         {/* ── Add Expense card ── */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5 mb-4">
+        <div className="bg-dark-card rounded-3xl shadow-sm border border-gray-100 p-5 mb-4">
           <p className="text-sm font-bold text-gray-800 mb-4">Add Expense</p>
 
           {/* Amount input */}
           <div
             className="flex items-center gap-2 rounded-2xl px-4 py-3 mb-4"
             style={{
-              backgroundColor: '#F9FAFB',
-              border: `2px solid ${amtFocused ? '#6C63FF' : 'transparent'}`,
-              boxShadow: amtFocused ? '0 0 0 4px rgba(108,99,255,0.08)' : 'none',
+              backgroundColor: '#1A1A1A',
+              border: `2px solid ${amtFocused ? '#D4AF37' : 'transparent'}`,
+              boxShadow: amtFocused ? '0 0 0 4px rgba(212,175,55,0.08)' : 'none',
               transition: 'border-color 0.2s, box-shadow 0.2s',
             }}
           >
-            <span className="text-3xl font-black" style={{ color: '#6C63FF', lineHeight: 1 }}>₹</span>
+            <span className="text-3xl font-black" style={{ color: '#D4AF37', lineHeight: 1 }}>₹</span>
             <input
               type="number" min="0" step="1" placeholder="0"
               value={amount}
@@ -476,7 +476,7 @@ export default function TrackerHome({ user }) {
                   onClick={() => { setCategory(cat.name); setBucketOverride(null) }}
                   className="cat-chip flex flex-col items-center py-2.5 rounded-2xl"
                   style={{
-                    backgroundColor: isActive ? cat.bg : '#F9FAFB',
+                    backgroundColor: isActive ? cat.bg : '#1A1A1A',
                     border: `2px solid ${isActive ? cat.color : 'transparent'}`,
                     transform: isActive ? 'scale(1.04)' : 'scale(1)',
                     boxShadow: isActive ? `0 4px 12px ${cat.color}30` : 'none',
@@ -485,7 +485,7 @@ export default function TrackerHome({ user }) {
                   <span className="text-xl mb-0.5">{cat.icon}</span>
                   <span
                     className="text-xs font-semibold leading-tight text-center px-0.5"
-                    style={{ color: isActive ? cat.color : '#9CA3AF', fontSize: 10 }}
+                    style={{ color: isActive ? cat.color : '#6B6B6B', fontSize: 10 }}
                   >
                     {cat.name}
                   </span>
@@ -513,8 +513,8 @@ export default function TrackerHome({ user }) {
             onChange={e => setNote(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') save() }}
             className="w-full px-4 py-3 rounded-2xl text-sm text-gray-800 outline-none mb-4"
-            style={{ backgroundColor: '#F9FAFB', border: '2px solid transparent', transition: 'border-color 0.2s' }}
-            onFocus={e => { e.target.style.borderColor = '#E5E7EB' }}
+            style={{ backgroundColor: '#1A1A1A', border: '2px solid transparent', transition: 'border-color 0.2s' }}
+            onFocus={e => { e.target.style.borderColor = '#2A2A2A' }}
             onBlur={e => { e.target.style.borderColor = 'transparent' }}
           />
 
@@ -525,9 +525,9 @@ export default function TrackerHome({ user }) {
             className="w-full py-4 rounded-2xl text-white text-sm font-bold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
               background: saved
-                ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
-                : 'linear-gradient(135deg, #6C63FF 0%, #4338CA 100%)',
-              boxShadow: saved ? '0 8px 20px rgba(16,185,129,0.3)' : amount ? '0 8px 20px rgba(108,99,255,0.3)' : 'none',
+                ? 'linear-gradient(135deg, #2ECC71 0%, #059669 100%)'
+                : 'linear-gradient(135deg, #D4AF37 0%, #F0D060 100%)',
+              boxShadow: saved ? '0 8px 20px rgba(16,185,129,0.3)' : amount ? '0 8px 20px rgba(212,175,55,0.3)' : 'none',
             }}
           >
             {saved
@@ -539,7 +539,7 @@ export default function TrackerHome({ user }) {
         </div>
 
         {/* ── Expense list for selected date ── */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-dark-card rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">
               {formatDateLabel(selectedDate)}'s Expenses
@@ -557,7 +557,7 @@ export default function TrackerHome({ user }) {
                   <div
                     key={exp.id}
                     className="expense-row flex items-center gap-3 px-5 py-3.5"
-                    style={{ backgroundColor: hoverRow === exp.id ? '#FEF7FF' : 'transparent' }}
+                    style={{ backgroundColor: hoverRow === exp.id ? '#23192D' : 'transparent' }}
                     onMouseEnter={() => setHoverRow(exp.id)}
                     onMouseLeave={() => setHoverRow(null)}
                   >
@@ -589,8 +589,8 @@ export default function TrackerHome({ user }) {
                       className="p-1.5 rounded-xl transition-all"
                       style={{
                         opacity: hoverRow === exp.id ? 1 : 0,
-                        color: '#EF4444',
-                        backgroundColor: hoverRow === exp.id ? '#FEE2E2' : 'transparent',
+                        color: '#E74C3C',
+                        backgroundColor: hoverRow === exp.id ? '#391A1A' : 'transparent',
                       }}
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
@@ -620,7 +620,7 @@ export default function TrackerHome({ user }) {
           style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={e => { if (e.target === e.currentTarget) setConfirmSwap(null) }}
         >
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl" style={{ animation: 'popIn 0.2s ease' }}>
+          <div className="bg-dark-card rounded-3xl p-6 w-full max-w-sm shadow-2xl" style={{ animation: 'popIn 0.2s ease' }}>
             <p className="text-base font-bold text-gray-900 mb-1">Already logged</p>
             <p className="text-sm text-gray-400 mb-5">
               You already logged {confirmSwap.existingKg}kg on {compactDateLabel(confirmSwap.date, today)}. Update it to {confirmSwap.kg}kg?
@@ -629,14 +629,14 @@ export default function TrackerHome({ user }) {
               <button
                 onClick={() => setConfirmSwap(null)}
                 className="flex-1 py-3 rounded-2xl text-sm font-semibold text-gray-700 transition-colors"
-                style={{ border: '2px solid #F3F4F6' }}
+                style={{ border: '2px solid #1A1A1A' }}
               >
                 Cancel
               </button>
               <button
                 onClick={() => { const c = confirmSwap; setConfirmSwap(null); doSaveWeight(c.date, c.kg) }}
                 className="flex-1 py-3 rounded-2xl text-white text-sm font-bold transition-colors"
-                style={{ background: 'linear-gradient(135deg, #6C63FF 0%, #4338CA 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #F0D060 100%)' }}
               >
                 Update
               </button>
@@ -652,9 +652,9 @@ export default function TrackerHome({ user }) {
           style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={e => { if (e.target === e.currentTarget) setDeleteId(null) }}
         >
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl" style={{ animation: 'popIn 0.2s ease' }}>
-            <div className="flex items-center justify-center w-12 h-12 rounded-2xl mb-4" style={{ backgroundColor: '#FEE2E2' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+          <div className="bg-dark-card rounded-3xl p-6 w-full max-w-sm shadow-2xl" style={{ animation: 'popIn 0.2s ease' }}>
+            <div className="flex items-center justify-center w-12 h-12 rounded-2xl mb-4" style={{ backgroundColor: '#391A1A' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#E74C3C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
                 <polyline points="3 6 5 6 21 6" />
                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                 <path d="M10 11v6M14 11v6M9 6V4h6v2" />
@@ -666,14 +666,14 @@ export default function TrackerHome({ user }) {
               <button
                 onClick={() => setDeleteId(null)}
                 className="flex-1 py-3 rounded-2xl text-sm font-semibold text-gray-700 transition-colors"
-                style={{ border: '2px solid #F3F4F6' }}
+                style={{ border: '2px solid #1A1A1A' }}
               >
                 Cancel
               </button>
               <button
                 onClick={() => doDelete(deleteId)}
                 className="flex-1 py-3 rounded-2xl text-white text-sm font-bold transition-colors"
-                style={{ background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' }}
+                style={{ background: 'linear-gradient(135deg, #E74C3C 0%, #F87171 100%)' }}
               >
                 Delete
               </button>

@@ -122,107 +122,88 @@ const bottomNavItems = [
   },
 ]
 
+function NavButton({ item, isActive, onNavigate }) {
+  return (
+    <button
+      onClick={() => onNavigate(item.id)}
+      className="group flex items-center w-full gap-3 px-3 py-2.5 rounded-r-xl text-sm font-medium transition-all duration-150"
+      style={{
+        background: isActive ? 'linear-gradient(90deg, rgba(212,175,55,0.08) 0%, transparent 100%)' : 'transparent',
+        borderLeft: `3px solid ${isActive ? '#D4AF37' : 'transparent'}`,
+        color: isActive ? '#D4AF37' : '#606060',
+      }}
+      onMouseEnter={(e) => {
+        if (!isActive) {
+          e.currentTarget.style.backgroundColor = 'rgba(212,175,55,0.05)'
+          e.currentTarget.style.color = '#A0A0A0'
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!isActive) {
+          e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.style.color = '#606060'
+        }
+      }}
+    >
+      <span
+        className="transition-colors"
+        style={{ color: isActive ? '#D4AF37' : undefined, filter: isActive ? 'drop-shadow(0 0 6px rgba(212,175,55,0.45))' : undefined }}
+      >
+        <span className={isActive ? '' : 'text-[#404040] group-hover:text-[#707070]'}>{item.icon}</span>
+      </span>
+      <span>{item.label}</span>
+    </button>
+  )
+}
+
 export default function Sidebar({ activePage, onNavigate }) {
   return (
     <aside
       className="hidden lg:flex flex-col w-60 shrink-0 h-screen"
-      style={{ backgroundColor: '#1a1a2e' }}
+      style={{ backgroundColor: '#050505', borderRight: '1px solid #1A1A1A' }}
     >
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-6">
         <AppLogoIcon size={36} />
         <div>
-          <span className="text-white font-bold text-lg tracking-tight block">
+          <span
+            className="font-bold text-lg tracking-tight block"
+            style={{ color: '#D4AF37', textShadow: '0 0 18px rgba(212,175,55,0.35)' }}
+          >
             Lifelog
           </span>
-          <span className="text-[10px] font-medium" style={{ color: 'rgba(255,255,255,0.35)' }}>
+          <span className="text-[10px] font-medium" style={{ color: '#606060' }}>
             Your life, logged.
           </span>
         </div>
       </div>
 
       {/* Divider */}
-      <div className="mx-5 mb-4" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+      <div className="mx-5 mb-4" style={{ height: 1, backgroundColor: '#1A1A1A' }} />
 
       {/* Nav label */}
-      <p className="px-5 mb-2 text-xs font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
+      <p className="px-5 mb-2 text-xs font-semibold tracking-widest uppercase" style={{ color: '#404040' }}>
         Menu
       </p>
 
       {/* Nav items */}
-      <nav className="flex-1 px-3 space-y-1">
-        {navItems.map((item) => {
-          const isActive = activePage === item.id
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className="flex items-center w-full gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
-              style={{
-                backgroundColor: isActive ? '#6C63FF' : 'transparent',
-                color: isActive ? '#ffffff' : 'rgba(255,255,255,0.55)',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)'
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'transparent'
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.55)'
-                }
-              }}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-              {isActive && (
-                <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white opacity-80" />
-              )}
-            </button>
-          )
-        })}
+      <nav className="flex-1 pr-3 space-y-1 overflow-y-auto">
+        {navItems.map((item) => (
+          <NavButton key={item.id} item={item} isActive={activePage === item.id} onNavigate={onNavigate} />
+        ))}
       </nav>
 
       {/* Bottom nav */}
-      <div className="px-3 pb-2">
-        <div className="mb-2" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
-        {bottomNavItems.map((item) => {
-          const isActive = activePage === item.id
-          return (
-            <button
-              key={item.id}
-              onClick={() => onNavigate(item.id)}
-              className="flex items-center w-full gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
-              style={{
-                backgroundColor: isActive ? '#6C63FF' : 'transparent',
-                color: isActive ? '#ffffff' : 'rgba(255,255,255,0.55)',
-              }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)'
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.backgroundColor = 'transparent'
-                  e.currentTarget.style.color = 'rgba(255,255,255,0.55)'
-                }
-              }}
-            >
-              {item.icon}
-              <span>{item.label}</span>
-              {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white opacity-80" />}
-            </button>
-          )
-        })}
+      <div className="pr-3 pb-2">
+        <div className="mb-2 ml-3" style={{ height: 1, background: 'linear-gradient(90deg, #D4AF37 0%, transparent 100%)', opacity: 0.6 }} />
+        {bottomNavItems.map((item) => (
+          <NavButton key={item.id} item={item} isActive={activePage === item.id} onNavigate={onNavigate} />
+        ))}
       </div>
 
       {/* Version */}
       <div className="px-5 py-3">
-        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>Lifelog v1.0.0</p>
+        <p className="text-xs" style={{ color: '#404040' }}>Lifelog v1.0.0</p>
       </div>
     </aside>
   )

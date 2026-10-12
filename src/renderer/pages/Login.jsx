@@ -40,13 +40,24 @@ export default function Login({ onSignIn }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: '#1a1a2e' }}>
-      <div className="w-full max-w-sm">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-hidden"
+      style={{
+        backgroundColor: '#0A0A0A',
+        backgroundImage: [
+          'radial-gradient(ellipse 60% 45% at 50% 0%, rgba(212,175,55,0.14) 0%, transparent 70%)',
+          'radial-gradient(ellipse 50% 40% at 50% 100%, rgba(184,150,12,0.08) 0%, transparent 70%)',
+          'repeating-linear-gradient(45deg, rgba(212,175,55,0.035) 0 1px, transparent 1px 28px)',
+          'repeating-linear-gradient(-45deg, rgba(212,175,55,0.035) 0 1px, transparent 1px 28px)',
+        ].join(', '),
+      }}
+    >
+      <div className="relative w-full max-w-sm">
         <div className="flex flex-col items-center gap-3 mb-8">
-          <AppLogoIcon size={56} />
+          <div style={{ filter: 'drop-shadow(0 0 24px rgba(212,175,55,0.35))' }}><AppLogoIcon size={56} /></div>
           <div className="text-center">
-            <h1 className="text-white font-bold text-2xl tracking-tight">Lifelog</h1>
-            <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.5)' }}>Your life, logged.</p>
+            <h1 className="text-gold-gradient font-bold text-3xl tracking-tight">Lifelog</h1>
+            <p className="text-sm mt-1" style={{ color: '#A0A0A0' }}>Your life, logged.</p>
           </div>
         </div>
 
@@ -57,11 +68,11 @@ export default function Login({ onSignIn }) {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl p-8 shadow-2xl space-y-4">
+        <form onSubmit={handleSubmit} className="rounded-2xl p-8 shadow-2xl space-y-4" style={{ backgroundColor: '#111111', border: '1px solid #D4AF3760', boxShadow: '0 24px 64px rgba(0,0,0,0.7), 0 0 40px rgba(212,175,55,0.06)' }}>
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Mobile Number</label>
-            <div className="flex items-stretch rounded-xl border border-gray-200 overflow-hidden focus-within:border-[#6C63FF] focus-within:ring-2 focus-within:ring-[#6C63FF]/20">
-              <span className="flex items-center px-3 text-sm font-medium text-gray-500 bg-gray-50 border-r border-gray-200">+91</span>
+            <div className="flex items-stretch rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] overflow-hidden focus-within:border-[#D4AF37] focus-within:ring-2 focus-within:ring-[#D4AF37]/20">
+              <span className="flex items-center px-3 text-sm font-medium text-[#D4AF37] bg-[#1A1A1A] border-r border-[#2A2A2A]">+91</span>
               <input
                 autoFocus
                 type="tel"
@@ -69,25 +80,25 @@ export default function Login({ onSignIn }) {
                 placeholder="9000000001"
                 value={mobile}
                 onChange={e => setMobile(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                className="flex-1 min-w-0 px-4 py-3 text-base font-medium text-gray-900 focus:outline-none"
+                className="flex-1 min-w-0 px-4 py-3 text-base font-medium text-gray-900 focus:outline-none" style={{ boxShadow: 'none' }}
               />
             </div>
           </div>
 
           <div>
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Password</label>
-            <div className="flex items-stretch rounded-xl border border-gray-200 overflow-hidden focus-within:border-[#6C63FF] focus-within:ring-2 focus-within:ring-[#6C63FF]/20">
+            <div className="flex items-stretch rounded-xl border border-[#2A2A2A] bg-[#1A1A1A] overflow-hidden focus-within:border-[#D4AF37] focus-within:ring-2 focus-within:ring-[#D4AF37]/20">
               <input
                 type={showPassword ? 'text' : 'password'}
                 placeholder="••••••••"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="flex-1 min-w-0 px-4 py-3 text-base font-medium text-gray-900 focus:outline-none"
+                className="flex-1 min-w-0 px-4 py-3 text-base font-medium text-gray-900 focus:outline-none" style={{ boxShadow: 'none' }}
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(s => !s)}
-                className="px-3 text-gray-400 hover:text-gray-600 transition-colors"
+                className="px-3 text-gray-400 hover:text-[#D4AF37] transition-colors"
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? '🙈' : '👁'}
@@ -100,13 +111,12 @@ export default function Login({ onSignIn }) {
           <button
             type="submit"
             disabled={!mobile || !password || submitting}
-            className="w-full py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-            style={{ backgroundColor: '#6C63FF' }}
+            className="btn-gold w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40"
           >
             {submitting ? 'Signing in…' : 'Sign In'}
           </button>
 
-          <p className="text-center text-xs text-gray-400">Forgot password? Contact admin</p>
+          <p className="text-center text-xs text-[#606060]">Forgot password? Contact admin</p>
         </form>
       </div>
     </div>

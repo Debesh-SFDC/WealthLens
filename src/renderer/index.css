@@ -2,6 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── Black & Gold theme tokens ── */
+:root {
+  /* Backgrounds */
+  --bg-primary: #0A0A0A;
+  --bg-secondary: #111111;
+  --bg-tertiary: #1A1A1A;
+  --bg-hover: #222222;
+
+  /* Gold accent */
+  --gold-primary: #D4AF37;
+  --gold-light: #F0D060;
+  --gold-dark: #B8960C;
+  --gold-muted: #8B7320;
+  --gold-gradient: linear-gradient(135deg, #D4AF37, #B8960C);
+
+  /* Text */
+  --text-primary: #F5F5F5;
+  --text-secondary: #A0A0A0;
+  --text-muted: #606060;
+  --text-gold: #D4AF37;
+
+  /* Borders */
+  --border-primary: #2A2A2A;
+  --border-gold: #D4AF3750;
+  --border-gold-bright: #D4AF37;
+
+  /* Status */
+  --success: #2ECC71;
+  --warning: #F39C12;
+  --danger: #E74C3C;
+  --info: #3498DB;
+
+  /* Sidebar */
+  --sidebar-bg: #050505;
+  --sidebar-active-bg: linear-gradient(135deg, #D4AF3720, #B8960C20);
+  --sidebar-active-border: #D4AF37;
+
+  color-scheme: dark;
+}
+
 @layer base {
   * {
     box-sizing: border-box;
@@ -19,27 +59,167 @@
     font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    background-color: #f8f8fc;
-    color: #1a1a2e;
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
     overflow: hidden;
+  }
+
+  ::selection {
+    background: rgba(212, 175, 55, 0.35);
+    color: #fff;
   }
 
   ::-webkit-scrollbar {
     width: 6px;
+    height: 6px;
   }
 
   ::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--bg-primary);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #d1d5db;
+    background: #2A2A2A;
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: #9ca3af;
+    background: #D4AF3770;
   }
+
+  ::-webkit-scrollbar-corner {
+    background: var(--bg-primary);
+  }
+
+  input[type='checkbox'],
+  input[type='radio'],
+  input[type='range'],
+  progress {
+    accent-color: var(--gold-primary);
+  }
+}
+
+/* ── Inputs (beat per-element Tailwind bg/border classes) ── */
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']):not(.desk-input),
+select:not(.desk-input),
+textarea:not(.desk-input) {
+  background-color: var(--bg-tertiary);
+  border-color: var(--border-primary);
+  color: var(--text-primary);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: #404040;
+}
+
+input:not([type='checkbox']):not([type='radio']):not([type='range']):not(.desk-input):focus,
+select:not(.desk-input):focus,
+textarea:not(.desk-input):focus {
+  border-color: var(--gold-primary);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15);
+  outline: none;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='month']::-webkit-calendar-picker-indicator,
+input[type='time']::-webkit-calendar-picker-indicator {
+  filter: invert(0.75) sepia(1) saturate(3) hue-rotate(5deg);
+}
+
+option {
+  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* ── Cards ── */
+.bg-dark-card {
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.bg-dark-card.border:not(.shadow-xl):not(.shadow-2xl):not(.no-hover):hover {
+  border-color: #D4AF3750;
+  box-shadow: 0 4px 32px rgba(212, 175, 55, 0.08);
+}
+
+/* Dashboard stat card */
+.stat-card {
+  background: linear-gradient(135deg, #111111 0%, #1A1A1A 100%);
+  border: 1px solid var(--border-primary);
+  border-top: 2px solid var(--gold-primary);
+}
+
+/* ── Buttons ── */
+.btn-gold {
+  background: var(--gold-gradient);
+  color: #0A0A0A;
+  border: none;
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.btn-gold:hover:not(:disabled) {
+  filter: brightness(1.1);
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+}
+
+.btn-outline-gold {
+  background: transparent;
+  border: 1px solid #D4AF3770;
+  color: var(--gold-primary);
+  transition: background-color 0.15s ease;
+}
+
+.btn-outline-gold:hover:not(:disabled) {
+  background: rgba(212, 175, 55, 0.1);
+}
+
+.text-gold-gradient {
+  background: linear-gradient(135deg, #F0D060 0%, #D4AF37 50%, #B8960C 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* ── Chips ── */
+.chip-gold {
+  background: #D4AF3720;
+  color: #D4AF37;
+  border: 1px solid #D4AF3740;
+}
+
+.chip-success {
+  background: #2ECC7120;
+  color: #2ECC71;
+  border: 1px solid #2ECC7140;
+}
+
+/* ── Progress ── */
+.progress-gold {
+  background: linear-gradient(90deg, #D4AF37, #B8960C);
+}
+
+/* ── Recharts ── */
+.recharts-default-tooltip {
+  background-color: #1A1A1A !important;
+  border: 1px solid #2A2A2A !important;
+  border-radius: 10px;
+  color: #F5F5F5;
+}
+
+.recharts-tooltip-label {
+  color: #A0A0A0 !important;
+}
+
+.recharts-cartesian-grid line {
+  stroke: #2A2A2A;
+}
+
+.recharts-cartesian-axis-tick-value {
+  fill: #606060;
+}
+
+.recharts-legend-item-text {
+  color: #A0A0A0 !important;
 }
 
 @layer utilities {
@@ -84,4 +264,31 @@
     font-size: 12px;
     font-family: Arial, Helvetica, sans-serif;
   }
+}
+
+/* ── Tables (zero-specificity so per-row Tailwind/inline colours still win) ── */
+:where(table thead) {
+  background-color: var(--bg-tertiary);
+}
+
+:where(table thead th) {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+:where(table tbody tr:nth-child(odd)) {
+  background-color: #111111;
+}
+
+:where(table tbody tr:nth-child(even)) {
+  background-color: #0F0F0F;
+}
+
+:where(table tbody tr):hover {
+  background-color: var(--bg-tertiary);
+}
+
+:where(table td, table th) {
+  border-color: var(--border-primary);
 }

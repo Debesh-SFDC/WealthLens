@@ -10,11 +10,11 @@ function getStrength(password) {
   if (/[0-9]/.test(password)) score++
   if (/[^A-Za-z0-9]/.test(password)) score++
   const levels = [
-    { label: 'Too Short',   color: '#9CA3AF', pct: 8   },
-    { label: 'Weak',        color: '#EF4444', pct: 22  },
-    { label: 'Fair',        color: '#F59E0B', pct: 45  },
-    { label: 'Good',        color: '#3B82F6', pct: 65  },
-    { label: 'Strong',      color: '#10B981', pct: 85  },
+    { label: 'Too Short',   color: '#6B6B6B', pct: 8   },
+    { label: 'Weak',        color: '#E74C3C', pct: 22  },
+    { label: 'Fair',        color: '#F39C12', pct: 45  },
+    { label: 'Good',        color: '#3498DB', pct: 65  },
+    { label: 'Strong',      color: '#2ECC71', pct: 85  },
     { label: 'Very Strong', color: '#059669', pct: 100 },
   ]
   return levels[Math.min(score, 5)]
@@ -120,7 +120,7 @@ export default function AppLock({ onUnlocked, isSetup }) {
           width: 480,
           height: 480,
           borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(108,99,255,0.12) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(212,175,55,0.12) 0%, transparent 70%)',
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
@@ -139,9 +139,9 @@ export default function AppLock({ onUnlocked, isSetup }) {
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <div className="bg-dark-card rounded-2xl shadow-2xl overflow-hidden">
           <div className="px-6 pt-5 pb-2 border-b border-gray-100 flex items-center gap-2">
-            <span className="text-[#6C63FF]">
+            <span className="text-[#D4AF37]">
               {isSetup ? <ShieldIcon /> : <LockIcon />}
             </span>
             <div>
@@ -166,7 +166,7 @@ export default function AppLock({ onUnlocked, isSetup }) {
                 value={password}
                 onChange={e => { setPassword(e.target.value); setError('') }}
                 disabled={lockoutSec > 0 || loading}
-                className="w-full px-4 py-3 pr-11 rounded-xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20 disabled:bg-gray-50 disabled:text-gray-400"
+                className="w-full px-4 py-3 pr-11 rounded-xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20 disabled:bg-gray-50 disabled:text-gray-400"
               />
               <button
                 type="button"
@@ -203,7 +203,7 @@ export default function AppLock({ onUnlocked, isSetup }) {
                   value={confirm}
                   onChange={e => { setConfirm(e.target.value); setError('') }}
                   disabled={loading}
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 text-sm text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                 />
                 {confirm && password && (
                   <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold ${confirm === password ? 'text-green-500' : 'text-red-400'}`}>
@@ -246,8 +246,8 @@ export default function AppLock({ onUnlocked, isSetup }) {
             <button
               type="submit"
               disabled={lockoutSec > 0 || loading || !password.trim() || (isSetup && !confirm.trim())}
-              className="w-full py-3 rounded-xl text-white text-sm font-bold transition-opacity disabled:opacity-40"
-              style={{ backgroundColor: '#6C63FF' }}
+              className="w-full py-3 rounded-xl text-[#0A0A0A] text-sm font-bold transition-opacity disabled:opacity-40"
+              style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
             >
               {loading
                 ? 'Verifying…'

@@ -81,28 +81,27 @@ function NavButton({ item, isActive, onClick }) {
   return (
     <button
       onClick={onClick}
-      className="flex items-center w-full gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+      className="flex items-center w-full gap-3 px-3 py-2.5 rounded-r-xl text-sm font-medium transition-all duration-150"
       style={{
-        backgroundColor: isActive ? '#6C63FF' : 'transparent',
-        color: isActive ? '#ffffff' : 'rgba(255,255,255,0.4)',
-        boxShadow: isActive ? '0 4px 14px rgba(108,99,255,0.35)' : 'none',
+        background: isActive ? 'linear-gradient(90deg, rgba(212,175,55,0.08) 0%, transparent 100%)' : 'transparent',
+        borderLeft: `3px solid ${isActive ? '#D4AF37' : 'transparent'}`,
+        color: isActive ? '#D4AF37' : '#606060',
       }}
       onMouseEnter={e => {
         if (!isActive) {
-          e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)'
-          e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
+          e.currentTarget.style.backgroundColor = 'rgba(212,175,55,0.05)'
+          e.currentTarget.style.color = '#A0A0A0'
         }
       }}
       onMouseLeave={e => {
         if (!isActive) {
           e.currentTarget.style.backgroundColor = 'transparent'
-          e.currentTarget.style.color = 'rgba(255,255,255,0.4)'
+          e.currentTarget.style.color = '#606060'
         }
       }}
     >
       <Icon />
       <span>{label}</span>
-      {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-white opacity-80" />}
     </button>
   )
 }
@@ -111,7 +110,7 @@ function TrackerBottomNav({ page, onNavigate }) {
   return (
     <nav
       className="fixed bottom-0 left-0 right-0 z-30 flex items-stretch h-16 lg:hidden"
-      style={{ backgroundColor: '#1a1a2e', borderTop: '1px solid rgba(255,255,255,0.08)' }}
+      style={{ backgroundColor: '#050505', borderTop: '1px solid #2A2A2A' }}
     >
       {navItems.map(item => {
         const isActive = page === item.id
@@ -120,9 +119,10 @@ function TrackerBottomNav({ page, onNavigate }) {
           <button
             key={item.id}
             onClick={() => onNavigate(item.id)}
-            className="flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-[44px] min-h-[44px]"
-            style={{ color: isActive ? '#6C63FF' : 'rgba(255,255,255,0.45)' }}
+            className="relative flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-[44px] min-h-[44px]"
+            style={{ color: isActive ? '#D4AF37' : '#404040' }}
           >
+            {isActive && <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-b-full" style={{ backgroundColor: '#D4AF37', boxShadow: '0 0 10px rgba(212,175,55,0.6)' }} />}
             <Icon />
             <span className="text-[10px] font-semibold">{label}</span>
           </button>
@@ -137,45 +137,44 @@ export default function TrackerApp({ user, onSignOut }) {
 
   const initials = (user.name || 'T').charAt(0).toUpperCase()
 
-  const avatarColors = ['#6C63FF', '#EC4899', '#10B981', '#F59E0B', '#06B6D4']
-  const avatarBg = avatarColors[(user.name || '').charCodeAt(0) % avatarColors.length] || '#6C63FF'
-
+  
   return (
     <div className="flex h-screen overflow-hidden">
       <aside
         className="hidden lg:flex flex-col shrink-0 h-screen"
         style={{
           width: 224,
-          background: 'linear-gradient(180deg, #0F0E1A 0%, #13112A 100%)',
+          backgroundColor: '#050505',
+          borderRight: '1px solid #1A1A1A',
         }}
       >
         <div className="flex items-center gap-3 px-5 py-6">
           <AppLogoIcon size={36} />
-          <span className="text-white font-bold text-lg tracking-tight">Lifelog</span>
+          <span className="font-bold text-lg tracking-tight" style={{ color: '#D4AF37', textShadow: '0 0 18px rgba(212,175,55,0.35)' }}>Lifelog</span>
         </div>
 
-        <div className="mx-5 mb-4" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+        <div className="mx-5 mb-4" style={{ height: 1, backgroundColor: '#1A1A1A' }} />
 
-        <div className="mx-3 mb-4 rounded-xl px-3 py-3" style={{ backgroundColor: 'rgba(255,255,255,0.05)' }}>
+        <div className="mx-3 mb-4 rounded-xl px-3 py-3" style={{ backgroundColor: '#111111', border: '1px solid #2A2A2A' }}>
           <div className="flex items-center gap-3">
             <div
-              className="flex items-center justify-center rounded-full shrink-0 text-white font-bold text-base"
-              style={{ width: 38, height: 38, backgroundColor: avatarBg }}
+              className="flex items-center justify-center rounded-full shrink-0 text-[#0A0A0A] font-bold text-base"
+              style={{ width: 38, height: 38, background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
             >
               {initials}
             </div>
             <div className="min-w-0">
               <p className="text-white text-sm font-semibold truncate">{user.name}</p>
-              <p className="text-xs" style={{ color: 'rgba(255,255,255,0.4)' }}>Tracker</p>
+              <p className="text-xs" style={{ color: '#606060' }}>Tracker</p>
             </div>
           </div>
         </div>
 
-        <p className="px-5 mb-2 text-xs font-semibold tracking-widest uppercase" style={{ color: 'rgba(255,255,255,0.3)' }}>
+        <p className="px-5 mb-2 text-xs font-semibold tracking-widest uppercase" style={{ color: '#404040' }}>
           Menu
         </p>
 
-        <nav className="flex-1 px-3 space-y-1">
+        <nav className="flex-1 pr-3 space-y-1">
           {navItems.map(item => (
             <NavButton
               key={item.id}
@@ -187,18 +186,18 @@ export default function TrackerApp({ user, onSignOut }) {
         </nav>
 
         <div className="px-3 pb-5">
-          <div className="mb-3" style={{ height: 1, backgroundColor: 'rgba(255,255,255,0.08)' }} />
+          <div className="mb-3" style={{ height: 1, background: 'linear-gradient(90deg, #D4AF37 0%, transparent 100%)', opacity: 0.6 }} />
           <button
             onClick={onSignOut}
             className="flex items-center w-full gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
-            style={{ color: 'rgba(255,255,255,0.4)' }}
+            style={{ color: '#606060' }}
             onMouseEnter={e => {
-              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.07)'
-              e.currentTarget.style.color = 'rgba(255,255,255,0.85)'
+              e.currentTarget.style.backgroundColor = 'rgba(231,76,60,0.08)'
+              e.currentTarget.style.color = '#E74C3C'
             }}
             onMouseLeave={e => {
               e.currentTarget.style.backgroundColor = 'transparent'
-              e.currentTarget.style.color = 'rgba(255,255,255,0.4)'
+              e.currentTarget.style.color = '#606060'
             }}
           >
             <SignOutIcon />
@@ -207,7 +206,7 @@ export default function TrackerApp({ user, onSignOut }) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-y-auto bg-gray-50 pb-16 lg:pb-0">
+      <main className="flex-1 overflow-y-auto bg-[#0A0A0A] pb-16 lg:pb-0">
         {page === 'home'       && <TrackerHome       user={user} />}
         {page === 'expenses'   && <TrackerMonth      user={user} />}
         {page === 'dashboard'  && <TrackerDashboard  user={user} />}

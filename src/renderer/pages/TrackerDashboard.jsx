@@ -4,15 +4,15 @@ import bridge from '../lib/bridge'
 const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
 
 const CATEGORIES = [
-  { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#FFF0F0' },
-  { name: 'Transport',     icon: '🚗', color: '#06B6D4', bg: '#ECFEFF' },
-  { name: 'Shopping',      icon: '🛍️', color: '#A855F7', bg: '#FAF5FF' },
-  { name: 'Health',        icon: '💊', color: '#10B981', bg: '#ECFDF5' },
-  { name: 'Bills',         icon: '📄', color: '#6366F1', bg: '#EEF2FF' },
-  { name: 'Entertainment', icon: '🎬', color: '#EC4899', bg: '#FDF2F8' },
-  { name: 'Fuel',          icon: '⛽', color: '#F59E0B', bg: '#FFFBEB' },
-  { name: 'Dining',        icon: '🍽️', color: '#F97316', bg: '#FFF7ED' },
-  { name: 'Others',        icon: '💸', color: '#8B93A5', bg: '#F8FAFC' },
+  { name: 'Food',          icon: '🍔', color: '#FF6B6B', bg: '#2C1717' },
+  { name: 'Transport',     icon: '🚗', color: '#06B6D4', bg: '#102528' },
+  { name: 'Shopping',      icon: '🛍️', color: '#A855F7', bg: '#23192D' },
+  { name: 'Health',        icon: '💊', color: '#2ECC71', bg: '#11251E' },
+  { name: 'Bills',         icon: '📄', color: '#D4AF37', bg: '#282416' },
+  { name: 'Entertainment', icon: '🎬', color: '#EC4899', bg: '#2B1821' },
+  { name: 'Fuel',          icon: '⛽', color: '#F39C12', bg: '#2C2210' },
+  { name: 'Dining',        icon: '🍽️', color: '#F97316', bg: '#2D1D12' },
+  { name: 'Others',        icon: '💸', color: '#8B93A5', bg: '#1A1A1A' },
 ]
 
 const fmt  = v => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(v || 0)
@@ -96,21 +96,21 @@ function LineChart({ logs, from, to, height = 160 }) {
         const y = gy(gv)
         return (
           <g key={i}>
-            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#F3F4F6" strokeWidth={1} />
-            <text x={padL - 4} y={y + 3.5} fill="#D1D5DB" fontSize={8} textAnchor="end">{gv.toFixed(1)}</text>
+            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#1A1A1A" strokeWidth={1} />
+            <text x={padL - 4} y={y + 3.5} fill="#3A3A3A" fontSize={8} textAnchor="end">{gv.toFixed(1)}</text>
           </g>
         )
       })}
       {segs.map((s, si) => (
-        <polyline key={si} points={s} fill="none" stroke="#10B981" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+        <polyline key={si} points={s} fill="none" stroke="#2ECC71" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
       ))}
       {pts.map((p, i) => {
         if (p.w === null) return null
         const x = gx(i), y = gy(p.w)
         return (
           <g key={i}>
-            <circle cx={x} cy={y} r={p.isToday ? 6 : 4} fill={p.isToday ? '#F59E0B' : '#10B981'} />
-            <circle cx={x} cy={y} r={p.isToday ? 9 : 7} fill="none" stroke={p.isToday ? '#F59E0B' : '#10B981'} strokeWidth={1} opacity={0.25} />
+            <circle cx={x} cy={y} r={p.isToday ? 6 : 4} fill={p.isToday ? '#F39C12' : '#2ECC71'} />
+            <circle cx={x} cy={y} r={p.isToday ? 9 : 7} fill="none" stroke={p.isToday ? '#F39C12' : '#2ECC71'} strokeWidth={1} opacity={0.25} />
             <title>{`${p.date}: ${p.w} kg`}</title>
           </g>
         )
@@ -123,7 +123,7 @@ function LineChart({ logs, from, to, height = 160 }) {
           : String(d.getDate())
         return (
           <text key={i} x={gx(i)} y={svgH - 4} textAnchor="middle"
-            fill={p.isToday ? '#F59E0B' : '#9CA3AF'} fontSize={9}
+            fill={p.isToday ? '#F39C12' : '#6B6B6B'} fontSize={9}
             fontWeight={p.isToday ? '700' : '400'}>
             {label}
           </text>
@@ -133,7 +133,7 @@ function LineChart({ logs, from, to, height = 160 }) {
   )
 }
 
-function BarChart({ data, height = 160, barColor = '#6C63FF', labelFontSize = 9 }) {
+function BarChart({ data, height = 160, barColor = '#D4AF37', labelFontSize = 9 }) {
   const svgW = 560, padL = 4, padR = 4, padT = 16, padB = 24
   const svgH = height + padB + padT
   const chartW = svgW - padL - padR
@@ -151,8 +151,8 @@ function BarChart({ data, height = 160, barColor = '#6C63FF', labelFontSize = 9 
         const y = padT + chartH - (gv / maxVal) * chartH
         return (
           <g key={i}>
-            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#F3F4F6" strokeWidth={1} />
-            <text x={padL + 2} y={y - 3} fill="#D1D5DB" fontSize={8} textAnchor="start">{fmtK(gv)}</text>
+            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#1A1A1A" strokeWidth={1} />
+            <text x={padL + 2} y={y - 3} fill="#3A3A3A" fontSize={8} textAnchor="start">{fmtK(gv)}</text>
           </g>
         )
       })}
@@ -165,12 +165,12 @@ function BarChart({ data, height = 160, barColor = '#6C63FF', labelFontSize = 9 
         return (
           <g key={i}>
             <rect x={x} y={y} width={barW} height={barH} rx={3}
-              fill={isToday ? '#F59E0B' : d.value > 0 ? barColor : '#E5E7EB'}
+              fill={isToday ? '#F39C12' : d.value > 0 ? barColor : '#2A2A2A'}
               opacity={d.value > 0 ? 1 : 0.3}>
               <title>{fmt(d.value)}</title>
             </rect>
             {d.label && (
-              <text x={x + barW / 2} y={svgH - 6} textAnchor="middle" fill={isToday ? '#F59E0B' : '#9CA3AF'} fontSize={labelFontSize} fontWeight={isToday ? '700' : '400'}>
+              <text x={x + barW / 2} y={svgH - 6} textAnchor="middle" fill={isToday ? '#F39C12' : '#6B6B6B'} fontSize={labelFontSize} fontWeight={isToday ? '700' : '400'}>
                 {d.label}
               </text>
             )}
@@ -211,9 +211,9 @@ function SyncButton({ onAfterSync }) {
     : state === 'error'    ? '✗ Drive not connected'
     : '↓ Sync from Drive'
 
-  const bg = state === 'done'  ? '#10B981'
-    : state === 'error'        ? '#EF4444'
-    : '#6C63FF'
+  const bg = state === 'done'  ? '#2ECC71'
+    : state === 'error'        ? '#E74C3C'
+    : '#D4AF37'
 
   return (
     <button onClick={sync}
@@ -221,7 +221,7 @@ function SyncButton({ onAfterSync }) {
       className="flex items-center gap-2 px-4 py-2 rounded-2xl text-white text-sm font-semibold transition-all disabled:opacity-70"
       style={{ background: bg }}>
       {(state === 'pushing' || state === 'pulling') && (
-        <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+        <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#111111" strokeWidth="2.5">
           <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
         </svg>
       )}
@@ -279,7 +279,7 @@ export default function TrackerDashboard({ user }) {
   const daysElapsed = targetMonth === cymStr ? now.getDate() : daysInMonth(targetMonth)
   const avgPerDay = total / (daysElapsed || 1)
   const budgetPct = budget > 0 ? Math.min((total / budget) * 100, 100) : 0
-  const budgetColor = budgetPct >= 90 ? '#EF4444' : budgetPct >= 70 ? '#F59E0B' : '#6C63FF'
+  const budgetColor = budgetPct >= 90 ? '#E74C3C' : budgetPct >= 70 ? '#F39C12' : '#D4AF37'
 
   const catTotals = CATEGORIES.map(cat => ({
     ...cat,
@@ -329,7 +329,7 @@ export default function TrackerDashboard({ user }) {
   const prevTotal    = (allData[prevMonth] || []).reduce((s, e) => s + e.amount, 0)
   const monthDelta   = total - prevTotal
   const deltaSign    = monthDelta >= 0 ? '+' : ''
-  const deltaColor   = monthDelta > 0 ? '#EF4444' : '#10B981'
+  const deltaColor   = monthDelta > 0 ? '#E74C3C' : '#2ECC71'
 
   // ── Weight computed values ──────────────────────────────────────────────
   const sortedWt    = [...weightLogs].sort((a, b) => a.date.localeCompare(b.date))
@@ -340,10 +340,10 @@ export default function TrackerDashboard({ user }) {
     ? currentWt / ((weightProfile.height_cm / 100) ** 2)
     : null
   const bmiInfo = !bmi ? null
-    : bmi < 18.5 ? { label: 'Underweight', color: '#3B82F6' }
-    : bmi < 25   ? { label: 'Normal',      color: '#10B981' }
-    : bmi < 30   ? { label: 'Overweight',  color: '#F59E0B' }
-    :              { label: 'Obese',        color: '#EF4444' }
+    : bmi < 18.5 ? { label: 'Underweight', color: '#3498DB' }
+    : bmi < 25   ? { label: 'Normal',      color: '#2ECC71' }
+    : bmi < 30   ? { label: 'Overweight',  color: '#F39C12' }
+    :              { label: 'Obese',        color: '#E74C3C' }
 
   const thisMonthWt   = sortedWt.filter(l => l.date.slice(0, 7) === cymStr)
   const wtMonthStart  = thisMonthWt[0]?.weight_kg ?? null
@@ -377,7 +377,7 @@ export default function TrackerDashboard({ user }) {
           </div>
           <div className="flex items-center gap-2">
             <SyncButton onAfterSync={load} />
-            <div className="flex items-center gap-2 bg-white border border-gray-100 rounded-2xl px-3 py-2 shadow-sm">
+            <div className="flex items-center gap-2 bg-dark-card border border-gray-100 rounded-2xl px-3 py-2 shadow-sm">
               <button onClick={() => setMonthOffset(o => o - 1)}
                 className="w-7 h-7 flex items-center justify-center rounded-xl hover:bg-gray-100 text-gray-500 font-bold transition-colors">‹</button>
               <span className="text-sm font-semibold text-gray-800 min-w-[110px] text-center">{monthLabel(targetMonth)}</span>
@@ -393,11 +393,11 @@ export default function TrackerDashboard({ user }) {
           {[
             { label: 'Month Total',  value: fmt(total),    sub: targetMonth === cymStr ? 'This month' : monthLabel(targetMonth) },
             { label: 'Daily Average', value: fmt(avgPerDay), sub: `over ${daysElapsed} days` },
-            { label: 'vs Last Month', value: `${deltaSign}${fmt(Math.abs(monthDelta))}`, sub: prevTotal > 0 ? `Last: ${fmt(prevTotal)}` : 'No data', color: prevTotal > 0 ? deltaColor : '#9CA3AF' },
+            { label: 'vs Last Month', value: `${deltaSign}${fmt(Math.abs(monthDelta))}`, sub: prevTotal > 0 ? `Last: ${fmt(prevTotal)}` : 'No data', color: prevTotal > 0 ? deltaColor : '#6B6B6B' },
           ].map(c => (
-            <div key={c.label} className="bg-white rounded-2xl shadow-sm p-4 text-center border border-gray-50">
+            <div key={c.label} className="bg-dark-card rounded-2xl shadow-sm p-4 text-center border border-gray-50">
               <p className="text-xs text-gray-400 mb-1">{c.label}</p>
-              <p className="text-lg font-bold" style={{ color: c.color || '#111827' }}>{c.value}</p>
+              <p className="text-lg font-bold" style={{ color: c.color || '#F5F5F5' }}>{c.value}</p>
               <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
             </div>
           ))}
@@ -405,7 +405,7 @@ export default function TrackerDashboard({ user }) {
 
         {/* Budget bar */}
         {budget > 0 && (
-          <div className="bg-white rounded-2xl shadow-sm p-4 border border-gray-50">
+          <div className="bg-dark-card rounded-2xl shadow-sm p-4 border border-gray-50">
             <div className="flex justify-between mb-2">
               <span className="text-sm font-semibold text-gray-700">Monthly Budget</span>
               <span className="text-sm font-bold" style={{ color: budgetColor }}>{Math.round(budgetPct)}% used</span>
@@ -422,7 +422,7 @@ export default function TrackerDashboard({ user }) {
         )}
 
         {/* ── Day-by-Day chart ─────────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+        <div className="bg-dark-card rounded-2xl shadow-sm p-5 border border-gray-50">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-bold text-gray-800">Day-by-Day Spend</p>
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
@@ -430,8 +430,8 @@ export default function TrackerDashboard({ user }) {
                 <button key={id} onClick={() => setDayTab(id)}
                   className="px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-150"
                   style={{
-                    backgroundColor: dayTab === id ? '#6C63FF' : 'transparent',
-                    color: dayTab === id ? 'white' : '#6B7280',
+                    backgroundColor: dayTab === id ? '#D4AF37' : 'transparent',
+                    color: dayTab === id ? '#0A0A0A' : '#8A8A8A',
                   }}>
                   {label}
                 </button>
@@ -440,7 +440,7 @@ export default function TrackerDashboard({ user }) {
           </div>
           {loading
             ? <div className="h-40 flex items-center justify-center text-gray-300 text-sm">Loading…</div>
-            : <BarChart data={dailyData} height={160} barColor="#6C63FF" labelFontSize={dayTab === 'month' ? 8 : 10} />
+            : <BarChart data={dailyData} height={160} barColor="#D4AF37" labelFontSize={dayTab === 'month' ? 8 : 10} />
           }
           <p className="text-xs text-gray-400 mt-2 text-center">
             {dayTab === 'week' ? '🟡 = today' : '🟡 = today  · Every 5th day labeled'}
@@ -448,20 +448,20 @@ export default function TrackerDashboard({ user }) {
         </div>
 
         {/* ── Month-by-Month chart ─────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+        <div className="bg-dark-card rounded-2xl shadow-sm p-5 border border-gray-50">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-bold text-gray-800">Month-by-Month</p>
             <span className="text-xs text-gray-400 bg-gray-50 px-2 py-1 rounded-lg">Last 6 months</span>
           </div>
           {loading
             ? <div className="h-40 flex items-center justify-center text-gray-300 text-sm">Loading…</div>
-            : <BarChart data={monthlyData} height={160} barColor="#6C63FF" labelFontSize={11} />
+            : <BarChart data={monthlyData} height={160} barColor="#D4AF37" labelFontSize={11} />
           }
           <p className="text-xs text-gray-400 mt-2 text-center">🟡 = current month</p>
         </div>
 
         {/* Category breakdown */}
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+        <div className="bg-dark-card rounded-2xl shadow-sm p-5 border border-gray-50">
           <p className="text-sm font-bold text-gray-800 mb-4">By Category · {monthLabel(targetMonth)}</p>
           {monthExpenses.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-6">No expenses this month</p>
@@ -520,20 +520,20 @@ export default function TrackerDashboard({ user }) {
                 : '—',
               sub:   wtMonthStart ? `Started at ${wtMonthStart} kg` : 'No logs this month',
               color: wtMonthChange !== null
-                ? wtMonthChange < 0 ? '#10B981' : wtMonthChange > 0 ? '#EF4444' : '#6B7280'
+                ? wtMonthChange < 0 ? '#2ECC71' : wtMonthChange > 0 ? '#E74C3C' : '#8A8A8A'
                 : undefined,
             },
           ].map(c => (
-            <div key={c.label} className="bg-white rounded-2xl shadow-sm p-4 text-center border border-gray-50">
+            <div key={c.label} className="bg-dark-card rounded-2xl shadow-sm p-4 text-center border border-gray-50">
               <p className="text-xs text-gray-400 mb-1">{c.label}</p>
-              <p className="text-lg font-bold" style={{ color: c.color || '#111827' }}>{c.value}</p>
+              <p className="text-lg font-bold" style={{ color: c.color || '#F5F5F5' }}>{c.value}</p>
               <p className="text-xs text-gray-400 mt-0.5">{c.sub}</p>
             </div>
           ))}
         </div>
 
         {/* ── Weight trend chart ── */}
-        <div className="bg-white rounded-2xl shadow-sm p-5 border border-gray-50">
+        <div className="bg-dark-card rounded-2xl shadow-sm p-5 border border-gray-50">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-bold text-gray-800">Weight Trend</p>
             <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
@@ -541,8 +541,8 @@ export default function TrackerDashboard({ user }) {
                 <button key={id} onClick={() => setWeightTab(id)}
                   className="px-3 py-1 rounded-lg text-xs font-semibold transition-all duration-150"
                   style={{
-                    backgroundColor: weightTab === id ? '#10B981' : 'transparent',
-                    color: weightTab === id ? 'white' : '#6B7280',
+                    backgroundColor: weightTab === id ? '#2ECC71' : 'transparent',
+                    color: weightTab === id ? 'white' : '#8A8A8A',
                   }}>
                   {label}
                 </button>

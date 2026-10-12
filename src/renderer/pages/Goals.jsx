@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useId } from 'react'
 import bridge from '../lib/bridge'
 
 // Goal↔investment linking and investment-sync are Electron-only (no web
@@ -68,11 +68,11 @@ function fmtDate(d) {
 
 // ── Goal type / palette constants ───────────────────────────────────────────
 const TYPE_META = {
-  emergency_fund:   { label: 'Emergency Fund',   icon: '🛡️', color: '#3B82F6', desc: 'A safety net for unexpected expenses' },
+  emergency_fund:   { label: 'Emergency Fund',   icon: '🛡️', color: '#3498DB', desc: 'A safety net for unexpected expenses' },
   opportunity_fund: { label: 'Opportunity Fund', icon: '💼', color: '#8B5CF6', desc: "Cash parked and ready to seize an investment opportunity" },
   life_goal:        { label: 'Life Goal',        icon: '🎯', color: '#F97316', desc: 'Bike, car, vacation, gadget, home down payment & more' },
-  debt_payoff:      { label: 'Debt Payoff',      icon: '💳', color: '#EF4444', desc: 'Pay off a loan faster and save on interest' },
-  custom:           { label: 'Custom Goal',      icon: '⭐', color: '#F59E0B', desc: "Anything else — savings target, personal milestone, or any goal that doesn't fit above" },
+  debt_payoff:      { label: 'Debt Payoff',      icon: '💳', color: '#E74C3C', desc: 'Pay off a loan faster and save on interest' },
+  custom:           { label: 'Custom Goal',      icon: '⭐', color: '#F39C12', desc: "Anything else — savings target, personal milestone, or any goal that doesn't fit above" },
 }
 
 const EMOJIS = [
@@ -82,9 +82,9 @@ const EMOJIS = [
 ]
 
 const COLORS = [
-  '#6C63FF','#3B82F6','#10B981','#F59E0B',
-  '#EF4444','#8B5CF6','#EC4899','#14B8A6',
-  '#F97316','#6366F1','#84CC16','#06B6D4',
+  '#D4AF37','#3498DB','#2ECC71','#F39C12',
+  '#E74C3C','#8B5CF6','#EC4899','#14B8A6',
+  '#F97316','#D4AF37','#84CC16','#06B6D4',
 ]
 
 const BLANK_FORM = {
@@ -249,7 +249,7 @@ function nudgesFor(goal, contributions) {
 }
 
 function typeBadgeStyle(goal, accent) {
-  if (goal.type === 'custom') return { backgroundColor: '#f3f4f6', color: '#6b7280' }
+  if (goal.type === 'custom') return { backgroundColor: '#1A1A1A', color: '#8A8A8A' }
   return { backgroundColor: accent + '15', color: accent }
 }
 
@@ -293,14 +293,24 @@ const ListIcon = () => (
   </svg>
 )
 
-function RingProgress({ pct, color, size = 72, stroke = 6 }) {
+// Gold ring on every goal; a completed goal gets a full ring with a soft glow
+function RingProgress({ pct, size = 72, stroke = 6 }) {
+  const gradId = useId()
   const r = (size - stroke * 2) / 2
   const circ = 2 * Math.PI * r
+  const done = pct >= 100
   const offset = circ * (1 - Math.min(pct / 100, 1))
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#f3f4f6" strokeWidth={stroke} />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}
+      style={{ transform: 'rotate(-90deg)', filter: done ? 'drop-shadow(0 0 6px rgba(212,175,55,0.55))' : undefined }}>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor="#F0D060" />
+          <stop offset="100%" stopColor="#B8960C" />
+        </linearGradient>
+      </defs>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#1A1A1A" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={`url(#${gradId})`} strokeWidth={stroke}
         strokeDasharray={`${circ} ${circ}`} strokeDashoffset={offset} strokeLinecap="round"
         style={{ transition: 'stroke-dashoffset 0.7s ease' }} />
     </svg>
@@ -310,8 +320,8 @@ function RingProgress({ pct, color, size = 72, stroke = 6 }) {
 function ToggleSwitch({ on, onClick, accent }) {
   return (
     <button onClick={onClick} type="button"
-      style={{ width: 40, height: 22, borderRadius: 999, position: 'relative', backgroundColor: on ? accent : '#d1d5db', transition: 'background-color .2s', flexShrink: 0 }}>
-      <span style={{ position: 'absolute', top: 2, left: on ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left .2s' }} />
+      style={{ width: 40, height: 22, borderRadius: 999, position: 'relative', backgroundColor: on ? accent : '#3A3A3A', transition: 'background-color .2s', flexShrink: 0 }}>
+      <span style={{ position: 'absolute', top: 2, left: on ? 20 : 2, width: 18, height: 18, borderRadius: '50%', background: '#1A1A1A', transition: 'left .2s' }} />
     </button>
   )
 }
@@ -342,10 +352,10 @@ function InflationAdjustFields({ form, set, accent }) {
 // ── Summary bar ─────────────────────────────────────────────────────────────
 function SummaryBar({ activeCount, achievedCount, totalTarget, totalSaved, overallPct }) {
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
+    <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-5 mb-5">
       <div className="flex items-center gap-6 flex-wrap">
         <div className="relative shrink-0">
-          <RingProgress pct={overallPct} color="#6C63FF" size={64} stroke={7} />
+          <RingProgress pct={overallPct} size={64} stroke={7} />
           <div className="absolute inset-0 flex items-center justify-center">
             <span className="text-sm font-bold text-gray-900">{Math.round(overallPct)}%</span>
           </div>
@@ -358,7 +368,7 @@ function SummaryBar({ activeCount, achievedCount, totalTarget, totalSaved, overa
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-0.5">Total Target</p>
-            <p className="text-lg font-bold text-gray-900">{fmtCr(totalTarget)}</p>
+            <p className="text-lg font-bold text-[#D4AF37]">{fmtCr(totalTarget)}</p>
           </div>
           <div>
             <p className="text-xs text-gray-400 mb-0.5">Total Saved</p>
@@ -413,11 +423,11 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onCon
   const needed = monthlyNeeded(goal, linkedInvestments)
   const achieved = Boolean(goal.is_achieved)
   const outstanding = isDebt ? Math.max(0, (goal.target_amount || 0) - (goal.current_amount || 0)) : null
-  const ringColor = achieved ? '#10B981' : accent
+  const ringColor = achieved ? '#D4AF37' : accent
 
   return (
     <div
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group overflow-hidden"
+      className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group overflow-hidden"
       onClick={() => onView(goal)}
     >
       <div className="h-1" style={{ backgroundColor: ringColor }} />
@@ -453,9 +463,9 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onCon
 
         <div className="flex items-center gap-4 mb-4">
           <div className="relative shrink-0">
-            <RingProgress pct={achieved ? 100 : pct} color={ringColor} size={72} stroke={7} />
+            <RingProgress pct={achieved ? 100 : pct} size={72} stroke={7} />
             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-sm font-bold leading-none" style={{ color: ringColor }}>{Math.round(achieved ? 100 : pct)}%</span>
+              <span className="text-sm font-bold leading-none" style={{ color: '#D4AF37' }}>{Math.round(achieved ? 100 : pct)}%</span>
             </div>
           </div>
           <div className="flex-1 min-w-0">
@@ -500,11 +510,11 @@ function GoalListRow({ goal, linkedInvestments, onView, onEdit, onDelete, onCont
   const needed = monthlyNeeded(goal, linkedInvestments)
   const achieved = Boolean(goal.is_achieved)
   const outstanding = isDebt ? Math.max(0, (goal.target_amount || 0) - (goal.current_amount || 0)) : null
-  const ringColor = achieved ? '#10B981' : accent
+  const ringColor = achieved ? '#D4AF37' : accent
 
   return (
     <div
-      className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group cursor-pointer p-4 flex items-center gap-4"
+      className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all group cursor-pointer p-4 flex items-center gap-4"
       onClick={() => onView(goal)}
     >
       <div className="flex items-center gap-3 w-56 shrink-0 min-w-0">
@@ -527,10 +537,10 @@ function GoalListRow({ goal, linkedInvestments, onView, onEdit, onDelete, onCont
           <span className="text-xs text-gray-500 truncate">
             {isDebt ? `${fmtCr(outstanding)} left of ${fmtCr(goal.target_amount)}` : `${fmtCr(goal.current_amount || 0)} of ${fmtCr(target)}`}
           </span>
-          <span className="text-xs font-bold shrink-0" style={{ color: ringColor }}>{Math.round(achieved ? 100 : pct)}%</span>
+          <span className="text-xs font-bold shrink-0" style={{ color: '#D4AF37' }}>{Math.round(achieved ? 100 : pct)}%</span>
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-full rounded-full transition-all" style={{ width: `${achieved ? 100 : pct}%`, backgroundColor: ringColor }} />
+          <div className="h-full rounded-full transition-all" style={{ width: `${achieved ? 100 : pct}%`, background: 'linear-gradient(90deg, #D4AF37, #B8960C)' }} />
         </div>
       </div>
 
@@ -563,7 +573,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
     type: initial.type,
     title: initial.title || '',
     emoji: initial.emoji || TYPE_META[initial.type]?.icon || '🎯',
-    color: initial.color || TYPE_META[initial.type]?.color || '#6C63FF',
+    color: initial.color || TYPE_META[initial.type]?.color || '#D4AF37',
     target_date: initial.target_date || '',
     notes: initial.notes || '',
     category: initial.category || 'need',
@@ -641,8 +651,8 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
 
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <div>
@@ -651,10 +661,10 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
               {STEP_LABELS.map((label, i) => (
                 <div key={label} className="flex items-center gap-1.5">
                   <span className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0"
-                    style={{ backgroundColor: step >= i + 1 ? accent : '#e5e7eb', color: step >= i + 1 ? '#fff' : '#9ca3af' }}>
+                    style={{ backgroundColor: step >= i + 1 ? accent : '#2A2A2A', color: step >= i + 1 ? '#fff' : '#6B6B6B' }}>
                     {i + 1}
                   </span>
-                  <span className="text-xs font-medium" style={{ color: step === i + 1 ? '#1a1a2e' : '#9ca3af' }}>{label}</span>
+                  <span className="text-xs font-medium" style={{ color: step === i + 1 ? '#F5F5F5' : '#6B6B6B' }}>{label}</span>
                   {i < STEP_LABELS.length - 1 && <span className="w-4 h-px bg-gray-200 mx-1" />}
                 </div>
               ))}
@@ -673,7 +683,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                   <button key={key}
                     onClick={() => { set('type', key); set('color', m.color); set('emoji', m.icon); setStep(2) }}
                     className="text-left p-5 rounded-2xl border-2 transition-all hover:shadow-md"
-                    style={{ borderColor: form.type === key ? m.color : '#e5e7eb', backgroundColor: form.type === key ? m.color + '0c' : '#fff' }}>
+                    style={{ borderColor: form.type === key ? m.color : '#2A2A2A', backgroundColor: form.type === key ? m.color + '0c' : '#1A1A1A' }}>
                     <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-3" style={{ backgroundColor: m.color + '18' }}>{m.icon}</div>
                     <p className="font-bold text-gray-900 text-sm mb-1">{m.label}</p>
                     <p className="text-xs text-gray-500 leading-snug">{m.desc}</p>
@@ -683,7 +693,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
               <button
                 onClick={() => { set('type', 'custom'); set('color', TYPE_META.custom.color); set('emoji', TYPE_META.custom.icon); setStep(2) }}
                 className="w-full text-left p-5 rounded-2xl border-2 transition-all hover:shadow-md flex items-center gap-4"
-                style={{ borderColor: form.type === 'custom' ? TYPE_META.custom.color : '#e5e7eb', backgroundColor: form.type === 'custom' ? TYPE_META.custom.color + '0c' : '#fff' }}>
+                style={{ borderColor: form.type === 'custom' ? TYPE_META.custom.color : '#2A2A2A', backgroundColor: form.type === 'custom' ? TYPE_META.custom.color + '0c' : '#1A1A1A' }}>
                 <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ backgroundColor: TYPE_META.custom.color + '18' }}>{TYPE_META.custom.icon}</div>
                 <div>
                   <p className="font-bold text-gray-900 text-sm mb-1">{TYPE_META.custom.label}</p>
@@ -699,11 +709,11 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                 <div className="relative shrink-0">
                   <button onClick={() => setShowEmoji(v => !v)}
                     className="w-14 h-14 rounded-xl border-2 text-2xl flex items-center justify-center transition-colors hover:border-gray-300"
-                    style={{ borderColor: showEmoji ? accent : '#e5e7eb' }}>
+                    style={{ borderColor: showEmoji ? accent : '#2A2A2A' }}>
                     {form.emoji}
                   </button>
                   {showEmoji && (
-                    <div className="absolute top-16 left-0 z-20 bg-white rounded-xl shadow-2xl border border-gray-100 p-3 grid grid-cols-6 gap-1 w-52">
+                    <div className="absolute top-16 left-0 z-20 bg-dark-card rounded-xl shadow-2xl border border-gray-100 p-3 grid grid-cols-6 gap-1 w-52">
                       {EMOJIS.map(e => (
                         <button key={e} onClick={() => { set('emoji', e); setShowEmoji(false) }}
                           className="w-7 h-7 text-lg hover:bg-gray-100 rounded-lg flex items-center justify-center">
@@ -733,7 +743,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                   {['need', 'want'].map(c => (
                     <button key={c} onClick={() => set('category', c)}
                       className="px-5 py-2 text-sm font-semibold transition-colors"
-                      style={{ backgroundColor: form.category === c ? accent : 'transparent', color: form.category === c ? '#fff' : '#6b7280' }}>
+                      style={{ backgroundColor: form.category === c ? accent : 'transparent', color: form.category === c ? '#fff' : '#8A8A8A' }}>
                       {c === 'need' ? 'Need' : 'Want'}
                     </button>
                   ))}
@@ -869,19 +879,19 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white rounded-xl p-3.5 shadow-sm">
+                  <div className="bg-dark-card rounded-xl p-3.5 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">
                       {isDebt ? 'Total Outstanding' : (isLife || isCustom) && form.inflation_adjust ? 'Inflation-Adjusted Target' : 'Target'}
                     </p>
                     <p className="text-lg font-bold" style={{ color: accent }}>{fmtCr(target)}</p>
                     {(isLife || isCustom) && form.inflation_adjust && <p className="text-xs text-gray-400">today's cost {fmtCr(Number(form.target_amount) || 0)}</p>}
                   </div>
-                  <div className="bg-white rounded-xl p-3.5 shadow-sm">
+                  <div className="bg-dark-card rounded-xl p-3.5 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">Target Date</p>
                     <p className="text-lg font-bold text-gray-800">{fmtDate(form.target_date)}</p>
                     <p className="text-xs text-gray-400">{countdownLabel(form.target_date)}</p>
                   </div>
-                  <div className="bg-white rounded-xl p-3.5 shadow-sm col-span-2">
+                  <div className="bg-dark-card rounded-xl p-3.5 shadow-sm col-span-2">
                     {needed === null ? (
                       <>
                         <p className="text-xs text-gray-400 mb-0.5">Timeline</p>
@@ -901,7 +911,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                     )}
                   </div>
                   {isDebt && debtStats.interestSaved > 0 && (
-                    <div className="bg-white rounded-xl p-3.5 shadow-sm col-span-2">
+                    <div className="bg-dark-card rounded-xl p-3.5 shadow-sm col-span-2">
                       <p className="text-xs text-gray-400 mb-0.5">Estimated Interest Saved</p>
                       <p className="text-lg font-bold text-green-600">{fmtCr(debtStats.interestSaved)}</p>
                       <p className="text-xs text-gray-400">by paying off ~{Math.round(debtStats.monthsSaved)} months early (approx., at ~{debtStats.rate}% p.a.)</p>
@@ -960,8 +970,8 @@ function InvestmentPickerModal({ investments, selectedIds, onToggle, onClose }) 
   const filtered = investments.filter(i => i.name.toLowerCase().includes(search.trim().toLowerCase()))
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <h3 className="font-bold text-gray-900">Link Investments</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
@@ -1008,7 +1018,7 @@ function InvestmentPickerModal({ investments, selectedIds, onToggle, onClose }) 
         </div>
         <div className="flex items-center justify-between px-5 py-4 border-t border-gray-100 shrink-0">
           <span className="text-xs text-gray-400">{selectedIds.length} selected</span>
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-white" style={{ backgroundColor: '#6C63FF' }}>Done</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-[#0A0A0A]" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>Done</button>
         </div>
       </div>
     </div>
@@ -1057,8 +1067,8 @@ function AddContributionModal({ goal, onSave, onClose }) {
   const disabled = isDebt ? newOutstanding === '' : !amount || Number(amount) === 0
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h3 className="font-bold text-gray-900">{isDebt ? 'Update Outstanding Balance' : 'Add Contribution'}</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
@@ -1130,8 +1140,8 @@ function GoalItemModal({ goal, item, onSave, onClose }) {
   const labelCls = 'block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h3 className="font-bold text-gray-900">{item?.id ? 'Edit Item' : 'Add Item'}</h3>
           <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
@@ -1157,7 +1167,7 @@ function GoalItemModal({ goal, item, onSave, onClose }) {
               {['high', 'medium', 'low'].map(p => (
                 <button key={p} type="button" onClick={() => set('priority', p)}
                   className="flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors capitalize"
-                  style={form.priority === p ? { backgroundColor: accent, borderColor: accent, color: '#fff' } : { borderColor: '#e5e7eb', color: '#6b7280' }}>
+                  style={form.priority === p ? { backgroundColor: accent, borderColor: accent, color: '#fff' } : { borderColor: '#2A2A2A', color: '#8A8A8A' }}>
                   {p}
                 </button>
               ))}
@@ -1184,7 +1194,7 @@ function GoalItemModal({ goal, item, onSave, onClose }) {
   )
 }
 
-const PRIORITY_DOT = { high: '#EF4444', medium: '#F59E0B', low: '#9CA3AF' }
+const PRIORITY_DOT = { high: '#E74C3C', medium: '#D4AF37', low: '#6B6B6B' }
 
 // Checklist of things to buy with this goal's savings — what used to be the
 // standalone Wishlist. Ticking an item marks it bought; it doesn't touch the
@@ -1197,7 +1207,7 @@ function GoalItemsSection({ goal, items, accent, onAdd, onEdit, onToggle, onDele
   const targetDiffers = total > 0 && Math.round(total) !== Math.round(goal.target_amount || 0)
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+    <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
       <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3">
         <div>
           <h2 className="font-semibold text-gray-800">Items to Buy</h2>
@@ -1258,10 +1268,10 @@ function GoalItemsSection({ goal, items, accent, onAdd, onEdit, onToggle, onDele
 
 // ── Goal detail screen ───────────────────────────────────────────────────────
 const NUDGE_STYLE = {
-  success: { bg: '#ecfdf5', border: '#a7f3d0', text: '#047857' },
-  warning: { bg: '#fffbeb', border: '#fde68a', text: '#92400e' },
-  danger:  { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' },
-  info:    { bg: '#eff6ff', border: '#bfdbfe', text: '#1d4ed8' },
+  success: { bg: '#11251E', border: '#114333', text: '#34D399' },
+  warning: { bg: '#2C2210', border: '#553B0F', text: '#92400e' },
+  danger:  { bg: '#2C1717', border: '#542020', text: '#F87171' },
+  info:    { bg: '#161F2C', border: '#1E3356', text: '#60A5FA' },
 }
 
 const INV_TYPE_LABELS = {
@@ -1296,7 +1306,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
   const nudges = nudgesFor(goal, contributions)
   const outstanding = isDebt ? Math.max(0, (goal.target_amount || 0) - (goal.current_amount || 0)) : null
   const achieved = Boolean(goal.is_achieved)
-  const ringColor = achieved ? '#10B981' : accent
+  const ringColor = achieved ? '#D4AF37' : accent
 
   return (
     <div className="p-6 max-w-3xl">
@@ -1309,7 +1319,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
             Edit Goal
           </button>
           {!achieved && pct >= 95 && (
-            <button onClick={onAchieve} className="px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity" style={{ backgroundColor: '#10B981' }}>
+            <button onClick={onAchieve} className="px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity" style={{ backgroundColor: '#2ECC71' }}>
               ✓ Mark as Achieved
             </button>
           )}
@@ -1326,7 +1336,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
         )
       })}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
         <div className="h-1.5" style={{ backgroundColor: ringColor }} />
         <div className="p-6">
           <div className="flex items-center gap-4 mb-6">
@@ -1349,9 +1359,9 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
 
           <div className="flex items-center gap-6">
             <div className="relative shrink-0">
-              <RingProgress pct={achieved ? 100 : pct} color={ringColor} size={96} stroke={9} />
+              <RingProgress pct={achieved ? 100 : pct} size={96} stroke={9} />
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-lg font-bold leading-none" style={{ color: ringColor }}>{Math.round(achieved ? 100 : pct)}%</span>
+                <span className="text-lg font-bold leading-none" style={{ color: '#D4AF37' }}>{Math.round(achieved ? 100 : pct)}%</span>
                 <span className="text-[9px] text-gray-400 mt-0.5 leading-none">{isDebt ? 'paid off' : 'funded'}</span>
               </div>
             </div>
@@ -1360,7 +1370,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
                 <div>
                   <p className="text-xs text-gray-400 mb-0.5">{isDebt ? 'Paid Off' : 'Saved'}</p>
                   <p className="text-2xl font-bold text-gray-900">{fmtCr(goal.current_amount || 0)}</p>
-                  <p className="text-[10px] font-medium mt-0.5" style={{ color: linkedInvestments.length > 0 ? '#6366F1' : '#9ca3af' }}>
+                  <p className="text-[10px] font-medium mt-0.5" style={{ color: linkedInvestments.length > 0 ? '#D4AF37' : '#6B6B6B' }}>
                     {linkedInvestments.length > 0 ? 'Auto-calculated from linked investments' : 'Manual'}
                   </p>
                 </div>
@@ -1370,7 +1380,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
                 </div>
               </div>
               <div className="h-2.5 bg-gray-100 rounded-full overflow-hidden">
-                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${achieved ? 100 : pct}%`, backgroundColor: ringColor }} />
+                <div className="h-full rounded-full transition-all duration-700" style={{ width: `${achieved ? 100 : pct}%`, background: 'linear-gradient(90deg, #D4AF37, #B8960C)' }} />
               </div>
               <div className="flex justify-between mt-1.5">
                 <span className="text-xs text-gray-400">{isDebt ? `${fmtCr(outstanding)} still owed` : `${fmtCr(Math.max(0, target - (goal.current_amount || 0)))} remaining`}</span>
@@ -1384,16 +1394,16 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
       <div className="grid grid-cols-3 gap-3 mb-4">
         {isDebt ? (
           <>
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
               <p className="text-xs text-gray-400 mb-1">Current EMI</p>
               <p className="text-lg font-bold text-gray-900">{fmtCr(goal.monthly_emi || 0)}/mo</p>
             </div>
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
               <p className="text-xs text-gray-400 mb-1">Extra Monthly Needed</p>
               <p className="text-lg font-bold" style={{ color: accent }}>{fmtCr(debtStats.extraMonthly)}/mo</p>
               <p className="text-xs text-gray-400 mt-0.5">to hit early payoff date</p>
             </div>
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
               <p className="text-xs text-gray-400 mb-1">Est. Interest Saved</p>
               <p className="text-lg font-bold text-green-600">{fmtCr(debtStats.interestSaved)}</p>
               <p className="text-xs text-gray-400 mt-0.5">~{Math.round(debtStats.monthsSaved)} months early, ~{debtStats.rate}% p.a.</p>
@@ -1402,13 +1412,13 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
         ) : (
           <>
             {(isLife || (goal.type === 'custom' && goal.inflation_adjust)) && (
-              <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+              <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
                 <p className="text-xs text-gray-400 mb-1">Today's Cost</p>
                 <p className="text-lg font-bold text-gray-900">{fmtCr(goal.target_amount || 0)}</p>
                 {Boolean(goal.inflation_adjust) && <p className="text-xs text-gray-400 mt-0.5">{goal.inflation_rate}% inflation/yr</p>}
               </div>
             )}
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
               {needed === null ? (
                 <>
                   <p className="text-xs text-gray-400 mb-1">Timeline</p>
@@ -1423,7 +1433,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
                 </>
               )}
             </div>
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+            <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm">
               <p className="text-xs text-gray-400 mb-1">Category</p>
               <p className="text-lg font-bold text-gray-900">{goal.category === 'want' ? 'Want' : 'Need'}</p>
             </div>
@@ -1433,7 +1443,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
 
       {!isDebt && <GoalItemsSection goal={goal} items={items} accent={accent} {...itemHandlers} />}
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
         <h2 className="font-semibold text-gray-800 mb-3">Where the Money Sits</h2>
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium text-gray-800">{goal.bank_or_provider || '—'}</p>
@@ -1447,7 +1457,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
         {goal.notes && <p className="text-sm text-gray-500 mt-3 pt-3 border-t border-gray-50">{goal.notes}</p>}
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-4">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-gray-800">Linked Investments</h2>
@@ -1489,7 +1499,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-gray-800">Contribution History</h2>
@@ -1786,7 +1796,7 @@ export function GoalsContent() {
         )}
         {toast && (
           <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white animate-in"
-            style={{ backgroundColor: toast.type === 'error' ? '#EF4444' : toast.type === 'warn' ? '#F59E0B' : '#10B981' }}>
+            style={{ backgroundColor: toast.type === 'error' ? '#E74C3C' : toast.type === 'warn' ? '#F39C12' : '#2ECC71' }}>
             {toast.type === 'error' ? '✗' : '✓'} {toast.msg}
           </div>
         )}
@@ -1804,18 +1814,18 @@ export function GoalsContent() {
         <div className="flex items-center gap-2">
           <div className="flex rounded-xl border border-gray-200 overflow-hidden">
             <button onClick={() => setView('grid')} title="Card grid view"
-              className="p-2.5 transition-colors" style={{ backgroundColor: view === 'grid' ? '#1a1a2e' : '#fff', color: view === 'grid' ? '#fff' : '#9ca3af' }}>
+              className="p-2.5 transition-colors" style={{ backgroundColor: view === 'grid' ? '#D4AF37' : '#1A1A1A', color: view === 'grid' ? '#0A0A0A' : '#6B6B6B' }}>
               <GridIcon />
             </button>
             <button onClick={() => setView('list')} title="List view"
-              className="p-2.5 transition-colors" style={{ backgroundColor: view === 'list' ? '#1a1a2e' : '#fff', color: view === 'list' ? '#fff' : '#9ca3af' }}>
+              className="p-2.5 transition-colors" style={{ backgroundColor: view === 'list' ? '#D4AF37' : '#1A1A1A', color: view === 'list' ? '#0A0A0A' : '#6B6B6B' }}>
               <ListIcon />
             </button>
           </div>
           <button
             onClick={() => openWizard(null)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#6C63FF' }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
           >
             <span className="text-base font-bold leading-none">+</span>
             Add Goal
@@ -1833,7 +1843,7 @@ export function GoalsContent() {
           {[1, 2, 3].map(i => <div key={i} className="h-56 bg-gray-100 rounded-2xl animate-pulse" />)}
         </div>
       ) : sorted.length === 0 ? (
-        <div className="flex items-center justify-center h-56 rounded-2xl bg-white border border-dashed border-gray-200">
+        <div className="flex items-center justify-center h-56 rounded-2xl bg-dark-card border border-dashed border-gray-200">
           <div className="text-center">
             <p className="text-4xl mb-3">🎯</p>
             <p className="text-base font-semibold text-gray-700">No goals yet</p>
@@ -1864,7 +1874,7 @@ export function GoalsContent() {
       )}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white animate-in"
-          style={{ backgroundColor: toast.type === 'error' ? '#EF4444' : toast.type === 'warn' ? '#F59E0B' : '#10B981' }}>
+          style={{ backgroundColor: toast.type === 'error' ? '#E74C3C' : toast.type === 'warn' ? '#F39C12' : '#2ECC71' }}>
           {toast.type === 'error' ? '✗' : '✓'} {toast.msg}
         </div>
       )}

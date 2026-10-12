@@ -110,11 +110,11 @@ function buildInstruments(investments) {
 
 // ── Chart colors (validated categorical set — see dataviz skill) ─────────
 const COLORS = {
-  corpus: '#2563EB',
-  targetNoKids: '#E11D48',
-  targetOneKid: '#CA8A04',
-  targetTwoKids: '#9333EA',
-  fire: '#EA580C',
+  corpus: '#D4AF37',
+  targetNoKids: '#E74C3C',
+  targetOneKid: '#3498DB',
+  targetTwoKids: '#9B59B6',
+  fire: '#F39C12',
 }
 
 const FIRE_TYPES = [
@@ -343,7 +343,7 @@ function LoanRow({ row, currentYear, onUpdate, onRemove }) {
 
       {/* Row 3 — auto-calculated summary */}
       {annualEmi > 0 && (
-        <p className="text-[11px] text-gray-500 bg-white rounded-lg px-2.5 py-1.5 border border-gray-100">
+        <p className="text-[11px] text-gray-500 bg-dark-card rounded-lg px-2.5 py-1.5 border border-gray-100">
           {fmt(monthly)}/month • {yearsRemaining} year{yearsRemaining !== 1 ? 's' : ''} remaining • Total outflow: {fmtCr(totalOutflow)}
         </p>
       )}
@@ -380,9 +380,9 @@ function LoansSection({ loans, currentYear, onUpdate, onRemove, onAdd, showExamp
 }
 
 function summaryPalette(yearsSaved) {
-  if (yearsSaved == null || yearsSaved <= 0) return { bg: '#f9fafb', border: '#e5e7eb', text: '#4b5563' }
-  if (yearsSaved >= 3) return { bg: '#ecfdf5', border: '#a7f3d0', text: '#047857' }
-  return { bg: '#fffbeb', border: '#fde68a', text: '#b45309' }
+  if (yearsSaved == null || yearsSaved <= 0) return { bg: '#1A1A1A', border: '#2A2A2A', text: '#A0A0A0' }
+  if (yearsSaved >= 3) return { bg: '#11251E', border: '#114333', text: '#34D399' }
+  return { bg: '#2C2210', border: '#553B0F', text: '#FBBF24' }
 }
 
 function AdditionalInvestmentRow({ row, currentYear, impact, onUpdate, onRemove }) {
@@ -430,7 +430,7 @@ function AdditionalInvestmentRow({ row, currentYear, impact, onUpdate, onRemove 
           className={`${inputCls} w-28`} />
       </FieldRow>
       {impactText && (
-        <p className="text-[11px] text-orange-700 bg-white rounded-lg px-2.5 py-1.5 border border-orange-100">
+        <p className="text-[11px] text-orange-700 bg-dark-card rounded-lg px-2.5 py-1.5 border border-orange-100">
           {impactText}
         </p>
       )}
@@ -443,10 +443,10 @@ function SimulatorTooltip({ active, payload, label }) {
   const row = payload[0]?.payload
   if (!row) return null
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-lg px-3.5 py-3 text-xs space-y-1 min-w-[170px]">
+    <div className="bg-dark-card rounded-xl border border-gray-200 shadow-lg px-3.5 py-3 text-xs space-y-1 min-w-[170px]">
       <p className="font-bold text-gray-800 mb-1">Year: {label}</p>
-      <p className="text-gray-500">Current plan: <span className="font-semibold" style={{ color: '#2563EB' }}>{fmtCr(row.currentCorpus)}</span></p>
-      <p className="text-gray-500">With extras: <span className="font-semibold" style={{ color: '#16A34A' }}>{fmtCr(row.withExtraCorpus)}</span></p>
+      <p className="text-gray-500">Current plan: <span className="font-semibold" style={{ color: '#D4AF37' }}>{fmtCr(row.currentCorpus)}</span></p>
+      <p className="text-gray-500">With extras: <span className="font-semibold" style={{ color: '#2ECC71' }}>{fmtCr(row.withExtraCorpus)}</span></p>
     </div>
   )
 }
@@ -557,23 +557,23 @@ function AdditionalInvestmentSimulator({ rows, currentYear, investments, calcInp
       )}
 
       {hasFundedRows && chartData.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 p-4">
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
-              <CartesianGrid stroke="#f3f4f6" vertical={false} />
-              <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
-              <YAxis tickFormatter={fmtCr} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={72} />
+              <CartesianGrid stroke="#1A1A1A" vertical={false} />
+              <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#6B6B6B' }} axisLine={{ stroke: '#2A2A2A' }} tickLine={false} />
+              <YAxis tickFormatter={fmtCr} tick={{ fontSize: 11, fill: '#6B6B6B' }} axisLine={false} tickLine={false} width={72} />
               <Tooltip content={<SimulatorTooltip />} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
-              <Line type="monotone" dataKey="currentCorpus" name="Current Plan" stroke="#2563EB" strokeWidth={2.5} dot={false} />
-              <Line type="monotone" dataKey="withExtraCorpus" name="With Additional Investments" stroke="#16A34A" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="currentCorpus" name="Current Plan" stroke="#D4AF37" strokeWidth={2.5} dot={false} />
+              <Line type="monotone" dataKey="withExtraCorpus" name="With Additional Investments" stroke="#2ECC71" strokeWidth={2.5} dot={false} />
               {baselineSel.fireYear != null && (
-                <ReferenceLine x={baselineSel.fireYear} stroke="#2563EB" strokeDasharray="4 4" strokeWidth={1.5}
-                  label={{ value: 'Current FIRE', position: 'top', fill: '#2563EB', fontSize: 11, fontWeight: 700 }} />
+                <ReferenceLine x={baselineSel.fireYear} stroke="#D4AF37" strokeDasharray="4 4" strokeWidth={1.5}
+                  label={{ value: 'Current FIRE', position: 'top', fill: '#D4AF37', fontSize: 11, fontWeight: 700 }} />
               )}
               {combinedSel?.fireYear != null && combinedSel.fireYear !== baselineSel.fireYear && (
-                <ReferenceLine x={combinedSel.fireYear} stroke="#16A34A" strokeDasharray="4 4" strokeWidth={1.5}
-                  label={{ value: 'New FIRE', position: 'top', fill: '#16A34A', fontSize: 11, fontWeight: 700 }} />
+                <ReferenceLine x={combinedSel.fireYear} stroke="#2ECC71" strokeDasharray="4 4" strokeWidth={1.5}
+                  label={{ value: 'New FIRE', position: 'top', fill: '#2ECC71', fontSize: 11, fontWeight: 700 }} />
               )}
             </LineChart>
           </ResponsiveContainer>
@@ -590,7 +590,7 @@ function FireTooltip({ active, payload, label, targetKey }) {
   const target = row[targetKey]
   const gap = row.corpus - target
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-lg px-3.5 py-3 text-xs space-y-1 min-w-[170px]">
+    <div className="bg-dark-card rounded-xl border border-gray-200 shadow-lg px-3.5 py-3 text-xs space-y-1 min-w-[170px]">
       <p className="font-bold text-gray-800 mb-1">Year: {label}</p>
       <p className="text-gray-500">Your Age: <span className="font-semibold text-gray-800">{row.age}</span></p>
       <p className="text-gray-500">Corpus: <span className="font-semibold" style={{ color: COLORS.corpus }}>{fmtCr(row.corpus)}</span></p>
@@ -604,10 +604,10 @@ function FireTooltip({ active, payload, label, targetKey }) {
 }
 
 function heroPalette(yearsToFIRE) {
-  if (yearsToFIRE == null) return { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' }
-  if (yearsToFIRE < 15) return { bg: '#ecfdf5', border: '#a7f3d0', text: '#047857' }
-  if (yearsToFIRE <= 25) return { bg: '#fffbeb', border: '#fde68a', text: '#b45309' }
-  return { bg: '#fef2f2', border: '#fecaca', text: '#b91c1c' }
+  if (yearsToFIRE == null) return { bg: '#2C1717', border: '#542020', text: '#F87171' }
+  if (yearsToFIRE < 15) return { bg: '#11251E', border: '#114333', text: '#34D399' }
+  if (yearsToFIRE <= 25) return { bg: '#2C2210', border: '#553B0F', text: '#FBBF24' }
+  return { bg: '#2C1717', border: '#542020', text: '#F87171' }
 }
 
 const SCENARIO_PILLS = [
@@ -733,7 +733,7 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
 
       {/* Impact of Additional Investments */}
       {hasAdditionalInvestments && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-4 space-y-2">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 p-4 space-y-2">
           <p className="text-sm font-bold text-gray-800">📊 Impact of Additional Investments</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-xs text-gray-600">
             <p>Without extras: <b className="text-gray-800">FIRE in {sel.fireYear ?? '—'}{sel.ageAtFIRE != null ? ` (age ${sel.ageAtFIRE})` : ''}</b></p>
@@ -756,7 +756,7 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
             const active = key === selectedScenarioKey
             return (
               <button key={key} onClick={() => setSelectedScenarioKey(key)}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${active ? 'bg-orange-500 border-orange-500 text-white' : 'bg-white border-gray-200 text-gray-600 hover:border-orange-300'}`}>
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${active ? 'bg-orange-500 border-orange-500 text-white' : 'bg-dark-card border-gray-200 text-gray-600 hover:border-orange-300'}`}>
                 {label}: {sc.fireYear ?? '—'}
               </button>
             )
@@ -765,12 +765,12 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
       )}
 
       {/* Chart */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 p-4">
         <ResponsiveContainer width="100%" height={340}>
           <LineChart data={chartData} margin={{ top: 10, right: 20, left: 0, bottom: 5 }}>
-            <CartesianGrid stroke="#f3f4f6" vertical={false} />
-            <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={{ stroke: '#e5e7eb' }} tickLine={false} />
-            <YAxis tickFormatter={fmtCr} tick={{ fontSize: 11, fill: '#9ca3af' }} axisLine={false} tickLine={false} width={72} />
+            <CartesianGrid stroke="#1A1A1A" vertical={false} />
+            <XAxis dataKey="year" tick={{ fontSize: 11, fill: '#6B6B6B' }} axisLine={{ stroke: '#2A2A2A' }} tickLine={false} />
+            <YAxis tickFormatter={fmtCr} tick={{ fontSize: 11, fill: '#6B6B6B' }} axisLine={false} tickLine={false} width={72} />
             <Tooltip content={<FireTooltip targetKey={targetKey} />} />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             <Line type="monotone" dataKey="corpus" name="Projected Corpus" stroke={COLORS.corpus} strokeWidth={2.5} dot={false} />
@@ -782,7 +782,7 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
               <Line type="monotone" dataKey="fiTargetTwoKids" name="FI Target — 2 Kids" stroke={COLORS.targetTwoKids} strokeWidth={2} strokeDasharray="1 3" dot={false} />
             )}
             {hasAdditionalInvestments && (
-              <Line type="monotone" dataKey="corpusWithExtras" name="Corpus with Additional Investments" stroke="#16A34A" strokeWidth={2.5} strokeDasharray="5 3" dot={false} />
+              <Line type="monotone" dataKey="corpusWithExtras" name="Corpus with Additional Investments" stroke="#2ECC71" strokeWidth={2.5} strokeDasharray="5 3" dot={false} />
             )}
             {sel.fireYear != null && (
               <ReferenceLine x={sel.fireYear} stroke={COLORS.fire} strokeDasharray="4 4" strokeWidth={1.5}
@@ -793,7 +793,7 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
       </div>
 
       {/* Year by year table */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-4">
+      <div className="bg-dark-card rounded-2xl border border-gray-100 p-4">
         <p className="text-sm font-bold text-gray-800 mb-3">Year by Year</p>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
@@ -843,7 +843,7 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
 
       {/* Insights */}
       {insights.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 p-4">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 p-4">
           <p className="text-sm font-bold text-gray-800 mb-3">Key Insights</p>
           <div className="space-y-2">
             {insights.map((chip, i) => (
@@ -1103,7 +1103,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
   const isOpen = standalone || !collapsed
 
   return (
-    <div className={standalone ? '' : 'bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden'}>
+    <div className={standalone ? '' : 'bg-dark-card rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden'}>
       {standalone ? (
         results?.selectedScenario?.fireYear && (
           <div className="flex items-center gap-3 mb-4">
@@ -1140,11 +1140,11 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
             <>
               <div className="flex gap-1 mb-4 p-1 bg-gray-100 rounded-xl w-fit">
                 <button onClick={() => setTab('inputs')}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === 'inputs' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors ${tab === 'inputs' ? 'bg-dark-card text-gray-800 shadow-sm' : 'text-gray-500'}`}>
                   Inputs
                 </button>
                 <button onClick={() => setTab('results')} disabled={!results}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${tab === 'results' ? 'bg-white text-gray-800 shadow-sm' : 'text-gray-500'}`}>
+                  className={`px-4 py-1.5 rounded-lg text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${tab === 'results' ? 'bg-dark-card text-gray-800 shadow-sm' : 'text-gray-500'}`}>
                   Results
                 </button>
               </div>
@@ -1157,7 +1157,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                         ✨ Pre-filled with your Lifelog data — review and adjust anything before recalculating
                       </p>
                       <button onClick={() => setShowPrefillBanner(false)}
-                        className="shrink-0 px-2.5 py-1 rounded-lg bg-white border border-orange-200 text-orange-700 text-xs font-semibold hover:bg-orange-100">
+                        className="shrink-0 px-2.5 py-1 rounded-lg bg-dark-card border border-orange-200 text-orange-700 text-xs font-semibold hover:bg-orange-100">
                         Dismiss
                       </button>
                     </div>

@@ -7,19 +7,19 @@ const EMOJI_OPTIONS = [
 ]
 
 const COLOR_OPTIONS = [
-  '#FF6B6B','#FF8E53','#F59E0B','#FBBF24','#A3E635','#10B981',
-  '#06B6D4','#3B82F6','#6366F1','#8B5CF6','#A855F7','#EC4899',
-  '#F43F5E','#64748B','#8B93A5','#0EA5E9','#14B8A6','#22C55E',
+  '#FF6B6B','#FF8E53','#F39C12','#FBBF24','#A3E635','#2ECC71',
+  '#06B6D4','#3498DB','#D4AF37','#8B5CF6','#A855F7','#EC4899',
+  '#F43F5E','#8A8A8A','#8B93A5','#0EA5E9','#14B8A6','#22C55E',
 ]
 
 const DEFAULT_CATS = [
   { name: 'Food',          icon: '🍔', color: '#FF6B6B' },
   { name: 'Transport',     icon: '🚗', color: '#06B6D4' },
   { name: 'Shopping',      icon: '🛍️', color: '#A855F7' },
-  { name: 'Health',        icon: '💊', color: '#10B981' },
-  { name: 'Bills',         icon: '📄', color: '#6366F1' },
+  { name: 'Health',        icon: '💊', color: '#2ECC71' },
+  { name: 'Bills',         icon: '📄', color: '#D4AF37' },
   { name: 'Entertainment', icon: '🎬', color: '#EC4899' },
-  { name: 'Fuel',          icon: '⛽', color: '#F59E0B' },
+  { name: 'Fuel',          icon: '⛽', color: '#F39C12' },
   { name: 'Dining',        icon: '🍽️', color: '#F97316' },
   { name: 'Others',        icon: '💸', color: '#8B93A5' },
 ]
@@ -29,7 +29,7 @@ export default function TrackerCategories() {
   const [showForm, setShowForm]     = useState(false)
   const [name, setName]             = useState('')
   const [icon, setIcon]             = useState('🎯')
-  const [color, setColor]           = useState('#6366F1')
+  const [color, setColor]           = useState('#D4AF37')
   const [saving, setSaving]         = useState(false)
   const [deleteId, setDeleteId]     = useState(null)
   const [error, setError]           = useState('')
@@ -48,7 +48,7 @@ export default function TrackerCategories() {
     setSaving(true)
     try {
       await window.electronAPI.createExpenseCategory({ name: name.trim(), icon, color })
-      setName(''); setIcon('🎯'); setColor('#6366F1')
+      setName(''); setIcon('🎯'); setColor('#D4AF37')
       setShowForm(false); setError('')
       load()
     } catch {}
@@ -81,7 +81,7 @@ export default function TrackerCategories() {
           </div>
           <button onClick={() => { setShowForm(f => !f); setError('') }}
             className="flex items-center gap-2 px-4 py-2.5 rounded-2xl text-white text-sm font-semibold transition-all"
-            style={{ background: 'linear-gradient(135deg,#6C63FF,#4F46E5)' }}>
+            style={{ background: 'linear-gradient(135deg,#D4AF37,#B8960C)' }}>
             <span className="text-lg leading-none">{showForm ? '✕' : '+'}</span>
             {showForm ? 'Cancel' : 'Add Category'}
           </button>
@@ -89,14 +89,14 @@ export default function TrackerCategories() {
 
         {/* Add form */}
         {showForm && (
-          <div className="bg-white rounded-3xl p-5 shadow-sm border border-gray-100 mb-5">
+          <div className="bg-dark-card rounded-3xl p-5 shadow-sm border border-gray-100 mb-5">
             <p className="text-sm font-bold text-gray-700 mb-4">New Category</p>
 
             {/* Name */}
             <input type="text" placeholder="Category name" value={name}
               onChange={e => { setName(e.target.value); setError('') }}
               className="w-full bg-gray-50 rounded-2xl px-4 py-3 text-sm text-gray-800 outline-none mb-1 border-2 transition-all"
-              style={{ borderColor: error ? '#EF4444' : name ? '#6C63FF' : 'transparent' }} />
+              style={{ borderColor: error ? '#E74C3C' : name ? '#D4AF37' : 'transparent' }} />
             {error && <p className="text-xs text-red-400 mb-3 pl-1">{error}</p>}
             {!error && <div className="mb-3" />}
 
@@ -140,14 +140,14 @@ export default function TrackerCategories() {
 
             <button onClick={save} disabled={saving}
               className="w-full py-3 rounded-2xl text-white font-bold text-sm disabled:opacity-60 transition-all"
-              style={{ background: 'linear-gradient(135deg,#6C63FF,#4F46E5)' }}>
+              style={{ background: 'linear-gradient(135deg,#D4AF37,#B8960C)' }}>
               {saving ? 'Saving…' : 'Save Category'}
             </button>
           </div>
         )}
 
         {/* Default categories */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
+        <div className="bg-dark-card rounded-3xl shadow-sm border border-gray-100 mb-4 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
             <p className="text-sm font-bold text-gray-700">Default Categories</p>
             <p className="text-xs text-gray-400 mt-0.5">Built-in categories — cannot be deleted</p>
@@ -166,7 +166,7 @@ export default function TrackerCategories() {
         </div>
 
         {/* Custom categories */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-dark-card rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-50">
             <p className="text-sm font-bold text-gray-700">Custom Categories</p>
             <p className="text-xs text-gray-400 mt-0.5">{customCats.length} custom {customCats.length === 1 ? 'category' : 'categories'}</p>
@@ -182,7 +182,7 @@ export default function TrackerCategories() {
               {customCats.map(cat => (
                 <div key={cat.id} className="flex items-center gap-3 px-5 py-3.5 group">
                   <div className="w-10 h-10 rounded-2xl flex items-center justify-center text-xl shrink-0"
-                    style={{ backgroundColor: `${cat.color || '#6C63FF'}18` }}>
+                    style={{ backgroundColor: `${cat.color || '#D4AF37'}18` }}>
                     {cat.icon || '🏷️'}
                   </div>
                   <span className="text-sm font-semibold text-gray-700 flex-1">{cat.name}</span>

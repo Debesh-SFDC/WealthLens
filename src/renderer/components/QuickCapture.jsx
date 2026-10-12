@@ -50,7 +50,7 @@ export default function QuickCapture({ onToast }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+    <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-4">
       <div className="flex items-center justify-between gap-2 mb-3">
         <h3 className="text-sm font-bold text-gray-900">Quick Capture</h3>
         <div className="flex p-0.5 rounded-lg bg-gray-100">
@@ -61,8 +61,8 @@ export default function QuickCapture({ onToast }) {
               onClick={() => setType(id)}
               className="px-3 py-1.5 rounded-md text-xs font-semibold transition-colors min-h-[32px]"
               style={type === id
-                ? { backgroundColor: '#fff', color: '#6C63FF', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
-                : { color: '#6B7280' }}
+                ? { backgroundColor: '#1A1A1A', color: '#D4AF37', boxShadow: '0 1px 2px rgba(0,0,0,0.08)' }
+                : { color: '#8A8A8A' }}
             >
               {label}
             </button>
@@ -76,13 +76,13 @@ export default function QuickCapture({ onToast }) {
           onChange={e => setText(e.target.value)}
           placeholder={type === 'idea' ? 'Jot down an idea…' : "What's on your mind?"}
           enterKeyHint="done"
-          className="flex-1 min-w-0 h-12 sm:h-11 px-4 rounded-xl border border-gray-200 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 focus:border-[#6C63FF]"
+          className="flex-1 min-w-0 h-12 sm:h-11 px-4 rounded-xl border border-gray-200 text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 focus:border-[#D4AF37]"
         />
         <button
           type="submit"
           disabled={!text.trim() || saving}
-          className="shrink-0 h-12 sm:h-11 px-5 rounded-xl text-white text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
-          style={{ backgroundColor: '#6C63FF' }}
+          className="shrink-0 h-12 sm:h-11 px-5 rounded-xl text-[#0A0A0A] text-sm font-bold hover:opacity-90 transition-opacity disabled:opacity-40"
+          style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
         >
           Add
         </button>
@@ -98,12 +98,12 @@ export default function QuickCapture({ onToast }) {
                 onClick={() => markDone(t)}
                 disabled={done}
                 title="Mark done"
-                className="group flex items-center gap-1.5 max-w-full px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200 text-xs font-medium text-gray-700 hover:border-[#10B981] hover:bg-emerald-50 transition-all min-h-[32px]"
+                className="group flex items-center gap-1.5 max-w-full px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200 text-xs font-medium text-gray-700 hover:border-[#2ECC71] hover:bg-emerald-50 transition-all min-h-[32px]"
                 style={{ opacity: done ? 0.5 : 1 }}
               >
                 <span
                   className="w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors"
-                  style={{ borderColor: done ? '#10B981' : '#D1D5DB', backgroundColor: done ? '#10B981' : 'transparent' }}
+                  style={{ borderColor: done ? '#2ECC71' : '#3A3A3A', backgroundColor: done ? '#2ECC71' : 'transparent' }}
                 >
                   {done && <span className="text-white text-[8px] leading-none">✓</span>}
                 </span>

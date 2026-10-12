@@ -37,7 +37,7 @@ export default function Onboarding({ onComplete }) {
         target_amount: parseFloat(goalAmount),
         target_date: `${goalYear}-12-31`,
         emoji: goalEmoji,
-        color: '#6C63FF',
+        color: '#D4AF37',
         inflation_adjust: true,
         inflation_rate: 6,
       })
@@ -66,12 +66,12 @@ export default function Onboarding({ onComplete }) {
   const total = needs + wants + savings
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: '#1a1a2e' }}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: '#0A0A0A' }}>
       <div className="w-[520px] max-h-[90vh] overflow-y-auto">
 
         {/* Logo */}
         <div className="flex items-center gap-3 justify-center mb-8">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold" style={{ backgroundColor: '#6C63FF' }}>L</div>
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-[#0A0A0A] font-bold" style={{ backgroundColor: '#D4AF37' }}>L</div>
           <span className="text-white font-bold text-xl tracking-tight">Lifelog</span>
         </div>
 
@@ -83,8 +83,8 @@ export default function Onboarding({ onComplete }) {
                 <div
                   className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors"
                   style={{
-                    backgroundColor: i < step ? '#22C55E' : i === step ? '#6C63FF' : 'rgba(255,255,255,0.1)',
-                    color: i <= step ? '#fff' : 'rgba(255,255,255,0.4)',
+                    backgroundColor: i < step ? '#22C55E' : i === step ? '#D4AF37' : 'rgba(255,255,255,0.1)',
+                    color: i <= step ? '#0A0A0A' : 'rgba(255,255,255,0.4)',
                   }}
                 >
                   {i < step ? '✓' : i + 1}
@@ -99,7 +99,7 @@ export default function Onboarding({ onComplete }) {
         </div>
 
         {/* Card */}
-        <div className="bg-white rounded-2xl p-8 shadow-2xl mx-4">
+        <div className="bg-dark-card rounded-2xl p-8 shadow-2xl mx-4">
           {/* ── Step 0: Profile ── */}
           {step === 0 && (
             <>
@@ -114,7 +114,7 @@ export default function Onboarding({ onComplete }) {
                     type="text" placeholder="e.g. Rahul Sharma"
                     value={name} onChange={e => setName(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleStep0()}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
                 <div>
@@ -123,7 +123,7 @@ export default function Onboarding({ onComplete }) {
                     type="number" min="0" step="1000" placeholder="e.g. 80000"
                     value={salary} onChange={e => setSalary(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleStep0()}
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 text-base font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
               </div>
@@ -138,8 +138,8 @@ export default function Onboarding({ onComplete }) {
                 <button
                   onClick={handleStep0}
                   disabled={!name.trim() || !salary}
-                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                  style={{ backgroundColor: '#6C63FF' }}
+                  className="flex-1 py-3 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                 >
                   Continue →
                 </button>
@@ -159,7 +159,7 @@ export default function Onboarding({ onComplete }) {
                   <input
                     type="text" placeholder="e.g. Emergency Fund, New Car, Home Loan"
                     value={goalTitle} onChange={e => setGoalTitle(e.target.value)}
-                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                    className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                   />
                 </div>
 
@@ -171,7 +171,7 @@ export default function Onboarding({ onComplete }) {
                         key={e}
                         onClick={() => setGoalEmoji(e)}
                         className="w-10 h-10 rounded-xl text-xl transition-colors"
-                        style={goalEmoji === e ? { backgroundColor: '#6C63FF20', outline: '2px solid #6C63FF' } : { backgroundColor: '#F9FAFB' }}
+                        style={goalEmoji === e ? { backgroundColor: '#D4AF3720', outline: '2px solid #D4AF37' } : { backgroundColor: '#1A1A1A' }}
                       >
                         {e}
                       </button>
@@ -185,7 +185,7 @@ export default function Onboarding({ onComplete }) {
                     <input
                       type="number" min="0" placeholder="e.g. 500000"
                       value={goalAmount} onChange={e => setGoalAmount(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                     />
                   </div>
                   <div>
@@ -194,7 +194,7 @@ export default function Onboarding({ onComplete }) {
                       type="number"
                       min={new Date().getFullYear()} max={new Date().getFullYear() + 40}
                       value={goalYear} onChange={e => setGoalYear(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+                      className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm font-medium text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
                     />
                   </div>
                 </div>
@@ -207,8 +207,8 @@ export default function Onboarding({ onComplete }) {
                 <button
                   onClick={() => handleStep1(true)}
                   disabled={!goalTitle.trim() || !goalAmount}
-                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                  style={{ backgroundColor: '#6C63FF' }}
+                  className="flex-1 py-3 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                 >
                   Add Goal →
                 </button>
@@ -226,9 +226,9 @@ export default function Onboarding({ onComplete }) {
               </p>
 
               {[
-                { label: 'Needs 🏠', val: needs, set: setNeeds, color: '#3B82F6', desc: 'Rent, food, utilities, EMIs' },
+                { label: 'Needs 🏠', val: needs, set: setNeeds, color: '#3498DB', desc: 'Rent, food, utilities, EMIs' },
                 { label: 'Wants 🎭', val: wants, set: setWants, color: '#8B5CF6', desc: 'Entertainment, dining out, shopping' },
-                { label: 'Savings & Investments 📈', val: savings, set: setSavings, color: '#10B981', desc: 'MF, stocks, FD, emergency fund' },
+                { label: 'Savings & Investments 📈', val: savings, set: setSavings, color: '#2ECC71', desc: 'MF, stocks, FD, emergency fund' },
               ].map(item => (
                 <div key={item.label} className="mb-5">
                   <div className="flex items-start justify-between mb-1.5">
@@ -254,8 +254,8 @@ export default function Onboarding({ onComplete }) {
                 <button
                   onClick={() => handleStep2(true)}
                   disabled={total !== 100}
-                  className="flex-1 py-3 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
-                  style={{ backgroundColor: '#6C63FF' }}
+                  className="flex-1 py-3 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40"
+                  style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
                 >
                   Get Started 🚀
                 </button>

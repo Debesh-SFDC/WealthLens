@@ -21,7 +21,7 @@ export default function Toast({ message, type = 'success', visible, onHide }) {
       role="status"
       className="fixed top-4 left-1/2 z-[100] px-5 py-3 rounded-2xl shadow-lg text-sm font-semibold text-white pointer-events-none"
       style={{
-        backgroundColor: type === 'error' ? '#EF4444' : '#10B981',
+        backgroundColor: type === 'error' ? '#E74C3C' : '#2ECC71',
         transform: 'translateX(-50%)',
         opacity: fading ? 0 : 1,
         transition: 'opacity 0.3s ease',

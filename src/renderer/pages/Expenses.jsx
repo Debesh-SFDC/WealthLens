@@ -14,18 +14,18 @@ const MONTHS = ['January','February','March','April','May','June','July','August
 // several DB categories share a colour. Falls back to the category's own colour,
 // then to a cycled palette for anything unnamed here.
 const CATEGORY_COLORS = {
-  'Gaming Related': '#6366F1', 'Gaming': '#6366F1',
+  'Gaming Related': '#D4AF37', 'Gaming': '#D4AF37',
   'Grocery': '#22C55E', 'Groceries': '#22C55E',
   'Food': '#F97316',
-  'Food & Dining': '#EF4444', 'Dining': '#EF4444',
-  'Others': '#94A3B8', 'Other': '#94A3B8',
-  'Transport': '#3B82F6', 'Transportation': '#3B82F6',
+  'Food & Dining': '#E74C3C', 'Dining': '#E74C3C',
+  'Others': '#8A8A8A', 'Other': '#8A8A8A',
+  'Transport': '#3498DB', 'Transportation': '#3498DB',
   'Shopping': '#EC4899',
-  'Bills': '#F59E0B', 'Utilities': '#F59E0B',
+  'Bills': '#F39C12', 'Utilities': '#F39C12',
   'Health': '#14B8A6', 'Healthcare': '#14B8A6',
   'Entertainment': '#8B5CF6',
 }
-const FALLBACK_PALETTE = ['#6366F1', '#22C55E', '#F97316', '#EF4444', '#3B82F6', '#EC4899', '#F59E0B', '#14B8A6', '#8B5CF6', '#94A3B8']
+const FALLBACK_PALETTE = ['#D4AF37', '#22C55E', '#F97316', '#E74C3C', '#3498DB', '#EC4899', '#F39C12', '#14B8A6', '#8B5CF6', '#8A8A8A']
 
 function getCatColor(name, categories, index = 0) {
   return CATEGORY_COLORS[name]
@@ -38,7 +38,7 @@ function getCatIcon(name, categories) {
   return cat?.icon || '💸'
 }
 
-const CHART_TOOLTIP_STYLE = { borderRadius: 12, border: '1px solid #E5E7EB', fontSize: 12 }
+const CHART_TOOLTIP_STYLE = { borderRadius: 12, border: '1px solid #2A2A2A', fontSize: 12 }
 
 // One "🔴 Needs  ₹4,738  40%" row with a colour-coded progress bar. Shared by
 // the This Month summary card and the Needs vs Wants chart.
@@ -69,9 +69,9 @@ function spendingInsight(needsPct, wantsPct, total) {
   return null
 }
 const INSIGHT_STYLE = {
-  warn: { backgroundColor: '#FFFBEB', color: '#B45309' },
-  ok:   { backgroundColor: '#F0FDF4', color: '#15803D' },
-  info: { backgroundColor: '#F3F4F6', color: '#4B5563' },
+  warn: { backgroundColor: '#2C2210', color: '#FBBF24' },
+  ok:   { backgroundColor: '#13271A', color: '#15803D' },
+  info: { backgroundColor: '#1A1A1A', color: '#A0A0A0' },
 }
 
 // Small coloured dot marking an expense's Need/Want bucket.
@@ -142,10 +142,10 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm"
       onClick={e => e.target === e.currentTarget && onClose()}
     >
-      <div className="bg-white rounded-2xl w-[440px] shadow-2xl overflow-hidden">
+      <div className="bg-dark-card rounded-2xl w-[440px] shadow-2xl overflow-hidden">
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
           <h2 className="text-lg font-bold text-gray-900">{isEdit ? 'Edit Expense' : 'Add Expense'}</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center hover:bg-gray-100 transition-colors">
@@ -162,7 +162,7 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
               autoFocus
               type="number" min="0" step="0.01" placeholder="0.00" required
               value={form.amount} onChange={e => set('amount', e.target.value)}
-              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              className="w-full px-4 py-3 rounded-xl border border-gray-200 text-2xl font-bold text-gray-900 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
             />
           </div>
 
@@ -170,7 +170,7 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
             <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block">Category *</label>
             <select
               value={form.category} onChange={e => setCategory(e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 bg-dark-card text-sm font-medium text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
             >
               {categories.map(c => (
                 <option key={c.id} value={c.name}>{c.icon} {c.name}</option>
@@ -194,7 +194,7 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
             <input
               type="text" placeholder="e.g. Pizza at Domino's"
               value={form.note || ''} onChange={e => set('note', e.target.value)}
-              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#6C63FF] focus:ring-2 focus:ring-[#6C63FF]/20"
+              className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20"
             />
           </div>
 
@@ -203,7 +203,7 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
             <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-gray-200 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60" style={{ backgroundColor: '#6C63FF' }}>
+            <button type="submit" disabled={saving} className="flex-1 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60" style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
               {saving ? 'Saving…' : isEdit ? 'Update' : 'Add Expense'}
             </button>
           </div>
@@ -216,7 +216,7 @@ function ExpenseModal({ expense, categories, currentUser, onSave, onClose }) {
 // ── Donut chart card (shared shell for both charts) ───────────────────────
 function DonutCard({ title, centerLabel, centerValue, data, children }) {
   return (
-    <div className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm">
+    <div className="bg-dark-card rounded-2xl p-6 border border-gray-100 shadow-sm">
       <h3 className="text-sm font-semibold text-gray-700 mb-4">{title}</h3>
       <div className="relative mx-auto w-full max-w-[300px]" style={{ height: 240 }}>
         <ResponsiveContainer width="100%" height="100%">
@@ -255,7 +255,7 @@ function CategoryDonut({ byCategory, categories, total }) {
     ...top.map(({ category, amount }, i) => ({
       name: category, value: amount, pct: pct(amount), color: getCatColor(category, categories, i),
     })),
-    ...(restSum > 0 ? [{ name: 'Other', value: restSum, pct: pct(restSum), color: '#94A3B8' }] : []),
+    ...(restSum > 0 ? [{ name: 'Other', value: restSum, pct: pct(restSum), color: '#8A8A8A' }] : []),
   ]
 
   return (
@@ -444,7 +444,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
           </div>
 
           {/* Month picker */}
-          <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 bg-white">
+          <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl border border-gray-200 bg-dark-card">
             <button onClick={prevMonth} className="p-1 rounded-lg hover:bg-gray-100 transition-colors">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4 text-gray-500">
                 <polyline points="15 18 9 12 15 6"/>
@@ -461,8 +461,8 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
 
         <button
           onClick={() => { setEditTarget(null); setShowModal(true) }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-          style={{ backgroundColor: '#6C63FF' }}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+          style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}
         >
           <span className="text-lg leading-none">+</span>
           Add Expense
@@ -477,14 +477,14 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
             onClick={() => setUserFilter('all')}
             className="px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
             style={userFilter === 'all'
-              ? { backgroundColor: '#6C63FF', color: '#fff', borderColor: 'transparent' }
-              : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
+              ? { background: 'linear-gradient(135deg, #D4AF37, #B8960C)', color: '#0A0A0A', borderColor: 'transparent' }
+              : { backgroundColor: '#1A1A1A', color: '#A0A0A0', borderColor: '#2A2A2A' }}
           >
             All
           </button>
           {[...allUsers].sort((a, b) => (b.role === 'admin' ? 1 : 0) - (a.role === 'admin' ? 1 : 0)).map(u => {
             const active = userFilter === u.id
-            const accent = u.avatar_color || (u.role === 'admin' ? '#6C63FF' : '#EC4899')
+            const accent = u.avatar_color || (u.role === 'admin' ? '#D4AF37' : '#EC4899')
             return (
               <button
                 key={u.id}
@@ -492,7 +492,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
                 className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-sm font-semibold border transition-colors"
                 style={active
                   ? { backgroundColor: accent, color: '#fff', borderColor: 'transparent' }
-                  : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
+                  : { backgroundColor: '#1A1A1A', color: '#A0A0A0', borderColor: '#2A2A2A' }}
               >
                 <span className="w-4 h-4 rounded-full inline-flex items-center justify-center text-white text-[9px] font-bold"
                   style={{ backgroundColor: accent }}>
@@ -521,7 +521,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
       {/* Summary stats */}
       {monthlyStats && (
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-dark-card rounded-2xl p-5 border border-gray-100 shadow-sm">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
               {isCurrentMonth ? 'This Month' : `${MONTHS[month - 1]} ${year}`}
             </p>
@@ -541,12 +541,12 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
               )
             })()}
           </div>
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-dark-card rounded-2xl p-5 border border-gray-100 shadow-sm">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Daily Average</p>
             <p className="text-2xl font-bold text-gray-900">{fmt(monthlyStats.dailyAvg)}</p>
             <p className="text-xs text-gray-400 mt-1">per day</p>
           </div>
-          <div className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm">
+          <div className="bg-dark-card rounded-2xl p-5 border border-gray-100 shadow-sm">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Highest Spend Day</p>
             <p className="text-2xl font-bold text-gray-900">{monthlyStats.topDay ? fmt(monthlyStats.topDay.amount) : '—'}</p>
             <p className="text-xs text-gray-400 mt-1">
@@ -588,7 +588,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
             <input
               placeholder="Search by note or category…"
               value={search} onChange={e => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm bg-white text-gray-800 focus:outline-none focus:border-[#6C63FF]"
+              className="w-full pl-9 pr-4 py-2 rounded-xl border border-gray-200 text-sm bg-dark-card text-gray-800 focus:outline-none focus:border-[#D4AF37]"
             />
           </div>
 
@@ -597,7 +597,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
             <button
               onClick={() => setCatFilter('all')}
               className="px-3 py-1 rounded-full text-xs font-semibold border transition-colors"
-              style={catFilter === 'all' ? { backgroundColor: '#6C63FF', color: '#fff', borderColor: 'transparent' } : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
+              style={catFilter === 'all' ? { background: 'linear-gradient(135deg, #D4AF37, #B8960C)', color: '#0A0A0A', borderColor: 'transparent' } : { backgroundColor: '#1A1A1A', color: '#A0A0A0', borderColor: '#2A2A2A' }}
             >
               All
             </button>
@@ -608,7 +608,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
                 className="px-3 py-1 rounded-full text-xs font-semibold border transition-colors"
                 style={catFilter === c.name
                   ? { backgroundColor: getCatColor(c.name, categories, i), color: '#fff', borderColor: 'transparent' }
-                  : { backgroundColor: '#fff', color: '#4B5563', borderColor: '#E5E7EB' }}
+                  : { backgroundColor: '#1A1A1A', color: '#A0A0A0', borderColor: '#2A2A2A' }}
               >
                 {c.icon} {c.name}
               </button>
@@ -621,7 +621,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
               {[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-100 rounded-xl animate-pulse" />)}
             </div>
           ) : grouped.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-52 rounded-2xl bg-white border border-dashed border-gray-200">
+            <div className="flex flex-col items-center justify-center h-52 rounded-2xl bg-dark-card border border-dashed border-gray-200">
               <p className="text-4xl mb-3">💳</p>
               <p className="text-base font-semibold text-gray-700">No expenses found</p>
               <p className="text-sm text-gray-400 mt-1">Add your first expense for {MONTHS[month - 1]}</p>
@@ -629,7 +629,7 @@ export default function Expenses({ onSyncRefresh, currentUser }) {
           ) : (
             <div className="space-y-4">
               {grouped.map(([date, items]) => (
-                <div key={date} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+                <div key={date} className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                   <div className="px-5 py-2.5 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
                     <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">{formatDate(date)}</span>
                     <span className="text-xs font-semibold text-gray-600">{fmt(items.reduce((s, e) => s + e.amount, 0))}</span>

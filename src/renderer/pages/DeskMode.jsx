@@ -125,7 +125,7 @@ function ClockCard({ now, weather, scene, night }) {
         <span className="desk-clock font-light tracking-tight tabular-nums">
           {hh}<span className="desk-colon">:</span>{mm}
         </span>
-        <span className="ml-2 mt-2 text-xl sm:text-2xl font-semibold opacity-80">{h >= 12 ? 'PM' : 'AM'}</span>
+        <span className="ml-2 mt-2 text-xl sm:text-2xl font-semibold opacity-80" style={{ color: '#F0D060' }}>{h >= 12 ? 'PM' : 'AM'}</span>
       </div>
       <p className="mt-4 text-lg font-medium opacity-90">
         {now.toLocaleDateString('en-IN', { weekday: 'long' })}, {now.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}
@@ -178,7 +178,7 @@ function TasksCard({ tasks, today, onToggle }) {
       </div>
       {total > 0 && (
         <div className="h-1.5 rounded-full bg-white/15 overflow-hidden mb-4 mt-2">
-          <div className="h-full rounded-full bg-emerald-400 transition-all duration-700 ease-out" style={{ width: `${(done / total) * 100}%` }} />
+          <div className="h-full rounded-full progress-gold transition-all duration-700 ease-out" style={{ width: `${(done / total) * 100}%` }} />
         </div>
       )}
 
@@ -210,12 +210,13 @@ function TasksCard({ tasks, today, onToggle }) {
               <span
                 className="w-8 h-8 shrink-0 rounded-xl border-2 flex items-center justify-center transition-all duration-300"
                 style={{
-                  borderColor: checked ? '#34D399' : 'rgba(255,255,255,0.7)',
-                  backgroundColor: checked ? '#34D399' : 'rgba(255,255,255,0.06)',
+                  borderColor: checked ? '#D4AF37' : 'rgba(255,255,255,0.7)',
+                  background: checked ? 'linear-gradient(135deg, #D4AF37, #B8960C)' : 'rgba(255,255,255,0.06)',
+                  boxShadow: checked ? '0 0 14px rgba(212,175,55,0.45)' : 'none',
                   transform: state === 'done' ? 'scale(1.12)' : 'scale(1)',
                 }}
               >
-                <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round"
+                <svg viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round"
                   className="w-4 h-4 transition-opacity duration-200" style={{ opacity: checked ? 1 : 0 }}>
                   <polyline points="20 6 9 17 4 12" />
                 </svg>
@@ -499,14 +500,14 @@ export default function DeskMode({ profileName, onExit }) {
               <button
                 key={id} type="button" onClick={() => { setAddType(id); inputRef.current?.focus() }}
                 className="px-4 h-11 rounded-xl text-sm font-semibold transition-colors"
-                style={addType === id ? { backgroundColor: 'rgba(255,255,255,0.9)', color: '#1a1a2e', textShadow: 'none' } : { color: 'rgba(255,255,255,0.85)' }}
+                style={addType === id ? { backgroundColor: 'rgba(212,175,55,0.9)', color: '#0A0A0A', textShadow: 'none' } : { color: 'rgba(255,255,255,0.85)' }}
               >{label}</button>
             ))}
           </div>
           <button
             type="submit"
             disabled={!text.trim() || saving}
-            className="h-14 px-7 rounded-2xl text-base font-bold bg-white text-[#1a1a2e] hover:bg-white/90 transition-colors disabled:opacity-40"
+            className="btn-gold h-14 px-7 rounded-2xl text-base font-bold disabled:opacity-40"
             style={{ textShadow: 'none' }}
           >{saving ? '…' : 'Add'}</button>
         </form>

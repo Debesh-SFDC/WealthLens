@@ -47,8 +47,8 @@ export default function ExpenseDateChips({ value, onChange }) {
   const [showPicker, setShowPicker] = useState(isCustom)
 
   const chipStyle = (active) => active
-    ? { backgroundColor: '#6C63FF', color: '#fff' }
-    : { backgroundColor: '#F3F4F6', color: '#6B7280' }
+    ? { backgroundColor: '#D4AF37', color: '#0A0A0A' }
+    : { backgroundColor: '#1A1A1A', color: '#8A8A8A' }
 
   return (
     <div>
@@ -84,7 +84,7 @@ export default function ExpenseDateChips({ value, onChange }) {
             max={today}
             min={minDate}
             onChange={e => { if (e.target.value) onChange(e.target.value) }}
-            className="text-xs text-gray-700 outline-none border border-gray-200 rounded-xl px-2 py-1.5 bg-white"
+            className="text-xs text-gray-700 outline-none border border-gray-200 rounded-xl px-2 py-1.5 bg-dark-card"
             style={{ maxWidth: 150 }}
           />
         )}

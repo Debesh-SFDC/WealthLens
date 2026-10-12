@@ -8,9 +8,9 @@ const TRACKER_CATEGORIES = [
   { name: 'Transport',     icon: '🚗', color: '#4ECDC4' },
   { name: 'Shopping',      icon: '🛍️', color: '#45B7D1' },
   { name: 'Health',        icon: '💊', color: '#FF85A1' },
-  { name: 'Bills',         icon: '📄', color: '#6366F1' },
+  { name: 'Bills',         icon: '📄', color: '#D4AF37' },
   { name: 'Entertainment', icon: '🎬', color: '#96CEB4' },
-  { name: 'Fuel',          icon: '⛽', color: '#F59E0B' },
+  { name: 'Fuel',          icon: '⛽', color: '#F39C12' },
   { name: 'Dining',        icon: '🍽️', color: '#EC4899' },
   { name: 'Others',        icon: '💸', color: '#AEB6BF' },
 ]
@@ -77,11 +77,11 @@ export default function TrackerMonth({ user }) {
       </div>
 
       {/* Total + budget */}
-      <div className={`rounded-2xl p-5 mb-4 text-center border ${overBudget ? 'border-red-200 bg-red-50' : 'bg-white border-gray-100 shadow-sm'}`}>
+      <div className={`rounded-2xl p-5 mb-4 text-center border ${overBudget ? 'border-red-200 bg-red-50' : 'bg-dark-card border-gray-100 shadow-sm'}`}>
         <p className="text-xs text-gray-400 mb-1">Total Spent</p>
-        <p className="text-4xl font-bold" style={{ color: overBudget ? '#EF4444' : '#111827' }}>{fmt(total)}</p>
+        <p className="text-4xl font-bold" style={{ color: overBudget ? '#E74C3C' : '#F5F5F5' }}>{fmt(total)}</p>
         {budget > 0 && (
-          <p className="text-sm font-semibold mt-2" style={{ color: overBudget ? '#EF4444' : '#6B7280' }}>
+          <p className="text-sm font-semibold mt-2" style={{ color: overBudget ? '#E74C3C' : '#8A8A8A' }}>
             {overBudget ? `Over budget by ${fmt(total - budget)}` : `Budget: ${fmt(budget)} · ${fmt(budget - total)} left`}
           </p>
         )}
@@ -89,7 +89,7 @@ export default function TrackerMonth({ user }) {
 
       {/* Category breakdown */}
       {catBreakdown.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-4 mb-4">
           <p className="text-sm font-bold text-gray-800 mb-3">By Category</p>
           <div className="space-y-2.5">
             {catBreakdown.map(cat => (
@@ -121,7 +121,7 @@ export default function TrackerMonth({ user }) {
             const dayTotal = dayExps.reduce((s, e) => s + e.amount, 0)
             const dateLabel = new Date(day + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
             return (
-              <div key={day} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div key={day} className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-gray-50 border-b border-gray-100">
                   <p className="text-xs font-bold text-gray-500">{dateLabel}</p>
                   <p className="text-xs font-bold text-gray-700">{fmt(dayTotal)}</p>

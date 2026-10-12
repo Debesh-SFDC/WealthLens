@@ -20,10 +20,10 @@ function calcBMI(weightKg, heightCm) {
 
 function bmiMeta(bmi) {
   if (!bmi) return null
-  if (bmi < 18.5) return { label: 'Underweight', color: '#3B82F6', bg: '#EFF6FF' }
-  if (bmi < 25)   return { label: 'Normal',      color: '#10B981', bg: '#ECFDF5' }
-  if (bmi < 30)   return { label: 'Overweight',  color: '#F59E0B', bg: '#FFFBEB' }
-  return              { label: 'Obese',           color: '#EF4444', bg: '#FEF2F2' }
+  if (bmi < 18.5) return { label: 'Underweight', color: '#3498DB', bg: '#161F2C' }
+  if (bmi < 25)   return { label: 'Normal',      color: '#2ECC71', bg: '#11251E' }
+  if (bmi < 30)   return { label: 'Overweight',  color: '#F39C12', bg: '#2C2210' }
+  return              { label: 'Obese',           color: '#E74C3C', bg: '#2C1717' }
 }
 
 function idealRange(heightCm) {
@@ -156,15 +156,15 @@ function LineChart({ logs, from, to }) {
         const y = gy(gv)
         return (
           <g key={i}>
-            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#F3F4F6" strokeWidth={1} />
-            <text x={padL - 4} y={y + 3.5} fill="#D1D5DB" fontSize={8} textAnchor="end">{gv.toFixed(1)}</text>
+            <line x1={padL} y1={y} x2={svgW - padR} y2={y} stroke="#1A1A1A" strokeWidth={1} />
+            <text x={padL - 4} y={y + 3.5} fill="#3A3A3A" fontSize={8} textAnchor="end">{gv.toFixed(1)}</text>
           </g>
         )
       })}
       {/* Line fill (area under curve) */}
       {segs.map((s, si) => (
         <polyline key={`l${si}`} points={s} fill="none"
-          stroke="#6C63FF" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
+          stroke="#D4AF37" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round" />
       ))}
       {/* Dots + labels */}
       {pts.map((p, i) => {
@@ -173,9 +173,9 @@ function LineChart({ logs, from, to }) {
         return (
           <g key={i}>
             <circle cx={x} cy={y} r={p.isToday ? 6 : 4}
-              fill={p.isToday ? '#F59E0B' : '#6C63FF'} />
+              fill={p.isToday ? '#F39C12' : '#D4AF37'} />
             <circle cx={x} cy={y} r={p.isToday ? 9 : 7}
-              fill="none" stroke={p.isToday ? '#F59E0B' : '#6C63FF'}
+              fill="none" stroke={p.isToday ? '#F39C12' : '#D4AF37'}
               strokeWidth={1} opacity={0.25} />
             <title>{`${p.date}: ${p.w} kg`}</title>
           </g>
@@ -187,7 +187,7 @@ function LineChart({ logs, from, to }) {
         return (
           <text key={i} x={gx(i)} y={svgH - 4}
             textAnchor="middle"
-            fill={p.isToday ? '#F59E0B' : '#9CA3AF'}
+            fill={p.isToday ? '#F39C12' : '#6B6B6B'}
             fontSize={9} fontWeight={p.isToday ? '700' : '400'}>
             {xLabel(p.date, i)}
           </text>
@@ -322,7 +322,7 @@ export default function TrackerWeight({ user }) {
           <button
             onClick={openModal}
             className="flex items-center gap-2 px-4 py-2 rounded-2xl text-sm font-semibold transition-all"
-            style={{ backgroundColor: '#EEF2FF', color: '#6C63FF' }}
+            style={{ backgroundColor: '#282416', color: '#D4AF37' }}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" style={{ width: 14, height: 14 }}>
               <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
@@ -335,7 +335,7 @@ export default function TrackerWeight({ user }) {
         {!profile.height_cm && (
           <div
             className="rounded-2xl px-4 py-3 mb-4 flex items-center gap-3"
-            style={{ backgroundColor: '#FFFBEB', border: '1px solid #FDE68A' }}
+            style={{ backgroundColor: '#2C2210', border: '1px solid #553B0F' }}
           >
             <span className="text-xl">💡</span>
             <p className="text-sm text-amber-700">
@@ -345,7 +345,7 @@ export default function TrackerWeight({ user }) {
         )}
 
         {/* Log Today */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5 mb-4">
+        <div className="bg-dark-card rounded-3xl shadow-sm border border-gray-100 p-5 mb-4">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-bold text-gray-800">Today's Weight</p>
             <span className="text-xs text-gray-400">
@@ -355,7 +355,7 @@ export default function TrackerWeight({ user }) {
 
           {todayLog && (
             <div className="flex items-center gap-3 mb-4 px-4 py-2.5 rounded-2xl"
-              style={{ backgroundColor: '#ECFDF5' }}>
+              style={{ backgroundColor: '#11251E' }}>
               <span className="text-lg">✅</span>
               <div>
                 <p className="text-sm font-bold text-emerald-700">Logged: {todayLog.weight_kg} kg</p>
@@ -368,9 +368,9 @@ export default function TrackerWeight({ user }) {
           <div
             className="flex items-center gap-2 rounded-2xl px-4 py-3 mb-3"
             style={{
-              backgroundColor: '#F9FAFB',
-              border: `2px solid ${wtFocused ? '#6C63FF' : 'transparent'}`,
-              boxShadow: wtFocused ? '0 0 0 4px rgba(108,99,255,0.08)' : 'none',
+              backgroundColor: '#1A1A1A',
+              border: `2px solid ${wtFocused ? '#D4AF37' : 'transparent'}`,
+              boxShadow: wtFocused ? '0 0 0 4px rgba(212,175,55,0.08)' : 'none',
               transition: 'border-color 0.2s, box-shadow 0.2s',
             }}
           >
@@ -396,8 +396,8 @@ export default function TrackerWeight({ user }) {
             onChange={e => setNoteInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') handleSave() }}
             className="w-full px-4 py-3 rounded-2xl text-sm text-gray-800 outline-none mb-3"
-            style={{ backgroundColor: '#F9FAFB', border: '2px solid transparent', transition: 'border-color 0.2s' }}
-            onFocus={e => { e.target.style.borderColor = '#E5E7EB' }}
+            style={{ backgroundColor: '#1A1A1A', border: '2px solid transparent', transition: 'border-color 0.2s' }}
+            onFocus={e => { e.target.style.borderColor = '#2A2A2A' }}
             onBlur={e => { e.target.style.borderColor = 'transparent' }}
           />
 
@@ -407,11 +407,11 @@ export default function TrackerWeight({ user }) {
             className="w-full py-3.5 rounded-2xl text-white text-sm font-bold transition-all duration-300 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{
               background: saved
-                ? 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
-                : 'linear-gradient(135deg, #6C63FF 0%, #4338CA 100%)',
+                ? 'linear-gradient(135deg, #2ECC71 0%, #059669 100%)'
+                : 'linear-gradient(135deg, #D4AF37 0%, #F0D060 100%)',
               boxShadow: saved
                 ? '0 8px 20px rgba(16,185,129,0.3)'
-                : weightInput ? '0 8px 20px rgba(108,99,255,0.3)' : 'none',
+                : weightInput ? '0 8px 20px rgba(212,175,55,0.3)' : 'none',
             }}
           >
             {saved ? '✓ Logged!' : saving ? 'Saving…' : todayLog ? 'Update Weight' : 'Log Weight'}
@@ -422,7 +422,7 @@ export default function TrackerWeight({ user }) {
         {profile.height_cm > 0 && latestLog && (
           <div
             className="rounded-3xl p-5 mb-4 relative overflow-hidden"
-            style={{ background: 'linear-gradient(135deg, #6C63FF 0%, #4338CA 100%)' }}
+            style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #F0D060 100%)' }}
           >
             <div className="absolute rounded-full" style={{ width: 160, height: 160, top: -60, right: -40, background: 'rgba(255,255,255,0.06)' }} />
             <div className="relative z-10">
@@ -460,7 +460,7 @@ export default function TrackerWeight({ user }) {
                       className="h-full rounded-full"
                       style={{
                         width: `${Math.min(100, Math.max(2, ((latestLog.weight_kg - parseFloat(ideal.min)) / (parseFloat(ideal.max) - parseFloat(ideal.min))) * 100))}%`,
-                        backgroundColor: bmiInfo?.color || '#fff',
+                        backgroundColor: bmiInfo?.color || '#1A1A1A',
                         transition: 'width 0.6s ease',
                       }}
                     />
@@ -473,7 +473,7 @@ export default function TrackerWeight({ user }) {
         )}
 
         {/* Progress Chart */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-5 mb-4">
+        <div className="bg-dark-card rounded-3xl shadow-sm border border-gray-100 p-5 mb-4">
           <div className="flex items-center justify-between mb-4">
             <p className="text-sm font-bold text-gray-800">Progress</p>
           </div>
@@ -484,8 +484,8 @@ export default function TrackerWeight({ user }) {
               <button key={t.id} onClick={() => setPeriod(t.id)}
                 className="flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all duration-150"
                 style={{
-                  backgroundColor: period === t.id ? '#6C63FF' : 'transparent',
-                  color: period === t.id ? 'white' : '#6B7280',
+                  backgroundColor: period === t.id ? '#D4AF37' : 'transparent',
+                  color: period === t.id ? '#0A0A0A' : '#8A8A8A',
                 }}>
                 {t.label}
               </button>
@@ -503,16 +503,16 @@ export default function TrackerWeight({ user }) {
                 {
                   label: 'Change',
                   value: `${stats.end - stats.start >= 0 ? '+' : ''}${(stats.end - stats.start).toFixed(1)} kg`,
-                  color: stats.end - stats.start < 0 ? '#10B981' : stats.end - stats.start > 0 ? '#EF4444' : '#6B7280',
+                  color: stats.end - stats.start < 0 ? '#2ECC71' : stats.end - stats.start > 0 ? '#E74C3C' : '#8A8A8A',
                 },
                 { label: 'Min',  value: `${stats.min.toFixed(1)} kg` },
                 { label: 'Max',  value: `${stats.max.toFixed(1)} kg` },
                 { label: 'Avg',  value: `${stats.avg.toFixed(1)} kg` },
               ].map(s => (
                 <div key={s.label} className="text-center py-2.5 rounded-2xl"
-                  style={{ backgroundColor: '#F9FAFB' }}>
+                  style={{ backgroundColor: '#1A1A1A' }}>
                   <p className="text-xs text-gray-400 mb-0.5">{s.label}</p>
-                  <p className="text-sm font-bold" style={{ color: s.color || '#111827' }}>{s.value}</p>
+                  <p className="text-sm font-bold" style={{ color: s.color || '#F5F5F5' }}>{s.value}</p>
                 </div>
               ))}
             </div>
@@ -520,7 +520,7 @@ export default function TrackerWeight({ user }) {
         </div>
 
         {/* Log History */}
-        <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-dark-card rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-50">
             <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">Log History</p>
             <p className="text-xs text-gray-400">{logs.length} entries</p>
@@ -534,7 +534,7 @@ export default function TrackerWeight({ user }) {
                   <div key={log.id}
                     className="flex items-center gap-3 px-5 py-3.5 group hover:bg-gray-50 transition-colors">
                     <div className="flex items-center justify-center rounded-2xl shrink-0"
-                      style={{ width: 44, height: 44, backgroundColor: isToday ? '#EEF2FF' : '#F9FAFB' }}>
+                      style={{ width: 44, height: 44, backgroundColor: isToday ? '#282416' : '#1A1A1A' }}>
                       <span className="text-lg">⚖️</span>
                     </div>
                     <div className="flex-1 min-w-0">
@@ -557,7 +557,7 @@ export default function TrackerWeight({ user }) {
                     <button
                       onClick={() => setDeleteId(log.id)}
                       className="opacity-0 group-hover:opacity-100 p-1.5 rounded-xl transition-all"
-                      style={{ color: '#EF4444', backgroundColor: '#FEE2E2' }}
+                      style={{ color: '#E74C3C', backgroundColor: '#391A1A' }}
                     >
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
                         <polyline points="3 6 5 6 21 6" />
@@ -585,7 +585,7 @@ export default function TrackerWeight({ user }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+          <div className="bg-dark-card rounded-3xl p-6 w-full max-w-sm shadow-2xl"
             style={{ animation: 'popIn 0.2s ease' }}>
             <div className="flex items-center justify-between mb-5">
               <p className="text-base font-bold text-gray-900">Your Profile</p>
@@ -601,8 +601,8 @@ export default function TrackerWeight({ user }) {
               value={modalH}
               onChange={e => setModalH(e.target.value)}
               className="w-full px-4 py-3 rounded-2xl text-sm text-gray-800 outline-none mb-4"
-              style={{ backgroundColor: '#F9FAFB', border: '2px solid transparent' }}
-              onFocus={e => { e.target.style.borderColor = '#6C63FF' }}
+              style={{ backgroundColor: '#1A1A1A', border: '2px solid transparent' }}
+              onFocus={e => { e.target.style.borderColor = '#D4AF37' }}
               onBlur={e => { e.target.style.borderColor = 'transparent' }}
             />
 
@@ -612,22 +612,22 @@ export default function TrackerWeight({ user }) {
               max={new Date(new Date().setFullYear(new Date().getFullYear() - 5)).toISOString().split('T')[0]}
               onChange={e => setModalDob(e.target.value)}
               className="w-full px-4 py-3 rounded-2xl text-sm text-gray-800 outline-none mb-5"
-              style={{ backgroundColor: '#F9FAFB', border: '2px solid transparent' }}
-              onFocus={e => { e.target.style.borderColor = '#6C63FF' }}
+              style={{ backgroundColor: '#1A1A1A', border: '2px solid transparent' }}
+              onFocus={e => { e.target.style.borderColor = '#D4AF37' }}
               onBlur={e => { e.target.style.borderColor = 'transparent' }}
             />
 
             <div className="flex gap-3">
               <button onClick={() => setShowModal(false)}
                 className="flex-1 py-3 rounded-2xl text-sm font-semibold text-gray-700"
-                style={{ border: '2px solid #F3F4F6' }}>
+                style={{ border: '2px solid #1A1A1A' }}>
                 Cancel
               </button>
               <button
                 onClick={handleSaveProfile}
                 disabled={!modalH || savingProf}
                 className="flex-1 py-3 rounded-2xl text-white text-sm font-bold disabled:opacity-40"
-                style={{ background: 'linear-gradient(135deg, #6C63FF 0%, #4338CA 100%)' }}>
+                style={{ background: 'linear-gradient(135deg, #D4AF37 0%, #F0D060 100%)' }}>
                 {savingProf ? 'Saving…' : 'Save Profile'}
               </button>
             </div>
@@ -640,11 +640,11 @@ export default function TrackerWeight({ user }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
           style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
           onClick={e => { if (e.target === e.currentTarget) setDeleteId(null) }}>
-          <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+          <div className="bg-dark-card rounded-3xl p-6 w-full max-w-sm shadow-2xl"
             style={{ animation: 'popIn 0.2s ease' }}>
             <div className="flex items-center justify-center w-12 h-12 rounded-2xl mb-4"
-              style={{ backgroundColor: '#FEE2E2' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
+              style={{ backgroundColor: '#391A1A' }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="#E74C3C" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
                 <polyline points="3 6 5 6 21 6" />
                 <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
                 <path d="M10 11v6M14 11v6M9 6V4h6v2" />
@@ -655,12 +655,12 @@ export default function TrackerWeight({ user }) {
             <div className="flex gap-3">
               <button onClick={() => setDeleteId(null)}
                 className="flex-1 py-3 rounded-2xl text-sm font-semibold text-gray-700"
-                style={{ border: '2px solid #F3F4F6' }}>
+                style={{ border: '2px solid #1A1A1A' }}>
                 Cancel
               </button>
               <button onClick={() => handleDelete(deleteId)}
                 className="flex-1 py-3 rounded-2xl text-white text-sm font-bold"
-                style={{ background: 'linear-gradient(135deg, #EF4444 0%, #DC2626 100%)' }}>
+                style={{ background: 'linear-gradient(135deg, #E74C3C 0%, #F87171 100%)' }}>
                 Delete
               </button>
             </div>

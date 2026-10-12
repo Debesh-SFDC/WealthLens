@@ -156,11 +156,11 @@ function projectAll(investments, years, rates) {
 
 // ── Asset groups ──────────────────────────────────────────────────────────
 const ASSET_GROUPS = [
-  { key: 'mf',        label: 'Mutual Funds',  color: '#6C63FF', types: ['mf_sip', 'mf_lumpsum'] },
-  { key: 'stocks',    label: 'Stocks',         color: '#EF4444', types: ['stocks'] },
-  { key: 'epf',       label: 'EPF',            color: '#10B981', types: ['epf'] },
+  { key: 'mf',        label: 'Mutual Funds',  color: '#D4AF37', types: ['mf_sip', 'mf_lumpsum'] },
+  { key: 'stocks',    label: 'Stocks',         color: '#E74C3C', types: ['stocks'] },
+  { key: 'epf',       label: 'EPF',            color: '#2ECC71', types: ['epf'] },
   { key: 'ppf',       label: 'PPF',            color: '#059669', types: ['ppf'] },
-  { key: 'nps',       label: 'NPS',            color: '#F59E0B', types: ['nps'] },
+  { key: 'nps',       label: 'NPS',            color: '#F39C12', types: ['nps'] },
   { key: 'fd',        label: 'Fixed Deposits', color: '#8B5CF6', types: ['fd'] },
   { key: 'rd',        label: 'Recurring Deposits', color: '#0D9488', types: ['rd'] },
   { key: 'gold',      label: 'Gold',           color: '#D97706', types: ['gold'] },
@@ -168,9 +168,9 @@ const ASSET_GROUPS = [
 ]
 
 const SCENARIOS = [
-  { key: 'conservative', label: 'Conservative',    color: '#3B82F6', gradId: 'nwGradC2' },
-  { key: 'standard',     label: 'Market Standard', color: '#10B981', gradId: 'nwGradS2' },
-  { key: 'optimistic',   label: 'Optimistic',      color: '#F59E0B', gradId: 'nwGradO2' },
+  { key: 'conservative', label: 'Conservative',    color: '#3498DB', gradId: 'nwGradC2' },
+  { key: 'standard',     label: 'Market Standard', color: '#2ECC71', gradId: 'nwGradS2' },
+  { key: 'optimistic',   label: 'Optimistic',      color: '#F39C12', gradId: 'nwGradO2' },
 ]
 
 const TOTAL_YEARS = 22
@@ -237,9 +237,9 @@ function ProjectionChart({ allSeries, maxTick, yTicks, hoveredYear, onHover, ret
         return (
           <g key={tick}>
             <line x1={PAD.left} y1={y} x2={PAD.left + PW} y2={y}
-              stroke={tick === 0 ? '#e5e7eb' : '#f3f4f6'} strokeWidth={tick === 0 ? 1.5 : 1} />
+              stroke={tick === 0 ? '#2A2A2A' : '#1A1A1A'} strokeWidth={tick === 0 ? 1.5 : 1} />
             <text x={PAD.left - 10} y={y + 4} textAnchor="end"
-              style={{ fontSize: '11px', fill: '#9ca3af', fontFamily: 'inherit' }}>
+              style={{ fontSize: '11px', fill: '#6B6B6B', fontFamily: 'inherit' }}>
               {fmtCr(tick)}
             </text>
           </g>
@@ -252,14 +252,14 @@ function ProjectionChart({ allSeries, maxTick, yTicks, hoveredYear, onHover, ret
         return (
           <g key={y}>
             <line x1={x} y1={bottomY} x2={x} y2={bottomY + 5}
-              stroke={isRetire ? '#6C63FF' : '#e5e7eb'} strokeWidth={isRetire ? 2 : 1} />
+              stroke={isRetire ? '#D4AF37' : '#2A2A2A'} strokeWidth={isRetire ? 2 : 1} />
             <text x={x} y={bottomY + 18} textAnchor="middle"
-              style={{ fontSize: '11px', fontFamily: 'inherit', fill: isRetire ? '#6C63FF' : '#9ca3af', fontWeight: isRetire ? 700 : 400 }}>
+              style={{ fontSize: '11px', fontFamily: 'inherit', fill: isRetire ? '#D4AF37' : '#6B6B6B', fontWeight: isRetire ? 700 : 400 }}>
               {y === 0 ? 'Now' : `${y}Y`}
             </text>
             {isRetire && (
               <text x={x} y={bottomY + 32} textAnchor="middle"
-                style={{ fontSize: '9.5px', fontFamily: 'inherit', fill: '#6C63FF', fontWeight: 600 }}>
+                style={{ fontSize: '9.5px', fontFamily: 'inherit', fill: '#D4AF37', fontWeight: 600 }}>
                 Retire
               </text>
             )}
@@ -276,25 +276,25 @@ function ProjectionChart({ allSeries, maxTick, yTicks, hoveredYear, onHover, ret
       ))}
 
       <line x1={retX} y1={PAD.top} x2={retX} y2={bottomY}
-        stroke="#6C63FF" strokeWidth="1.5" strokeDasharray="5,4" opacity="0.65" />
+        stroke="#D4AF37" strokeWidth="1.5" strokeDasharray="5,4" opacity="0.65" />
 
       {hoveredYear !== null && (() => {
         const hx = sx(hoveredYear)
         return (
           <>
             <line x1={hx} y1={PAD.top} x2={hx} y2={bottomY}
-              stroke="#374151" strokeWidth="1" strokeDasharray="3,3" opacity="0.35" />
+              stroke="#C4C4C4" strokeWidth="1" strokeDasharray="3,3" opacity="0.35" />
             {allSeries.map(({ scenario, points }) => {
               const pt = points[hoveredYear]
               const hy = sy(pt.value, maxTick)
               return <circle key={scenario.key} cx={hx} cy={hy} r={4.5}
-                fill={scenario.color} stroke="white" strokeWidth="2" />
+                fill={scenario.color} stroke="#111111" strokeWidth="2" />
             })}
           </>
         )
       })()}
 
-      <line x1={PAD.left} y1={bottomY} x2={PAD.left + PW} y2={bottomY} stroke="#e5e7eb" strokeWidth="1.5" />
+      <line x1={PAD.left} y1={bottomY} x2={PAD.left + PW} y2={bottomY} stroke="#2A2A2A" strokeWidth="1.5" />
     </svg>
   )
 }
@@ -356,7 +356,7 @@ function TypeBreakdownModal({ group, investments, rates, retirementYear, onClose
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
       style={{ backgroundColor: 'rgba(0,0,0,0.45)' }}
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '82vh' }}>
+      <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '82vh' }}>
 
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-3">
@@ -412,26 +412,26 @@ function TypeBreakdownModal({ group, investments, rates, retirementYear, onClose
                       </p>
                     </div>
                     <div className="px-4 pb-3 flex flex-wrap gap-1.5">
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-700">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-dark-card border border-gray-200 text-xs font-medium text-gray-700">
                         <span className="text-gray-400">Current</span> {fmtCr(cv)}
                       </span>
                       {hasSip && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-700">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-dark-card border border-gray-200 text-xs font-medium text-gray-700">
                           <span className="text-gray-400">{inv.type === 'insurance' ? 'Premium' : 'Monthly SIP'}</span> {fmt(rawSip)}/mo
                         </span>
                       )}
                       {inv.type === 'insurance' && Number(inv.purchase_price) > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-700">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-dark-card border border-gray-200 text-xs font-medium text-gray-700">
                           <span className="text-gray-400">Maturity</span> {fmtCr(Number(inv.purchase_price))}
                         </span>
                       )}
                       {inv.type === 'fd' && Number(inv.interest_rate) > 0 && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-gray-200 text-xs font-medium text-gray-700">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-dark-card border border-gray-200 text-xs font-medium text-gray-700">
                           <span className="text-gray-400">FD Rate</span> {inv.interest_rate}%
                         </span>
                       )}
                     </div>
-                    <div className="border-t border-gray-100 bg-white">
+                    <div className="border-t border-gray-100 bg-dark-card">
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="border-b border-gray-100 bg-gray-50">
@@ -569,16 +569,16 @@ export default function NetWorth() {
         <>
           {/* ── HERO: Current NW ── */}
           <div className="rounded-2xl p-6 mb-5 border"
-            style={{ background: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%)', borderColor: '#ddd6fe' }}>
+            style={{ background: 'linear-gradient(135deg, #111111 0%, #1A1A1A 60%, #262010 100%)', borderColor: '#D4AF3750', boxShadow: '0 4px 32px rgba(212,175,55,0.08)' }}>
             <div className="flex items-end justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#7C3AED' }}>Current Net Worth</p>
-                <p className="text-5xl font-bold text-gray-900 leading-none mb-2">{fmtCr(currentNW)}</p>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: '#A0A0A0' }}>Current Net Worth</p>
+                <p className="text-5xl font-bold text-gold-gradient leading-none mb-2">{fmtCr(currentNW)}</p>
                 <p className="text-sm text-gray-500">{investments.length} investments tracked</p>
               </div>
               <div className="text-right">
                 <p className="text-xs text-gray-400 mb-0.5">Monthly SIP</p>
-                <p className="text-3xl font-bold" style={{ color: '#6C63FF' }}>{fmt(monthlySIP)}</p>
+                <p className="text-3xl font-bold" style={{ color: '#D4AF37' }}>{fmt(monthlySIP)}</p>
                 <p className="text-xs text-gray-400 mt-1">MF + EPF + NPS + PPF</p>
               </div>
             </div>
@@ -590,7 +590,7 @@ export default function NetWorth() {
               const multiple = currentNW > 0 ? (value / currentNW).toFixed(1) : null
               const end = finalRow[idx].value
               return (
-                <div key={scenario.key} className="bg-white rounded-2xl p-5 border shadow-sm"
+                <div key={scenario.key} className="bg-dark-card rounded-2xl p-5 border shadow-sm"
                   style={{ borderColor: scenario.color + '35' }}>
                   <div className="flex items-center gap-2 mb-3">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: scenario.color }} />
@@ -610,7 +610,7 @@ export default function NetWorth() {
           </div>
 
           {/* ── PROJECTION CHART ── */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
+          <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
             <div className="flex items-start justify-between mb-4">
               <div>
                 <p className="text-sm font-bold text-gray-800">Projected Net Worth Growth</p>
@@ -639,7 +639,7 @@ export default function NetWorth() {
               </div>
               <input type="range" min="1" max={TOTAL_YEARS} step="1" value={retirementYear}
                 onChange={e => setRetirementYear(Number(e.target.value))}
-                className="flex-1 cursor-pointer" style={{ accentColor: '#6C63FF' }} />
+                className="flex-1 cursor-pointer" style={{ accentColor: '#D4AF37' }} />
               <div className="shrink-0 text-right w-24">
                 <p className="text-lg font-bold text-indigo-600">Year {retirementYear}</p>
                 <p className="text-xs text-gray-400">{fmtCr(stdRetireValue)}</p>
@@ -657,7 +657,7 @@ export default function NetWorth() {
                   <span className="text-xs font-bold text-gray-500 w-16 shrink-0">
                     {hoveredYear === 0 ? 'Now' : `Year ${hoveredYear}`}
                     {hoveredYear === retirementYear && (
-                      <span className="ml-1.5 font-semibold" style={{ color: '#6C63FF' }}> · Retire</span>
+                      <span className="ml-1.5 font-semibold" style={{ color: '#D4AF37' }}> · Retire</span>
                     )}
                   </span>
                   {hoveredRow.map(({ scenario, value }) => (
@@ -676,7 +676,7 @@ export default function NetWorth() {
 
           {/* ── PORTFOLIO BREAKDOWN ── */}
           {assetBreakdownGroups.length > 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
+            <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-5 mb-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <p className="text-sm font-bold text-gray-800">Portfolio Breakdown at Retirement</p>
@@ -749,7 +749,7 @@ export default function NetWorth() {
           )}
 
           {/* ── RETURN RATE SETTINGS (collapsible) ── */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-5 overflow-hidden">
+          <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm mb-5 overflow-hidden">
             <button
               onClick={() => setShowRates(v => !v)}
               className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 transition-colors">
@@ -837,7 +837,7 @@ export default function NetWorth() {
           </div>
         </>
       ) : (
-        <div className="flex items-center justify-center h-48 bg-white rounded-2xl border border-dashed border-gray-200 mb-6">
+        <div className="flex items-center justify-center h-48 bg-dark-card rounded-2xl border border-dashed border-gray-200 mb-6">
           <div className="text-center">
             <p className="text-4xl mb-3">📊</p>
             <p className="text-base font-semibold text-gray-700">Add investments to see projections</p>

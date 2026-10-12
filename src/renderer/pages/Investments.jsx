@@ -115,16 +115,16 @@ function effectiveCurrentValue(inv) {
 
 // ── Type metadata ─────────────────────────────────────────────────────────
 const TYPE_META = {
-  mf_sip:    { label: 'MF SIP',    color: '#6C63FF', bg: '#f0efff', group: 'mf' },
-  mf_lumpsum:{ label: 'MF Lump',   color: '#3B82F6', bg: '#eff6ff', group: 'mf' },
-  stocks:    { label: 'Stocks',    color: '#EF4444', bg: '#fef2f2', group: 'stocks' },
-  fd:        { label: 'FD',        color: '#8B5CF6', bg: '#f5f3ff', group: 'fd' },
-  rd:        { label: 'RD',        color: '#0D9488', bg: '#f0fdfa', group: 'fd' },
-  epf:       { label: 'EPF',       color: '#10B981', bg: '#ecfdf5', group: 'others' },
-  ppf:       { label: 'PPF',       color: '#059669', bg: '#ecfdf5', group: 'others' },
-  nps:       { label: 'NPS',       color: '#F59E0B', bg: '#fffbeb', group: 'others' },
-  gold:      { label: 'Gold',      color: '#D97706', bg: '#fffbeb', group: 'others' },
-  insurance: { label: 'Insurance', color: '#0EA5E9', bg: '#f0f9ff', group: 'others' },
+  mf_sip:    { label: 'MF SIP',    color: '#D4AF37', bg: '#282416', group: 'mf' },
+  mf_lumpsum:{ label: 'MF Lump',   color: '#3498DB', bg: '#161F2C', group: 'mf' },
+  stocks:    { label: 'Stocks',    color: '#E74C3C', bg: '#2C1717', group: 'stocks' },
+  fd:        { label: 'FD',        color: '#8B5CF6', bg: '#201A2C', group: 'fd' },
+  rd:        { label: 'RD',        color: '#0D9488', bg: '#112523', group: 'fd' },
+  epf:       { label: 'EPF',       color: '#2ECC71', bg: '#11251E', group: 'others' },
+  ppf:       { label: 'PPF',       color: '#059669', bg: '#11251E', group: 'others' },
+  nps:       { label: 'NPS',       color: '#F39C12', bg: '#2C2210', group: 'others' },
+  gold:      { label: 'Gold',      color: '#D97706', bg: '#2C2210', group: 'others' },
+  insurance: { label: 'Insurance', color: '#0EA5E9', bg: '#11232B', group: 'others' },
 }
 
 const TYPE_GROUPS = {
@@ -136,13 +136,13 @@ const TYPE_GROUPS = {
 }
 
 const CHART_GROUPS = [
-  { key: 'mf',        label: 'Mutual Funds',     color: '#6C63FF', types: ['mf_sip', 'mf_lumpsum'] },
-  { key: 'stocks',    label: 'Stocks',            color: '#EF4444', types: ['stocks'] },
+  { key: 'mf',        label: 'Mutual Funds',     color: '#D4AF37', types: ['mf_sip', 'mf_lumpsum'] },
+  { key: 'stocks',    label: 'Stocks',            color: '#E74C3C', types: ['stocks'] },
   { key: 'fd',        label: 'Fixed Deposits',    color: '#8B5CF6', types: ['fd'] },
   { key: 'rd',        label: 'Recurring Deposits',color: '#0D9488', types: ['rd'] },
-  { key: 'epf',       label: 'EPF',               color: '#10B981', types: ['epf'] },
+  { key: 'epf',       label: 'EPF',               color: '#2ECC71', types: ['epf'] },
   { key: 'ppf',       label: 'PPF',               color: '#059669', types: ['ppf'] },
-  { key: 'nps',       label: 'NPS',               color: '#F59E0B', types: ['nps'] },
+  { key: 'nps',       label: 'NPS',               color: '#F39C12', types: ['nps'] },
   { key: 'gold',      label: 'Gold',              color: '#D97706', types: ['gold'] },
   { key: 'insurance', label: 'Insurance',         color: '#0EA5E9', types: ['insurance'] },
 ]
@@ -334,11 +334,11 @@ function AllocationChart({ investments }) {
             ))}
             {/* Center label */}
             <text x={cx} y={cy - 9} textAnchor="middle"
-              style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+              style={{ fontSize: '9px', fill: '#6B6B6B', fontFamily: 'inherit', fontWeight: 500 }}>
               {hoveredArc ? hoveredArc.label : 'Portfolio'}
             </text>
             <text x={cx} y={cy + 9} textAnchor="middle"
-              style={{ fontSize: '14px', fontWeight: 700, fill: '#111827', fontFamily: 'inherit' }}>
+              style={{ fontSize: '14px', fontWeight: 700, fill: '#F5F5F5', fontFamily: 'inherit' }}>
               {hoveredArc ? `${hoveredArc.pct.toFixed(1)}%` : fmtCompact(total)}
             </text>
           </svg>
@@ -378,10 +378,10 @@ function SummaryBar({ investments }) {
   const totalCurrent = investments.reduce((s, i) => s + effectiveCurrentValue(i), 0)
 
   return (
-    <div className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm mb-4 flex items-center gap-8 flex-wrap">
+    <div className="bg-dark-card rounded-2xl p-4 border border-gray-100 shadow-sm mb-4 flex items-center gap-8 flex-wrap">
       <div>
-        <p className="text-xs text-gray-400 mb-0.5">Current Value</p>
-        <p className="text-xl font-bold text-gray-900">{fmt(totalCurrent)}</p>
+        <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-1">Portfolio Value</p>
+        <p className="text-3xl font-bold text-gold-gradient">{fmt(totalCurrent)}</p>
       </div>
       <div className="ml-auto text-xs text-gray-400">{investments.length} investment{investments.length !== 1 ? 's' : ''}</div>
     </div>
@@ -403,7 +403,7 @@ function QuickUpdateModal({ inv, onSave, onClose }) {
   const [fetchSt, setFetchSt]   = useState(null)
   const [fetchMsg, setFetchMsg] = useState('')
 
-  const meta = TYPE_META[inv.type] || { label: inv.type, color: '#6b7280', bg: '#f9fafb' }
+  const meta = TYPE_META[inv.type] || { label: inv.type, color: '#8A8A8A', bg: '#1A1A1A' }
   const numVal = Number(value) || 0
   const ret = calcReturn(inv.invested_amount, numVal)
 
@@ -458,8 +458,8 @@ function QuickUpdateModal({ inv, onSave, onClose }) {
     : [inv.bank_or_amc || inv.provider, inv.account_number].filter(Boolean).join(' · ')
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/85 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-dark-card rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
 
         {/* Handle bar */}
         <div className="flex justify-center pt-3 pb-1 sm:hidden">
@@ -604,8 +604,8 @@ function QuickUpdateModal({ inv, onSave, onClose }) {
           </button>
           {!isAutoTracked && (
             <button onClick={handleSave} disabled={saving || !numVal}
-              className="flex-2 px-6 py-2.5 rounded-2xl text-sm font-semibold text-white transition-opacity disabled:opacity-50 hover:opacity-90"
-              style={{ backgroundColor: meta.color || '#6C63FF' }}>
+              className="flex-2 px-6 py-2.5 rounded-2xl text-sm font-semibold text-[#0A0A0A] transition-opacity disabled:opacity-50 hover:opacity-90"
+              style={{ backgroundColor: meta.color || '#D4AF37' }}>
               {saving ? 'Saving…' : 'Update Value'}
             </button>
           )}
@@ -637,7 +637,8 @@ function InsuranceCard({ inv, onEdit, onDelete, onClick }) {
 
   return (
     <div onClick={onClick}
-      className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-150 cursor-pointer group relative">
+      className="bg-dark-card rounded-xl border border-gray-100 shadow-sm transition-all duration-150 cursor-pointer group relative"
+      style={{ borderLeft: `3px solid ${meta.color}` }}>
       {/* Actions */}
       <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
         onClick={e => e.stopPropagation()}>
@@ -699,7 +700,8 @@ function RDCard({ inv, onEdit, onDelete, onClick }) {
 
   return (
     <div onClick={onClick}
-      className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-150 cursor-pointer group relative">
+      className="bg-dark-card rounded-xl border border-gray-100 shadow-sm transition-all duration-150 cursor-pointer group relative"
+      style={{ borderLeft: `3px solid ${meta.color}` }}>
       {/* Actions */}
       <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
         onClick={e => e.stopPropagation()}>
@@ -749,7 +751,7 @@ function InvestmentCard({ inv, onEdit, onDelete, onRefresh, refreshing, onClick 
   if (inv.type === 'insurance') return <InsuranceCard inv={inv} onEdit={onEdit} onDelete={onDelete} onClick={onClick} />
   if (inv.type === 'rd') return <RDCard inv={inv} onEdit={onEdit} onDelete={onDelete} onClick={onClick} />
 
-  const meta = TYPE_META[inv.type] || { label: inv.type, color: '#6b7280', bg: '#f9fafb' }
+  const meta = TYPE_META[inv.type] || { label: inv.type, color: '#8A8A8A', bg: '#1A1A1A' }
   const ret = calcReturn(inv.invested_amount, inv.current_value)
   const positive = ret.amt >= 0
   const showCAGR = ['mf_lumpsum', 'fd', 'stocks', 'gold', 'epf', 'ppf', 'nps'].includes(inv.type)
@@ -759,7 +761,8 @@ function InvestmentCard({ inv, onEdit, onDelete, onRefresh, refreshing, onClick 
 
   return (
     <div onClick={onClick}
-      className="bg-white rounded-xl border border-gray-100 shadow-sm hover:shadow-md hover:border-gray-200 transition-all duration-150 cursor-pointer group relative">
+      className="bg-dark-card rounded-xl border border-gray-100 shadow-sm transition-all duration-150 cursor-pointer group relative"
+      style={{ borderLeft: `3px solid ${meta.color}` }}>
 
       {/* Hover actions */}
       <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
@@ -836,32 +839,32 @@ function InvestmentCard({ inv, onEdit, onDelete, onRefresh, refreshing, onClick 
 // ── Monthly SIP Summary ───────────────────────────────────────────────────
 const SIP_ROWS = [
   {
-    key: 'mf_sip', label: 'Mutual Fund SIP', color: '#6C63FF', bg: '#f0efff',
+    key: 'mf_sip', label: 'Mutual Fund SIP', color: '#D4AF37', bg: '#282416',
     returnType: 'market',
     range: '11–22% p.a.',
     risk: 'Moderate–High Risk',
-    riskColor: '#EF4444',
+    riskColor: '#E74C3C',
   },
   {
-    key: 'epf', label: 'EPF', color: '#10B981', bg: '#ecfdf5',
+    key: 'epf', label: 'EPF', color: '#2ECC71', bg: '#11251E',
     returnType: 'fixed',
     range: '~8.25% p.a.',
     risk: 'No Risk',
-    riskColor: '#10B981',
+    riskColor: '#2ECC71',
   },
   {
-    key: 'ppf', label: 'PPF', color: '#059669', bg: '#d1fae5',
+    key: 'ppf', label: 'PPF', color: '#059669', bg: '#112F25',
     returnType: 'fixed',
     range: '~7.1% p.a.',
     risk: 'No Risk',
     riskColor: '#059669',
   },
   {
-    key: 'nps', label: 'NPS', color: '#F59E0B', bg: '#fffbeb',
+    key: 'nps', label: 'NPS', color: '#F39C12', bg: '#2C2210',
     returnType: 'market',
     range: '9–12% p.a.',
     risk: 'Low Risk',
-    riskColor: '#10B981',
+    riskColor: '#2ECC71',
   },
 ]
 
@@ -913,16 +916,16 @@ function MonthlySIPSummary({ investments }) {
               />
             ))}
             <text x={cx} y={cy - 9} textAnchor="middle"
-              style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+              style={{ fontSize: '9px', fill: '#6B6B6B', fontFamily: 'inherit', fontWeight: 500 }}>
               {hovArc ? hovArc.label : 'Total/mo'}
             </text>
             <text x={cx} y={cy + 9} textAnchor="middle"
-              style={{ fontSize: '14px', fontWeight: 700, fill: hovArc ? hovArc.color : '#111827', fontFamily: 'inherit' }}>
+              style={{ fontSize: '14px', fontWeight: 700, fill: hovArc ? hovArc.color : '#F5F5F5', fontFamily: 'inherit' }}>
               {hovArc ? fmtCompact(hovArc.amount) : fmtCompact(total)}
             </text>
             {hovArc && (
               <text x={cx} y={cy + 22} textAnchor="middle"
-                style={{ fontSize: '9px', fill: '#6b7280', fontFamily: 'inherit' }}>
+                style={{ fontSize: '9px', fill: '#8A8A8A', fontFamily: 'inherit' }}>
                 {hovArc.pct.toFixed(1)}%
               </text>
             )}
@@ -958,12 +961,12 @@ function MonthlySIPSummary({ investments }) {
                     {/* Fixed / Market linked tag */}
                     <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
                       style={arc.returnType === 'fixed'
-                        ? { backgroundColor: '#ecfdf5', color: '#059669' }
-                        : { backgroundColor: '#eff6ff', color: '#3B82F6' }}>
+                        ? { backgroundColor: '#11251E', color: '#059669' }
+                        : { backgroundColor: '#161F2C', color: '#3498DB' }}>
                       {arc.returnType === 'fixed' ? '🔒 Fixed Return' : '📈 Market Linked'}
                     </span>
                     {/* Return range */}
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#6C63FF]/10 text-[#6C63FF]">
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
                       {arc.range}
                     </span>
                     {/* Risk tag */}
@@ -988,7 +991,7 @@ function MonthlySIPSummary({ investments }) {
 }
 
 // ── MF SIP Donut Chart ────────────────────────────────────────────────────
-const MF_SIP_COLORS = ['#6C63FF','#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#06B6D4','#F97316','#84CC16','#EC4899','#059669','#0EA5E9']
+const MF_SIP_COLORS = ['#D4AF37','#3498DB','#2ECC71','#F39C12','#E74C3C','#8B5CF6','#06B6D4','#F97316','#84CC16','#EC4899','#059669','#0EA5E9']
 
 function expectedRange(name) {
   const n = (name || '').toLowerCase()
@@ -1063,16 +1066,16 @@ function MFSIPChart({ investments }) {
               />
             ))}
             <text x={cx} y={cy - 10} textAnchor="middle"
-              style={{ fontSize: '8px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+              style={{ fontSize: '8px', fill: '#6B6B6B', fontFamily: 'inherit', fontWeight: 500 }}>
               {hovArc ? 'monthly' : 'Total/mo'}
             </text>
             <text x={cx} y={cy + 7} textAnchor="middle"
-              style={{ fontSize: hovArc ? '13px' : '14px', fontWeight: 700, fill: hovArc ? hovArc.color : '#111827', fontFamily: 'inherit' }}>
+              style={{ fontSize: hovArc ? '13px' : '14px', fontWeight: 700, fill: hovArc ? hovArc.color : '#F5F5F5', fontFamily: 'inherit' }}>
               {hovArc ? fmt(hovArc.monthly) : fmt(total)}
             </text>
             {hovArc && (
               <text x={cx} y={cy + 20} textAnchor="middle"
-                style={{ fontSize: '9px', fill: '#6b7280', fontFamily: 'inherit' }}>
+                style={{ fontSize: '9px', fill: '#8A8A8A', fontFamily: 'inherit' }}>
                 {hovArc.pct.toFixed(1)}%
               </text>
             )}
@@ -1100,7 +1103,7 @@ function MFSIPChart({ investments }) {
                     {/* Expected range */}
                     <div className="flex items-center gap-1.5 mt-1">
                       <span className="text-[10px] text-gray-400">Expected:</span>
-                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#6C63FF]/10 text-[#6C63FF]">
+                      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-[#D4AF37]/10 text-[#D4AF37]">
                         {exp.range} p.a.
                       </span>
                       <span className="text-[10px] text-gray-500">({exp.label})</span>
@@ -1122,8 +1125,8 @@ const RISK_BUCKETS = [
     key: 'market',
     label: 'Market Linked',
     sublabel: 'Equity / High Risk',
-    color: '#6C63FF',
-    bg: '#f0efff',
+    color: '#D4AF37',
+    bg: '#282416',
     types: ['mf_sip', 'mf_lumpsum', 'stocks', 'gold'],
     returnRange: '12–22% p.a.',
   },
@@ -1131,8 +1134,8 @@ const RISK_BUCKETS = [
     key: 'safe',
     label: 'Safe & Fixed',
     sublabel: 'No Risk',
-    color: '#10B981',
-    bg: '#ecfdf5',
+    color: '#2ECC71',
+    bg: '#11251E',
     types: ['epf', 'ppf', 'fd', 'rd', 'insurance'],
     returnRange: '6–8.25% p.a.',
   },
@@ -1140,8 +1143,8 @@ const RISK_BUCKETS = [
     key: 'balanced',
     label: 'Balanced Return',
     sublabel: 'Low–Moderate Risk',
-    color: '#F59E0B',
-    bg: '#fffbeb',
+    color: '#F39C12',
+    bg: '#2C2210',
     types: ['nps'],
     returnRange: '9–12% p.a.',
   },
@@ -1236,16 +1239,16 @@ function FundCategoriesView({ investments }) {
                   />
                 ))}
                 <text x={cx} y={cy - 9} textAnchor="middle"
-                  style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+                  style={{ fontSize: '9px', fill: '#6B6B6B', fontFamily: 'inherit', fontWeight: 500 }}>
                   {nwHovArc ? nwHovArc.label : 'Net Worth'}
                 </text>
                 <text x={cx} y={cy + 9} textAnchor="middle"
-                  style={{ fontSize: '14px', fontWeight: 700, fill: nwHovArc ? nwHovArc.color : '#111827', fontFamily: 'inherit' }}>
+                  style={{ fontSize: '14px', fontWeight: 700, fill: nwHovArc ? nwHovArc.color : '#F5F5F5', fontFamily: 'inherit' }}>
                   {nwHovArc ? fmtCompact(nwHovArc.netWorth) : fmtCompact(totalNW)}
                 </text>
                 {nwHovArc && (
                   <text x={cx} y={cy + 22} textAnchor="middle"
-                    style={{ fontSize: '9px', fill: '#6b7280', fontFamily: 'inherit' }}>
+                    style={{ fontSize: '9px', fill: '#8A8A8A', fontFamily: 'inherit' }}>
                     {nwHovArc.pct.toFixed(1)}%
                   </text>
                 )}
@@ -1296,16 +1299,16 @@ function FundCategoriesView({ investments }) {
                   />
                 ))}
                 <text x={cx} y={cy - 9} textAnchor="middle"
-                  style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit', fontWeight: 500 }}>
+                  style={{ fontSize: '9px', fill: '#6B6B6B', fontFamily: 'inherit', fontWeight: 500 }}>
                   {moHovArc ? moHovArc.label : 'Monthly'}
                 </text>
                 <text x={cx} y={cy + 9} textAnchor="middle"
-                  style={{ fontSize: '14px', fontWeight: 700, fill: moHovArc ? moHovArc.color : '#111827', fontFamily: 'inherit' }}>
+                  style={{ fontSize: '14px', fontWeight: 700, fill: moHovArc ? moHovArc.color : '#F5F5F5', fontFamily: 'inherit' }}>
                   {moHovArc ? fmtCompact(moHovArc.monthly) : fmtCompact(totalMonthly)}
                 </text>
                 {moHovArc && (
                   <text x={cx} y={cy + 22} textAnchor="middle"
-                    style={{ fontSize: '9px', fill: '#6b7280', fontFamily: 'inherit' }}>
+                    style={{ fontSize: '9px', fill: '#8A8A8A', fontFamily: 'inherit' }}>
                     {moHovArc.pct.toFixed(1)}%
                   </text>
                 )}
@@ -1364,7 +1367,7 @@ function FundCategoriesView({ investments }) {
             </div>
             {/* Items */}
             {b.items.length > 0 && (
-              <div className="bg-white divide-y divide-gray-50">
+              <div className="bg-dark-card divide-y divide-gray-50">
                 {b.items.map(inv => {
                   const meta = TYPE_META[inv.type] || {}
                   const monthly = getMonthlyContrib(inv)
@@ -1431,15 +1434,15 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
 
   if (!age) {
     return (
-      <div className="bg-gradient-to-r from-[#f0efff] to-[#eff6ff] rounded-2xl border border-[#6C63FF]/20 p-4 mb-4 flex items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-[#282416] to-[#161F2C] rounded-2xl border border-[#D4AF37]/20 p-4 mb-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: '#e8e6ff' }}>📊</div>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: '#342D18' }}>📊</div>
           <div>
             <p className="text-sm font-bold text-gray-900">Allocation Health Check</p>
             <p className="text-xs text-gray-500 mt-0.5">Add your Date of Birth in Settings to get personalised allocation guidance</p>
           </div>
         </div>
-        <span className="text-[11px] font-semibold text-[#6C63FF] px-3 py-1.5 bg-white rounded-xl border border-[#6C63FF]/20 shrink-0">Settings → Profile</span>
+        <span className="text-[11px] font-semibold text-[#D4AF37] px-3 py-1.5 bg-dark-card rounded-xl border border-[#D4AF37]/20 shrink-0">Settings → Profile</span>
       </div>
     )
   }
@@ -1464,7 +1467,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
   const equityGap       = actualEquityPct - idealEquityPct
   const absGap          = Math.abs(equityGap)
 
-  const statusColor = absGap <= 5 ? '#10B981' : absGap <= 15 ? '#F59E0B' : '#EF4444'
+  const statusColor = absGap <= 5 ? '#2ECC71' : absGap <= 15 ? '#F39C12' : '#E74C3C'
   const statusText  = absGap <= 5 ? '✓ On Track'
     : equityGap > 0 ? `▲ ${absGap.toFixed(0)}% over equity` : `▼ ${absGap.toFixed(0)}% under equity`
 
@@ -1628,7 +1631,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
   ].filter(t => doneActions.has(t)).length
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+    <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
 
       {/* ── Header ── */}
       <button
@@ -1636,7 +1639,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50/50 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: '#f0efff' }}>📊</div>
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ backgroundColor: '#282416' }}>📊</div>
           <div>
             <p className="text-sm font-bold text-gray-900">Allocation Health Check</p>
             <p className="text-xs text-gray-400 mt-0.5">Age {age} · Ideal {idealEquityPct}% equity / {idealSafePct}% safe</p>
@@ -1679,7 +1682,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
               <button key={tab.id} onClick={() => setActiveTab(tab.id)}
                 className={`flex-1 py-2.5 text-[11px] font-semibold transition-all border-b-2 ${
                   activeTab === tab.id
-                    ? 'border-[#6C63FF] text-[#6C63FF] bg-[#f5f4ff]'
+                    ? 'border-[#D4AF37] text-[#D4AF37] bg-[#282416]'
                     : 'border-transparent text-gray-400 hover:bg-gray-50 hover:text-gray-600'
                 }`}>
                 <span className="mr-1">{tab.icon}</span>{tab.label}
@@ -1699,26 +1702,26 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                     {totalValue > 0 ? (
                       <>
                         <div className="h-2.5 rounded-full overflow-hidden flex mb-2">
-                          <div style={{ width: `${actualEquityPct}%`, backgroundColor: '#6C63FF' }} />
-                          <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                          <div style={{ width: `${actualEquityPct}%`, backgroundColor: '#D4AF37' }} />
+                          <div style={{ flex: 1, backgroundColor: '#2ECC71' }} />
                         </div>
                         <div className="flex items-center justify-between text-xs font-semibold">
-                          <span style={{ color: '#6C63FF' }}>Equity {actualEquityPct.toFixed(0)}%</span>
-                          <span style={{ color: '#10B981' }}>Safe {actualSafePct.toFixed(0)}%</span>
+                          <span style={{ color: '#D4AF37' }}>Equity {actualEquityPct.toFixed(0)}%</span>
+                          <span style={{ color: '#2ECC71' }}>Safe {actualSafePct.toFixed(0)}%</span>
                         </div>
                         <p className="text-[10px] text-gray-400 mt-1">{fmtCompact(equityValue)} · {fmtCompact(safeValue)}</p>
                       </>
                     ) : <p className="text-xs text-gray-400">No investments yet</p>}
                   </div>
-                  <div className="rounded-xl p-3" style={{ backgroundColor: '#f0efff' }}>
-                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: '#6C63FF' }}>Ideal for Age {age}</p>
+                  <div className="rounded-xl p-3" style={{ backgroundColor: '#282416' }}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide mb-2" style={{ color: '#D4AF37' }}>Ideal for Age {age}</p>
                     <div className="h-2.5 rounded-full overflow-hidden flex mb-2">
-                      <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#6C63FF' }} />
-                      <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                      <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#D4AF37' }} />
+                      <div style={{ flex: 1, backgroundColor: '#2ECC71' }} />
                     </div>
                     <div className="flex items-center justify-between text-xs font-semibold">
-                      <span style={{ color: '#6C63FF' }}>Equity {idealEquityPct}%</span>
-                      <span style={{ color: '#10B981' }}>Safe {idealSafePct}%</span>
+                      <span style={{ color: '#D4AF37' }}>Equity {idealEquityPct}%</span>
+                      <span style={{ color: '#2ECC71' }}>Safe {idealSafePct}%</span>
                     </div>
                     <p className="text-[10px] text-gray-400 mt-1">110 − age rule</p>
                   </div>
@@ -1746,42 +1749,42 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                     <svg viewBox={`0 0 ${CW} ${CH}`} width="100%" height={CH} style={{ display: 'block', overflow: 'visible' }}>
                       {[20, 40, 60, 80].map(pct => (
                         <line key={pct} x1={PL} y1={yP(pct)} x2={PL + IW} y2={yP(pct)}
-                          stroke="#E5E7EB" strokeWidth={0.5} strokeDasharray="3,3" />
+                          stroke="#2A2A2A" strokeWidth={0.5} strokeDasharray="3,3" />
                       ))}
-                      <polygon points={areaFill} fill="#6C63FF" opacity={0.07} />
-                      <polyline points={idealLine} fill="none" stroke="#6C63FF" strokeWidth={2} strokeLinejoin="round" />
+                      <polygon points={areaFill} fill="#D4AF37" opacity={0.07} />
+                      <polyline points={idealLine} fill="none" stroke="#D4AF37" strokeWidth={2} strokeLinejoin="round" />
                       {retirementAge >= chartStartAge && retirementAge <= chartEndAge && (
                         <line x1={xP(retirementAge)} y1={PT} x2={xP(retirementAge)} y2={PT + IH}
-                          stroke="#EF4444" strokeWidth={1} strokeDasharray="4,2" opacity={0.7} />
+                          stroke="#E74C3C" strokeWidth={1} strokeDasharray="4,2" opacity={0.7} />
                       )}
                       {totalValue > 0 && (
-                        <circle cx={xP(age)} cy={yP(actualEquityPct)} r={5} fill="#F59E0B" stroke="white" strokeWidth={1.5} />
+                        <circle cx={xP(age)} cy={yP(actualEquityPct)} r={5} fill="#F39C12" stroke="#111111" strokeWidth={1.5} />
                       )}
-                      <circle cx={xP(age)} cy={yP(Math.max(20, Math.min(90, 110 - age)))} r={4} fill="#6C63FF" stroke="white" strokeWidth={1.5} />
+                      <circle cx={xP(age)} cy={yP(Math.max(20, Math.min(90, 110 - age)))} r={4} fill="#D4AF37" stroke="#111111" strokeWidth={1.5} />
                       {[20, 40, 60, 80].map(pct => (
                         <text key={pct} x={PL - 4} y={yP(pct) + 3} textAnchor="end"
-                          style={{ fontSize: '9px', fill: '#9ca3af', fontFamily: 'inherit' }}>{pct}%</text>
+                          style={{ fontSize: '9px', fill: '#6B6B6B', fontFamily: 'inherit' }}>{pct}%</text>
                       ))}
                       {labelAges.map(a => (
                         <text key={a} x={xP(a)} y={CH - 2} textAnchor="middle"
                           style={{ fontSize: '9px', fontFamily: 'inherit',
                             fontWeight: (a === age || a === retirementAge) ? 'bold' : 'normal',
-                            fill: a === retirementAge ? '#EF4444' : a === age ? '#6C63FF' : '#9ca3af' }}>
+                            fill: a === retirementAge ? '#E74C3C' : a === age ? '#D4AF37' : '#6B6B6B' }}>
                           {a}
                         </text>
                       ))}
-                      <circle cx={PL + 6} cy={PT + 5} r={3} fill="#6C63FF" />
-                      <text x={PL + 12} y={PT + 8} style={{ fontSize: '9px', fill: '#6C63FF', fontFamily: 'inherit' }}>Ideal equity %</text>
+                      <circle cx={PL + 6} cy={PT + 5} r={3} fill="#D4AF37" />
+                      <text x={PL + 12} y={PT + 8} style={{ fontSize: '9px', fill: '#D4AF37', fontFamily: 'inherit' }}>Ideal equity %</text>
                       {totalValue > 0 && (
                         <>
-                          <circle cx={PL + 90} cy={PT + 5} r={3} fill="#F59E0B" />
-                          <text x={PL + 96} y={PT + 8} style={{ fontSize: '9px', fill: '#F59E0B', fontFamily: 'inherit' }}>Your actual</text>
+                          <circle cx={PL + 90} cy={PT + 5} r={3} fill="#F39C12" />
+                          <text x={PL + 96} y={PT + 8} style={{ fontSize: '9px', fill: '#F39C12', fontFamily: 'inherit' }}>Your actual</text>
                         </>
                       )}
                       <line x1={PL + (totalValue > 0 ? 165 : 90)} y1={PT + 5} x2={PL + (totalValue > 0 ? 175 : 100)} y2={PT + 5}
-                        stroke="#EF4444" strokeWidth={1} strokeDasharray="3,1.5" />
+                        stroke="#E74C3C" strokeWidth={1} strokeDasharray="3,1.5" />
                       <text x={PL + (totalValue > 0 ? 178 : 103)} y={PT + 8}
-                        style={{ fontSize: '9px', fill: '#EF4444', fontFamily: 'inherit' }}>Retire ({retirementAge})</text>
+                        style={{ fontSize: '9px', fill: '#E74C3C', fontFamily: 'inherit' }}>Retire ({retirementAge})</text>
                     </svg>
                     <p className="text-[10px] text-gray-400 mt-1">X = age · Y = ideal equity % · equity decreases as you near retirement</p>
                   </div>
@@ -1845,7 +1848,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                   <div className="space-y-2">
                     {suggestions.map((s, i) => (
                       <div key={i} className={`flex items-start gap-2.5 px-4 py-3 rounded-xl text-xs leading-relaxed ${
-                        s.type === 'action'  ? 'bg-[#f0efff] text-[#4c48b0]' :
+                        s.type === 'action'  ? 'bg-[#282416] text-[#B8960C]' :
                         s.type === 'caution' ? 'bg-amber-50 text-amber-800' :
                         s.type === 'warn'    ? 'bg-red-50 text-red-700'     :
                                               'bg-blue-50 text-blue-800'
@@ -1877,7 +1880,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                     <div className="space-y-2">
                       {taggedFunds.map(fund => {
                         const goal = (goals || []).find(g => g.id === fund.goal_id)
-                        const meta = TYPE_META[fund.type] || { label: fund.type, color: '#6b7280', bg: '#f9fafb' }
+                        const meta = TYPE_META[fund.type] || { label: fund.type, color: '#8A8A8A', bg: '#1A1A1A' }
                         const wrongType = fund.type !== 'stocks' && isStockBroker(fund)
                         return (
                           <div key={fund.id} className={`flex items-center gap-3 p-3 rounded-xl ${wrongType ? 'bg-amber-50 border border-amber-100' : 'bg-gray-50'}`}>
@@ -1903,7 +1906,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                                   <div className="h-full rounded-full transition-all"
                                     style={{
                                       width: `${Math.min(100, fund.pct)}%`,
-                                      backgroundColor: fund.pct > 25 ? '#F59E0B' : '#10B981'
+                                      backgroundColor: fund.pct > 25 ? '#F39C12' : '#2ECC71'
                                     }} />
                                 </div>
                                 <span className="text-[10px] text-gray-400 shrink-0">
@@ -2074,8 +2077,8 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                           <button key={m} onClick={() => setTimeframe(m)}
                             className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all border ${
                               timeframe === m
-                                ? 'bg-[#6C63FF] text-white border-[#6C63FF]'
-                                : 'bg-white text-gray-500 border-gray-200 hover:border-[#6C63FF]/40'
+                                ? 'bg-[#D4AF37] text-[#0A0A0A] border-[#D4AF37]'
+                                : 'bg-dark-card text-gray-500 border-gray-200 hover:border-[#D4AF37]/40'
                             }`}>
                             {m === 60 ? '5yr' : `${m}mo`}
                           </button>
@@ -2094,11 +2097,11 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                       </div>
                       <div className="px-4 py-4 bg-amber-50/30 space-y-3">
                         {/* Calculation rows */}
-                        <div className="bg-white rounded-xl divide-y divide-gray-50 text-xs">
+                        <div className="bg-dark-card rounded-xl divide-y divide-gray-50 text-xs">
                           {[
-                            { label: 'Current equity',    val: `${fmtCompact(equityValue)} (${actualEquityPct.toFixed(0)}%)`, color: '#6C63FF' },
-                            { label: 'Current safe',      val: `${fmtCompact(safeValue)} (${actualSafePct.toFixed(0)}%)`,    color: '#10B981' },
-                            { label: 'Shift to equity',   val: fmtCompact(gapA),                                              color: '#F59E0B', bold: true },
+                            { label: 'Current equity',    val: `${fmtCompact(equityValue)} (${actualEquityPct.toFixed(0)}%)`, color: '#D4AF37' },
+                            { label: 'Current safe',      val: `${fmtCompact(safeValue)} (${actualSafePct.toFixed(0)}%)`,    color: '#2ECC71' },
+                            { label: 'Shift to equity',   val: fmtCompact(gapA),                                              color: '#F39C12', bold: true },
                           ].map(r => (
                             <div key={r.label} className="flex items-center justify-between px-3 py-2">
                               <span className="text-gray-500">{r.label}</span>
@@ -2117,15 +2120,15 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                         </div>
 
                         {/* After rebalancing projection */}
-                        <div className="bg-white rounded-xl p-3">
+                        <div className="bg-dark-card rounded-xl p-3">
                           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">After {timeframe}mo of Redirecting</p>
                           <div className="h-2 rounded-full overflow-hidden flex mb-1.5">
-                            <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#6C63FF' }} />
-                            <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                            <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#D4AF37' }} />
+                            <div style={{ flex: 1, backgroundColor: '#2ECC71' }} />
                           </div>
                           <div className="flex items-center justify-between text-[11px] font-semibold">
-                            <span style={{ color: '#6C63FF' }}>Equity {idealEquityPct}% · {fmtCompact(equityValue + gapA)}</span>
-                            <span style={{ color: '#10B981' }}>Safe {idealSafePct}% · {fmtCompact(projSafeAfterA)}</span>
+                            <span style={{ color: '#D4AF37' }}>Equity {idealEquityPct}% · {fmtCompact(equityValue + gapA)}</span>
+                            <span style={{ color: '#2ECC71' }}>Safe {idealSafePct}% · {fmtCompact(projSafeAfterA)}</span>
                           </div>
                         </div>
 
@@ -2134,22 +2137,22 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                     </div>
 
                     {/* ── Scenario B: New Money Only ── */}
-                    <div className="rounded-2xl border border-[#6C63FF]/20 overflow-hidden">
-                      <div className="px-4 py-3 bg-[#ede9ff] border-b border-[#6C63FF]/20 flex items-start gap-2">
+                    <div className="rounded-2xl border border-[#D4AF37]/20 overflow-hidden">
+                      <div className="px-4 py-3 bg-[#302A17] border-b border-[#D4AF37]/20 flex items-start gap-2">
                         <span className="text-base shrink-0">+</span>
                         <div>
-                          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#4c48b0' }}>Scenario B — New Money Only</p>
-                          <p className="text-[11px] mt-0.5" style={{ color: '#6C63FF' }}>Safe holdings ({fmtCompact(safeValue)}) stay completely untouched — only add fresh equity capital</p>
+                          <p className="text-xs font-bold uppercase tracking-wide" style={{ color: '#B8960C' }}>Scenario B — New Money Only</p>
+                          <p className="text-[11px] mt-0.5" style={{ color: '#D4AF37' }}>Safe holdings ({fmtCompact(safeValue)}) stay completely untouched — only add fresh equity capital</p>
                         </div>
                       </div>
-                      <div className="px-4 py-4 bg-[#f5f4ff]/60 space-y-3">
+                      <div className="px-4 py-4 bg-[#282416]/60 space-y-3">
                         {/* Calculation rows */}
-                        <div className="bg-white rounded-xl divide-y divide-gray-50 text-xs">
+                        <div className="bg-dark-card rounded-xl divide-y divide-gray-50 text-xs">
                           {[
-                            { label: 'Current equity',         val: `${fmtCompact(equityValue)} (${actualEquityPct.toFixed(0)}%)`, color: '#6C63FF' },
-                            { label: 'Safe stays fixed at',    val: fmtCompact(safeValue),                                         color: '#10B981' },
-                            { label: `Target equity (${idealEquityPct}%)`, val: fmtCompact(neededEquityB),                        color: '#6C63FF' },
-                            { label: 'New equity to add',      val: fmtCompact(gapB),                                              color: '#4c48b0', bold: true },
+                            { label: 'Current equity',         val: `${fmtCompact(equityValue)} (${actualEquityPct.toFixed(0)}%)`, color: '#D4AF37' },
+                            { label: 'Safe stays fixed at',    val: fmtCompact(safeValue),                                         color: '#2ECC71' },
+                            { label: `Target equity (${idealEquityPct}%)`, val: fmtCompact(neededEquityB),                        color: '#D4AF37' },
+                            { label: 'New equity to add',      val: fmtCompact(gapB),                                              color: '#B8960C', bold: true },
                           ].map(r => (
                             <div key={r.label} className="flex items-center justify-between px-3 py-2">
                               <span className="text-gray-500">{r.label}</span>
@@ -2159,7 +2162,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                         </div>
 
                         {/* Monthly extra highlight */}
-                        <div className="rounded-xl px-4 py-3 flex items-center justify-between" style={{ backgroundColor: '#6C63FF' }}>
+                        <div className="rounded-xl px-4 py-3 flex items-center justify-between" style={{ backgroundColor: '#D4AF37' }}>
                           <div>
                             <p className="text-[10px] text-white/70 uppercase tracking-wide font-semibold">Monthly Extra Needed</p>
                             <p className="text-2xl font-bold text-white">{fmtCompact(monthlyExtraB)}<span className="text-sm font-normal">/mo</span></p>
@@ -2168,20 +2171,20 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                         </div>
 
                         {/* After adding new equity */}
-                        <div className="bg-white rounded-xl p-3">
+                        <div className="bg-dark-card rounded-xl p-3">
                           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">After Adding {fmtCompact(gapB)} New Equity</p>
                           <div className="h-2 rounded-full overflow-hidden flex mb-1.5">
-                            <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#6C63FF' }} />
-                            <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                            <div style={{ width: `${idealEquityPct}%`, backgroundColor: '#D4AF37' }} />
+                            <div style={{ flex: 1, backgroundColor: '#2ECC71' }} />
                           </div>
                           <div className="flex items-center justify-between text-[11px] font-semibold">
-                            <span style={{ color: '#6C63FF' }}>Equity {idealEquityPct}% · {fmtCompact(equityValue + gapB)}</span>
-                            <span style={{ color: '#10B981' }}>Safe {idealSafePct}% · {fmtCompact(safeValue)}</span>
+                            <span style={{ color: '#D4AF37' }}>Equity {idealEquityPct}% · {fmtCompact(equityValue + gapB)}</span>
+                            <span style={{ color: '#2ECC71' }}>Safe {idealSafePct}% · {fmtCompact(safeValue)}</span>
                           </div>
                         </div>
 
                         {/* Where to invest */}
-                        <div className="bg-white rounded-xl px-4 py-3">
+                        <div className="bg-dark-card rounded-xl px-4 py-3">
                           <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-1.5">💡 Where to Invest This</p>
                           <p className="text-xs text-gray-700 leading-relaxed">{whereSuggestion}</p>
                         </div>
@@ -2190,8 +2193,8 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                         {onAddSIP && (
                           <button
                             onClick={() => onAddSIP(monthlyExtraB)}
-                            className="w-full py-3 rounded-xl text-sm font-semibold text-white flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all"
-                            style={{ backgroundColor: '#6C63FF' }}>
+                            className="w-full py-3 rounded-xl text-sm font-semibold text-[#0A0A0A] flex items-center justify-center gap-2 hover:opacity-90 active:scale-[0.98] transition-all"
+                            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
                             <span className="text-base font-bold leading-none">+</span>
                             Add {fmtCompact(monthlyExtraB)}/mo as New SIP
                           </button>
@@ -2211,10 +2214,10 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                         </div>
                         <div className="px-4 py-4 bg-emerald-50/30 space-y-3">
                           {/* Projection rows */}
-                          <div className="bg-white rounded-xl divide-y divide-gray-50 text-xs">
+                          <div className="bg-dark-card rounded-xl divide-y divide-gray-50 text-xs">
                             {[
-                              { label: 'Equity in 5 yrs (12% p.a.)', val: fmtCompact(equityFV5),  color: '#6C63FF' },
-                              { label: 'Safe in 5 yrs (7% p.a.)',    val: fmtCompact(safeFV5),    color: '#10B981' },
+                              { label: 'Equity in 5 yrs (12% p.a.)', val: fmtCompact(equityFV5),  color: '#D4AF37' },
+                              { label: 'Safe in 5 yrs (7% p.a.)',    val: fmtCompact(safeFV5),    color: '#2ECC71' },
                             ].map(r => (
                               <div key={r.label} className="flex items-center justify-between px-3 py-2.5">
                                 <span className="text-gray-500">{r.label}</span>
@@ -2231,15 +2234,15 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                           </div>
 
                           {/* Allocation at 5 years */}
-                          <div className="bg-white rounded-xl p-3">
+                          <div className="bg-dark-card rounded-xl p-3">
                             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide mb-2">Projected Allocation in 5 Years</p>
                             <div className="h-2 rounded-full overflow-hidden flex mb-1.5">
-                              <div style={{ width: `${equityPct5}%`, backgroundColor: '#6C63FF' }} />
-                              <div style={{ flex: 1, backgroundColor: '#10B981' }} />
+                              <div style={{ width: `${equityPct5}%`, backgroundColor: '#D4AF37' }} />
+                              <div style={{ flex: 1, backgroundColor: '#2ECC71' }} />
                             </div>
                             <div className="flex items-center justify-between text-[11px] font-semibold">
-                              <span style={{ color: '#6C63FF' }}>Equity {equityPct5.toFixed(0)}%</span>
-                              <span style={{ color: '#10B981' }}>Safe {(100 - equityPct5).toFixed(0)}%</span>
+                              <span style={{ color: '#D4AF37' }}>Equity {equityPct5.toFixed(0)}%</span>
+                              <span style={{ color: '#2ECC71' }}>Safe {(100 - equityPct5).toFixed(0)}%</span>
                             </div>
                           </div>
 
@@ -2255,7 +2258,7 @@ function AllocationHealthCheck({ investments, profile, goals, onRefresh, onAddSI
                       <span className="text-base shrink-0">📸</span>
                       <p className="text-[11px] text-gray-500 leading-relaxed">
                         <span className="font-semibold">Snapshot calculation.</span> Since PPF/EPF/FD keep earning interest and your existing SIPs keep adding, the gap changes over time. Recalculate every 3–6 months to stay accurate.
-                        <button onClick={() => onRefresh?.()} className="ml-1.5 text-[#6C63FF] font-semibold hover:underline">🔄 Recalculate now</button>
+                        <button onClick={() => onRefresh?.()} className="ml-1.5 text-[#D4AF37] font-semibold hover:underline">🔄 Recalculate now</button>
                       </p>
                     </div>
                   </>
@@ -2309,7 +2312,7 @@ function MFSearchInput({ value, schemeCode, onSelect }) {
         {loading && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 animate-pulse">searching…</span>}
       </div>
       {results.length > 0 && (
-        <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
+        <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-dark-card border border-gray-200 rounded-xl shadow-xl max-h-52 overflow-y-auto">
           {results.map(r => (
             <button key={r.schemeCode}
               className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-50 last:border-0 transition-colors"
@@ -2511,8 +2514,8 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
           <h2 className="text-lg font-bold text-gray-900">{initial ? 'Edit Investment' : 'Add Investment'}</h2>
@@ -2536,7 +2539,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                       className="px-2 py-2 rounded-xl text-xs font-semibold text-center transition-all border-2"
                       style={{
                         backgroundColor: form.type === key ? m.bg : 'transparent',
-                        color: form.type === key ? m.color : '#9ca3af',
+                        color: form.type === key ? m.color : '#6B6B6B',
                         borderColor: form.type === key ? m.color : 'transparent',
                       }}>
                       {m.label}
@@ -2612,9 +2615,9 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                             onClick={() => set('sip_frequency', key)}
                             className="flex-1 py-2 rounded-xl text-xs font-semibold transition-all border-2"
                             style={{
-                              backgroundColor: form.sip_frequency === key ? '#eff6ff' : 'transparent',
-                              color: form.sip_frequency === key ? '#3B82F6' : '#9ca3af',
-                              borderColor: form.sip_frequency === key ? '#3B82F6' : 'transparent',
+                              backgroundColor: form.sip_frequency === key ? '#161F2C' : 'transparent',
+                              color: form.sip_frequency === key ? '#3498DB' : '#6B6B6B',
+                              borderColor: form.sip_frequency === key ? '#3498DB' : 'transparent',
                             }}>
                             {label}
                           </button>
@@ -2624,7 +2627,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                   )}
                   {form.scheme_code && (
                     <button onClick={handleFetchNav} disabled={fetchStatus === 'fetching'}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-blue-700 bg-white border border-blue-200 hover:bg-blue-50 transition-colors disabled:opacity-50">
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-blue-700 bg-dark-card border border-blue-200 hover:bg-blue-50 transition-colors disabled:opacity-50">
                       <RefreshIcon spinning={fetchStatus === 'fetching'} />
                       Fetch Latest NAV {form.units ? `→ update current value` : ''}
                     </button>
@@ -2670,7 +2673,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                     </div>
                   </div>
                   {fdMaturity > 0 && (
-                    <div className="bg-white rounded-xl px-3 py-2.5 flex items-center justify-between">
+                    <div className="bg-dark-card rounded-xl px-3 py-2.5 flex items-center justify-between">
                       <p className="text-xs text-gray-500">Maturity Amount</p>
                       <p className="text-sm font-bold text-purple-700">{fmt(fdMaturity)}</p>
                     </div>
@@ -2713,16 +2716,16 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                   </div>
                   {(rdTotalDeposited > 0 || rdMaturity > 0) && (
                     <div className="grid grid-cols-2 gap-2">
-                      <div className="bg-white rounded-xl px-3 py-2 flex flex-col">
+                      <div className="bg-dark-card rounded-xl px-3 py-2 flex flex-col">
                         <p className="text-xs text-gray-400">Total Deposited</p>
                         <p className="text-sm font-bold text-teal-700">{fmt(rdTotalDeposited)}</p>
                       </div>
-                      <div className="bg-white rounded-xl px-3 py-2 flex flex-col">
+                      <div className="bg-dark-card rounded-xl px-3 py-2 flex flex-col">
                         <p className="text-xs text-gray-400">Maturity on</p>
                         <p className="text-sm font-bold text-teal-700">{form.maturity_date ? formatDate(form.maturity_date) : '—'}</p>
                       </div>
                       {rdMaturity > 0 && (
-                        <div className="bg-white rounded-xl px-3 py-2 flex flex-col col-span-2">
+                        <div className="bg-dark-card rounded-xl px-3 py-2 flex flex-col col-span-2">
                           <p className="text-xs text-gray-400">Maturity Amount</p>
                           <p className="text-sm font-bold text-teal-700">{fmt(rdMaturity)}</p>
                         </div>
@@ -2749,14 +2752,14 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 mb-1">Purity</label>
-                      <select className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-yellow-100"
+                      <select className="w-full px-3 py-2 rounded-xl border border-gray-200 text-sm bg-dark-card focus:outline-none focus:ring-2 focus:ring-yellow-100"
                         value={form.purity} onChange={e => set('purity', e.target.value)}>
                         {['24K', '22K', '18K'].map(p => <option key={p}>{p}</option>)}
                       </select>
                     </div>
                   </div>
                   <button onClick={handleFetchGold} disabled={fetchStatus === 'fetching'}
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-yellow-700 bg-white border border-yellow-200 hover:bg-yellow-50 transition-colors disabled:opacity-50">
+                    className="flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-yellow-700 bg-dark-card border border-yellow-200 hover:bg-yellow-50 transition-colors disabled:opacity-50">
                     <RefreshIcon spinning={fetchStatus === 'fetching'} />
                     Fetch Today's Gold Price
                   </button>
@@ -2873,12 +2876,12 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
 
                     {totalPremium > 0 && (
                       <div className="grid grid-cols-2 gap-2">
-                        <div className="bg-white rounded-xl px-3 py-2 flex flex-col">
+                        <div className="bg-dark-card rounded-xl px-3 py-2 flex flex-col">
                           <p className="text-xs text-gray-400">Total Premium</p>
                           <p className="text-sm font-bold text-sky-700">{fmt(totalPremium)}</p>
                         </div>
                         {matAmt > 0 && (
-                          <div className="bg-white rounded-xl px-3 py-2 flex flex-col">
+                          <div className="bg-dark-card rounded-xl px-3 py-2 flex flex-col">
                             <p className="text-xs text-gray-400">Maturity on</p>
                             <p className="text-sm font-bold text-sky-700">{form.maturity_date ? formatDate(form.maturity_date) : '—'}</p>
                           </div>
@@ -2924,7 +2927,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
 
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Link to Goal</label>
-                  <select className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100"
+                  <select className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm bg-dark-card focus:outline-none focus:ring-2 focus:ring-blue-100"
                     value={form.goal_id} onChange={e => set('goal_id', e.target.value)}>
                     <option value="">— No Goal —</option>
                     {goals.map(g => <option key={g.id} value={g.id}>{g.emoji || '🎯'} {g.title}</option>)}
@@ -2941,9 +2944,9 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
 
             {/* ── Right: live preview ── */}
             <div className="col-span-2">
-              <div className="sticky top-0 rounded-2xl p-4 space-y-3" style={{ backgroundColor: (meta.bg || '#f9fafb') }}>
+              <div className="sticky top-0 rounded-2xl p-4 space-y-3" style={{ backgroundColor: (meta.bg || '#1A1A1A') }}>
                 <div>
-                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: meta.color || '#6b7280' }}>
+                  <span className="text-xs font-semibold uppercase tracking-wide" style={{ color: meta.color || '#8A8A8A' }}>
                     {meta.label || form.type}
                   </span>
                   <p className="font-semibold text-gray-900 mt-0.5 text-sm">{form.name || 'Investment Preview'}</p>
@@ -2962,20 +2965,20 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                   })
                   return (
                     <>
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                         <p className="text-xs text-gray-400 mb-0.5">Monthly Premium</p>
                         <p className="text-xl font-bold text-sky-700">{fmt(monthly)}</p>
                       </div>
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                         <p className="text-xs text-gray-400 mb-0.5">Total Premium (8 yrs)</p>
                         <p className="text-xl font-bold text-gray-900">{fmt(totalPrem)}</p>
                       </div>
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                         <p className="text-xs text-gray-400 mb-0.5">Deposited So Far</p>
                         <p className="text-xl font-bold text-gray-900">{fmt(liveDeposit)}</p>
                       </div>
                       {matAmt > 0 && (
-                        <div className="bg-white rounded-xl p-3 shadow-sm">
+                        <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                           <p className="text-xs text-gray-400 mb-0.5">Maturity Amount</p>
                           <p className="text-xl font-bold text-sky-700">{fmt(matAmt)}</p>
                           <p className="text-xs text-gray-400">{formatDate(form.maturity_date)}</p>
@@ -2992,20 +2995,20 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                   })
                   return (
                     <>
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                         <p className="text-xs text-gray-400 mb-0.5">Monthly Deposit</p>
                         <p className="text-xl font-bold text-teal-700">{fmt(rdMonthly)}</p>
                       </div>
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                         <p className="text-xs text-gray-400 mb-0.5">Total Deposited ({rdTenureMonths || 0} mo)</p>
                         <p className="text-xl font-bold text-gray-900">{fmt(rdTotalDeposited)}</p>
                       </div>
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                         <p className="text-xs text-gray-400 mb-0.5">Deposited So Far</p>
                         <p className="text-xl font-bold text-gray-900">{fmt(liveDeposit)}</p>
                       </div>
                       {rdMaturity > 0 && (
-                        <div className="bg-white rounded-xl p-3 shadow-sm">
+                        <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                           <p className="text-xs text-gray-400 mb-0.5">Maturity Amount</p>
                           <p className="text-xl font-bold text-teal-700">{fmt(rdMaturity)}</p>
                           <p className="text-xs text-gray-400">{formatDate(form.maturity_date)}</p>
@@ -3014,24 +3017,24 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                     </>
                   )
                 })() : ['epf', 'ppf', 'nps'].includes(form.type) ? (
-                  <div className="bg-white rounded-xl p-3 shadow-sm">
+                  <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">Current Balance</p>
                     <p className="text-xl font-bold text-gray-900">{fmt(Number(form.current_value) || 0)}</p>
                   </div>
                 ) : (
                   <>
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
+                    <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                       <p className="text-xs text-gray-400 mb-0.5">Invested</p>
                       <p className="text-xl font-bold text-gray-900">{fmt(Number(form.invested_amount) || 0)}</p>
                     </div>
 
-                    <div className="bg-white rounded-xl p-3 shadow-sm">
+                    <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                       <p className="text-xs text-gray-400 mb-0.5">Current Value</p>
                       <p className="text-xl font-bold text-gray-900">{fmt(Number(form.current_value) || 0)}</p>
                     </div>
 
                     {Number(form.invested_amount) > 0 && (
-                      <div className="bg-white rounded-xl p-3 shadow-sm">
+                      <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                         <p className="text-xs text-gray-400 mb-0.5">Returns</p>
                         <p className={`text-xl font-bold ${liveRet.amt >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {liveRet.amt >= 0 ? '+' : ''}{fmt(liveRet.amt)}
@@ -3045,7 +3048,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                 )}
 
                 {form.type === 'fd' && fdMaturity > 0 && (
-                  <div className="bg-white rounded-xl p-3 shadow-sm">
+                  <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">Maturity Amount</p>
                     <p className="text-lg font-bold text-purple-700">{fmt(fdMaturity)}</p>
                     <p className="text-xs text-gray-400">{formatDate(form.maturity_date)}</p>
@@ -3053,7 +3056,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                 )}
 
                 {(form.type === 'mf_sip' || ['epf', 'ppf', 'nps'].includes(form.type)) && form.monthly_sip_amount > 0 && (
-                  <div className="bg-white rounded-xl p-3 shadow-sm">
+                  <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">
                       {['epf', 'ppf', 'nps'].includes(form.type) ? 'Monthly Contribution' : 'Monthly SIP'}
                     </p>
@@ -3062,7 +3065,7 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
                 )}
 
                 {['epf', 'ppf', 'nps'].includes(form.type) && form.interest_rate > 0 && (
-                  <div className="bg-white rounded-xl p-3 shadow-sm">
+                  <div className="bg-dark-card rounded-xl p-3 shadow-sm">
                     <p className="text-xs text-gray-400 mb-0.5">Interest Rate</p>
                     <p className="text-lg font-bold text-green-700">{Number(form.interest_rate).toFixed(2)}% p.a.</p>
                   </div>
@@ -3076,8 +3079,8 @@ function InvestmentForm({ initial, goals, onSave, onClose }) {
         <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-100 shrink-0">
           <button onClick={onClose} className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
           <button onClick={handleSave} disabled={saving || !form.name.trim()}
-            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-50"
-            style={{ backgroundColor: meta.color || '#6C63FF' }}>
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-[#0A0A0A] hover:opacity-90 transition-opacity disabled:opacity-50"
+            style={{ backgroundColor: meta.color || '#D4AF37' }}>
             {saving ? 'Saving…' : initial ? 'Save Changes' : 'Add Investment'}
           </button>
         </div>
@@ -3170,8 +3173,8 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
   const today = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[94vh] flex flex-col"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-3xl max-h-[94vh] flex flex-col"
            onClick={e => e.stopPropagation()}>
 
         {/* ── Header ── */}
@@ -3223,7 +3226,7 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
         {/* ── Investment list ── */}
         <div className="flex-1 overflow-y-auto">
           {grouped.map(({ type, items }) => {
-            const meta      = TYPE_META[type] || { label: type, color: '#6b7280', bg: '#f9fafb' }
+            const meta      = TYPE_META[type] || { label: type, color: '#8A8A8A', bg: '#1A1A1A' }
             const isAutoCalc = type === 'insurance' || type === 'rd'
             const canAutoFetch = ['mf_sip','mf_lumpsum','gold'].includes(type)
             return (
@@ -3253,7 +3256,7 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
 
                     return (
                       <div key={inv.id}
-                        className={`px-6 py-3 grid grid-cols-[1fr_120px_16px_140px_64px_72px] gap-3 items-center transition-colors ${isChanged ? 'bg-[#f0efff]/40' : 'hover:bg-gray-50/60'}`}>
+                        className={`px-6 py-3 grid grid-cols-[1fr_120px_16px_140px_64px_72px] gap-3 items-center transition-colors ${isChanged ? 'bg-[#282416]/40' : 'hover:bg-gray-50/60'}`}>
 
                         {/* Name */}
                         <div className="min-w-0">
@@ -3282,8 +3285,8 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
                         ) : (
                           <input
                             type="number"
-                            className={`w-full px-3 py-2 rounded-xl border text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-[#6C63FF]/30 transition-colors ${
-                              isChanged ? 'border-[#6C63FF]/40 bg-[#f5f4ff]' : 'border-gray-200 bg-white'
+                            className={`w-full px-3 py-2 rounded-xl border text-sm text-right font-semibold focus:outline-none focus:ring-2 focus:ring-[#D4AF37]/30 transition-colors ${
+                              isChanged ? 'border-[#D4AF37]/40 bg-[#282416]' : 'border-gray-200 bg-dark-card'
                             }`}
                             value={values[inv.id]}
                             onChange={e => setVal(inv.id, e.target.value)}
@@ -3327,7 +3330,7 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
         </div>
 
         {/* ── Footer ── */}
-        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between shrink-0 bg-white">
+        <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between shrink-0 bg-dark-card">
           <p className="text-xs text-gray-400">Only investments with changed values will be saved.</p>
           <div className="flex gap-3">
             <button onClick={onClose}
@@ -3335,8 +3338,8 @@ function MassUpdateModal({ investments, onDone, onClose, showToast }) {
               Cancel
             </button>
             <button onClick={handleSaveAll} disabled={saving}
-              className="px-6 py-2.5 rounded-xl text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60 transition-opacity"
-              style={{ backgroundColor: '#6C63FF' }}>
+              className="px-6 py-2.5 rounded-xl text-sm font-semibold text-[#0A0A0A] hover:opacity-90 disabled:opacity-60 transition-opacity"
+              style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
               {saving ? 'Saving…' : 'Save All Changes'}
             </button>
           </div>
@@ -3352,7 +3355,7 @@ function SipSummaryCard({ items }) {
   const monthly = items.reduce((s, i) => s + (Number(i.monthly_sip_amount) || 0), 0)
   const yearly = monthly * 12
   return (
-    <div className="mb-4 rounded-2xl p-4 border" style={{ background: '#f0fdfa', borderColor: '#99f6e4' }}>
+    <div className="mb-4 rounded-2xl p-4 border" style={{ background: '#112523', borderColor: '#99f6e4' }}>
       <p className="text-sm font-extrabold text-teal-800 flex items-center gap-1.5">💰 Your Active SIPs</p>
       <p className="text-sm text-teal-900 mt-1.5">
         <b>{items.length}</b> fund{items.length === 1 ? '' : 's'} • <b>{fmt(monthly)}</b>/month total
@@ -3491,15 +3494,15 @@ export default function Investments() {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setShowMassUpdate(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 transition-colors">
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 bg-dark-card text-gray-700 hover:bg-gray-50 transition-colors">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
               <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
             </svg>
             Monthly Update
           </button>
           <button onClick={() => { setEditInv(null); setShowForm(true) }}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-white text-sm font-semibold hover:opacity-90 transition-opacity"
-            style={{ backgroundColor: '#6C63FF' }}>
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[#0A0A0A] text-sm font-semibold hover:opacity-90 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
             <span className="text-base font-bold leading-none">+</span>
             Add Investment
           </button>
@@ -3523,7 +3526,7 @@ export default function Investments() {
 
       {/* Tabbed charts */}
       {investments.length > 0 && (
-        <div className="bg-white rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
+        <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden">
           <div className="flex gap-0 border-b border-gray-100">
             {[
               { key: 'allocation', label: 'Allocation' },
@@ -3536,8 +3539,8 @@ export default function Investments() {
                 onClick={() => setChartTab(t.key)}
                 className="px-5 py-3 text-xs font-semibold transition-all border-b-2"
                 style={{
-                  borderBottomColor: chartTab === t.key ? '#6C63FF' : 'transparent',
-                  color: chartTab === t.key ? '#6C63FF' : '#9ca3af',
+                  borderBottomColor: chartTab === t.key ? '#D4AF37' : 'transparent',
+                  color: chartTab === t.key ? '#D4AF37' : '#6B6B6B',
                 }}
               >
                 {t.label}
@@ -3561,8 +3564,8 @@ export default function Investments() {
               <button key={t.key} onClick={() => setFilter(t.key)}
                 className="px-4 py-1.5 rounded-lg text-sm font-semibold transition-all"
                 style={{
-                  backgroundColor: filter === t.key ? '#fff' : 'transparent',
-                  color: filter === t.key ? '#1a1a2e' : '#9ca3af',
+                  backgroundColor: filter === t.key ? '#1A1A1A' : 'transparent',
+                  color: filter === t.key ? '#F5F5F5' : '#6B6B6B',
                   boxShadow: filter === t.key ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
                 }}>
                 {t.label}
@@ -3578,7 +3581,7 @@ export default function Investments() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search investments…"
-              className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-colors"
+              className="w-full pl-9 pr-8 py-1.5 rounded-xl border border-gray-200 text-sm bg-dark-card focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300 transition-colors"
             />
             {search && (
               <button onClick={() => setSearch('')}
@@ -3598,8 +3601,8 @@ export default function Investments() {
                 onClick={() => setQuickFilter(active ? null : c.key)}
                 className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border transition-colors"
                 style={active
-                  ? { backgroundColor: '#6C63FF', borderColor: '#6C63FF', color: '#fff' }
-                  : { backgroundColor: '#fff', borderColor: '#E5E7EB', color: '#6B7280' }}>
+                  ? { background: 'linear-gradient(135deg, #D4AF37, #B8960C)', borderColor: '#D4AF37', color: '#0A0A0A' }
+                  : { backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', color: '#8A8A8A' }}>
                 <span>{c.emoji}</span>{c.label}
                 <span style={{ opacity: 0.8 }}>({quickCounts[c.key]})</span>
               </button>
@@ -3624,7 +3627,7 @@ export default function Investments() {
           {[1, 2, 3, 4, 5, 6].map(i => <div key={i} className="h-24 bg-gray-100 rounded-xl animate-pulse" />)}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="flex items-center justify-center h-56 rounded-2xl bg-white border border-dashed border-gray-200">
+        <div className="flex items-center justify-center h-56 rounded-2xl bg-dark-card border border-dashed border-gray-200">
           <div className="text-center">
             <p className="text-4xl mb-3">{searchLower ? '🔍' : '📈'}</p>
             <p className="text-base font-semibold text-gray-700">
@@ -3689,7 +3692,7 @@ export default function Investments() {
       {/* Toast */}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white animate-in"
-          style={{ backgroundColor: toast.type === 'error' ? '#EF4444' : toast.type === 'warn' ? '#F59E0B' : '#10B981' }}>
+          style={{ backgroundColor: toast.type === 'error' ? '#E74C3C' : toast.type === 'warn' ? '#F39C12' : '#2ECC71' }}>
           {toast.type === 'error' ? '✗' : '✓'} {toast.msg}
         </div>
       )}
