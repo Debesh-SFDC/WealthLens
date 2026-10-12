@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import bridge from '../lib/bridge'
+import { buildPlanSummary, planPeriod, exportPlanToExcel } from '../lib/salaryPlanExport'
 import Toast from '../components/Toast'
 
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -1459,6 +1461,68 @@ function AllocationSuggestions({ plan, fallbackSalary, onUpdated }) {
   )
 }
 
+// ── Export (PDF via print, Excel via xlsx) ────────────────────────────────
+function PlanPrintView({ plan }) {
+  const { salary, groups, totalAllocated, unallocated } = buildPlanSummary(plan)
+  const row = { display: 'flex', justifyContent: 'space-between', gap: 16, padding: '4px 0' }
+  const strong = { ...row, fontWeight: 700 }
+  return (
+    <div id="salary-plan-print">
+      <h1 style={{ textAlign: 'center', fontSize: 20, letterSpacing: 2, margin: '0 0 20px' }}>LIFELOG — SALARY PLAN</h1>
+      <div style={{ marginBottom: 24, lineHeight: 1.7 }}>
+        <div><b>Plan:</b> {plan.label} ({planPeriod(plan)})</div>
+        <div><b>Monthly Salary:</b> {fmt(salary)}</div>
+        <div><b>Generated:</b> {fmtDate(todayISO())}</div>
+      </div>
+      {groups.map(g => (
+        <section key={g.key} style={{ marginBottom: 20, breakInside: 'avoid' }}>
+          <h2 style={{ fontSize: 13, letterSpacing: 1.5, textTransform: 'uppercase', borderBottom: '1.5px solid #111', paddingBottom: 4, margin: '0 0 6px' }}>
+            {g.label}
+          </h2>
+          {g.rows.length === 0 && <div style={{ ...row, color: '#6b7280' }}>No items</div>}
+          {g.rows.map((item, i) => (
+            <div key={i} style={row}>
+              <span style={{ flex: 2 }}>{item.name}</span>
+              <span style={{ flex: 1, color: '#4b5563' }}>{item.bank_or_provider || '—'}</span>
+              <span style={{ flex: 1, textAlign: 'right' }}>{fmt(item.amount)}</span>
+            </div>
+          ))}
+          <div style={{ ...strong, borderTop: '1px solid #d1d5db', marginTop: 4 }}>
+            <span>Subtotal {g.label}:</span><span>{fmt(g.subtotal)}</span>
+          </div>
+        </section>
+      ))}
+      <div style={{ borderTop: '2px solid #111', paddingTop: 8 }}>
+        <div style={strong}><span>TOTAL ALLOCATED:</span><span>{fmt(totalAllocated)}</span></div>
+        <div style={strong}><span>UNALLOCATED:</span><span>{fmt(unallocated)}</span></div>
+        <div style={strong}><span>SALARY:</span><span>{fmt(salary)}</span></div>
+      </div>
+    </div>
+  )
+}
+
+function ExportButtons({ plan }) {
+  const [printing, setPrinting] = useState(false)
+
+  // Once the print view is in the DOM, open the print dialog ("Save as PDF")
+  useEffect(() => {
+    if (!printing) return
+    const done = () => setPrinting(false)
+    window.addEventListener('afterprint', done, { once: true })
+    window.print()
+    return () => window.removeEventListener('afterprint', done)
+  }, [printing])
+
+  const btn = 'flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors'
+  return (
+    <>
+      <button onClick={() => setPrinting(true)} className={btn}>📄 Export PDF</button>
+      <button onClick={() => exportPlanToExcel(plan)} className={btn}>📊 Export Excel</button>
+      {printing && createPortal(<PlanPrintView plan={plan} />, document.body)}
+    </>
+  )
+}
+
 // ── Plan Detail View ──────────────────────────────────────────────────────
 function PlanDetailView({ plan, investments, profileSalary, onEdit, onNewPlan, onHistory, onUpdated }) {
   const [tab, setTab] = useState('overview') // 'overview' | 'bank'
@@ -1490,6 +1554,7 @@ function PlanDetailView({ plan, investments, profileSalary, onEdit, onNewPlan, o
             className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
             🕐 History
           </button>
+          <ExportButtons plan={plan} />
         </div>
       </div>
 
@@ -1707,6 +1772,9 @@ export default function SalaryAllocator() {
                   </button>
                 </>
               )}
+            </div>
+            <div className="flex items-center gap-2 ml-auto">
+              <ExportButtons plan={viewingPlan} />
             </div>
           </div>
           <p className="text-sm text-gray-500 mb-5">
