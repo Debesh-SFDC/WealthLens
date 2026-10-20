@@ -61,6 +61,30 @@ router.put('/:id', async (req, res) => {
   res.json({ success: true })
 })
 
+// POST /api/goals/:id/clone — mirrors goals:clone. Copies the goal's settings
+// under a new title; progress, achievement and contributions start fresh.
+router.post('/:id/clone', async (req, res) => {
+  const db = getDb()
+  const { rows: src } = await db.query('SELECT * FROM goals WHERE id = ? AND deleted_at IS NULL', [req.params.id])
+  if (!src.length) return res.status(404).json({ error: 'Goal not found' })
+  const g = src[0]
+  const title = String(req.body?.title || '').trim() || `Copy of ${g.title}`
+  const now = new Date().toISOString()
+  const { rows } = await db.query(
+    `INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
+       bank_or_provider, emoji, color, inflation_adjust, inflation_rate, monthly_emi, notes,
+       is_achieved, achieved_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)
+     RETURNING id`,
+    [
+      randomUUID(), title, g.type, g.category, g.target_amount, g.target_date, g.bank_or_provider,
+      g.emoji, g.color, g.inflation_adjust, g.inflation_rate, g.monthly_emi, g.notes, now, now,
+    ]
+  )
+  const { rows: created } = await db.query('SELECT * FROM goals WHERE id = ?', [rows[0].id])
+  res.json(created[0])
+})
+
 // DELETE /api/goals/:id — mirrors goals:delete (soft delete + unlink investments)
 router.delete('/:id', async (req, res) => {
   const db = getDb()

@@ -280,6 +280,11 @@ const PlusIcon = () => (
     <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
   </svg>
 )
+const CopyIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+    <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/>
+  </svg>
+)
 const GridIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
     <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
@@ -414,7 +419,7 @@ function LinkedInvestmentChips({ linkedInvestments, className = 'mb-3' }) {
   )
 }
 
-function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onContribute }) {
+function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute }) {
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
@@ -445,9 +450,10 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onCon
             </div>
           </div>
           <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
-            <button onClick={() => onContribute(goal)} title="Add contribution" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"><PlusIcon /></button>
-            <button onClick={() => onEdit(goal)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"><EditIcon /></button>
-            <button onClick={() => onDelete(goal.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><TrashIcon /></button>
+            <button onClick={() => onContribute(goal)} title="Add contribution" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><PlusIcon /></button>
+            <button onClick={() => onEdit(goal)} title="Edit" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><EditIcon /></button>
+            <button onClick={() => onClone(goal)} title="Clone" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><CopyIcon /></button>
+            <button onClick={() => onDelete(goal.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-gray-700 hover:text-red-500 transition-colors"><TrashIcon /></button>
           </div>
         </div>
 
@@ -501,7 +507,7 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onDelete, onCon
 }
 
 // ── List view row ─────────────────────────────────────────────────────────
-function GoalListRow({ goal, linkedInvestments, onView, onEdit, onDelete, onContribute }) {
+function GoalListRow({ goal, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute }) {
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
@@ -556,9 +562,52 @@ function GoalListRow({ goal, linkedInvestments, onView, onEdit, onDelete, onCont
       </div>
 
       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
-        <button onClick={() => onContribute(goal)} title="Add contribution" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"><PlusIcon /></button>
-        <button onClick={() => onEdit(goal)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition-colors"><EditIcon /></button>
-        <button onClick={() => onDelete(goal.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors"><TrashIcon /></button>
+        <button onClick={() => onContribute(goal)} title="Add contribution" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><PlusIcon /></button>
+        <button onClick={() => onEdit(goal)} title="Edit" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><EditIcon /></button>
+        <button onClick={() => onClone(goal)} title="Clone" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><CopyIcon /></button>
+        <button onClick={() => onDelete(goal.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-gray-700 hover:text-red-500 transition-colors"><TrashIcon /></button>
+      </div>
+    </div>
+  )
+}
+
+// ── Clone goal modal ────────────────────────────────────────────────────────
+function CloneGoalModal({ goal, onClone, onClose }) {
+  const [title, setTitle] = useState(`Copy of ${goal.title}`)
+  const [saving, setSaving] = useState(false)
+
+  const handleClone = async () => {
+    if (!title.trim()) return
+    setSaving(true)
+    try {
+      await onClone(goal, title.trim())
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <h3 className="font-bold text-gray-900">Clone Goal</h3>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><CloseIcon /></button>
+        </div>
+        <div className="p-5 space-y-2">
+          <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Title</label>
+          <input autoFocus className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm focus:outline-none focus:ring-2"
+            value={title} onChange={e => setTitle(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') handleClone() }} />
+          <p className="text-xs text-gray-500">Copies the target, date, type and settings. Progress starts at zero.</p>
+        </div>
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors">Cancel</button>
+          <button onClick={handleClone} disabled={saving || !title.trim()}
+            className="px-4 py-2 rounded-xl text-sm font-semibold text-[#0A0A0A] disabled:opacity-50 transition-opacity"
+            style={{ background: 'linear-gradient(135deg, #D4AF37, #B8960C)' }}>
+            {saving ? 'Cloning…' : 'Clone'}
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -670,7 +719,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
               ))}
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-400 hover:text-gray-600 transition-colors">
+          <button onClick={onClose} className="p-1.5 rounded-xl hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors">
             <CloseIcon />
           </button>
         </div>
@@ -683,7 +732,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                   <button key={key}
                     onClick={() => { set('type', key); set('color', m.color); set('emoji', m.icon); setStep(2) }}
                     className="text-left p-5 rounded-2xl border-2 transition-all hover:shadow-md"
-                    style={{ borderColor: form.type === key ? m.color : '#2A2A2A', backgroundColor: form.type === key ? m.color + '0c' : '#1A1A1A' }}>
+                    style={{ borderColor: form.type === key ? m.color : '#505050', backgroundColor: form.type === key ? m.color + '0c' : '#1A1A1A' }}>
                     <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl mb-3" style={{ backgroundColor: m.color + '18' }}>{m.icon}</div>
                     <p className="font-bold text-gray-900 text-sm mb-1">{m.label}</p>
                     <p className="text-xs text-gray-500 leading-snug">{m.desc}</p>
@@ -693,7 +742,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
               <button
                 onClick={() => { set('type', 'custom'); set('color', TYPE_META.custom.color); set('emoji', TYPE_META.custom.icon); setStep(2) }}
                 className="w-full text-left p-5 rounded-2xl border-2 transition-all hover:shadow-md flex items-center gap-4"
-                style={{ borderColor: form.type === 'custom' ? TYPE_META.custom.color : '#2A2A2A', backgroundColor: form.type === 'custom' ? TYPE_META.custom.color + '0c' : '#1A1A1A' }}>
+                style={{ borderColor: form.type === 'custom' ? TYPE_META.custom.color : '#505050', backgroundColor: form.type === 'custom' ? TYPE_META.custom.color + '0c' : '#1A1A1A' }}>
                 <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl shrink-0" style={{ backgroundColor: TYPE_META.custom.color + '18' }}>{TYPE_META.custom.icon}</div>
                 <div>
                   <p className="font-bold text-gray-900 text-sm mb-1">{TYPE_META.custom.label}</p>
@@ -708,8 +757,8 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
               <div className="flex gap-3 items-start">
                 <div className="relative shrink-0">
                   <button onClick={() => setShowEmoji(v => !v)}
-                    className="w-14 h-14 rounded-xl border-2 text-2xl flex items-center justify-center transition-colors hover:border-gray-300"
-                    style={{ borderColor: showEmoji ? accent : '#2A2A2A' }}>
+                    className="w-14 h-14 rounded-xl border-2 text-2xl flex items-center justify-center transition-colors hover:border-gold"
+                    style={{ borderColor: showEmoji ? accent : '#505050' }}>
                     {form.emoji}
                   </button>
                   {showEmoji && (
@@ -739,11 +788,11 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
 
               <div>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Need or Want</label>
-                <div className="flex rounded-xl border border-gray-200 overflow-hidden w-fit">
+                <div className="flex rounded-xl border border-gray-400 overflow-hidden w-fit">
                   {['need', 'want'].map(c => (
                     <button key={c} onClick={() => set('category', c)}
                       className="px-5 py-2 text-sm font-semibold transition-colors"
-                      style={{ backgroundColor: form.category === c ? accent : 'transparent', color: form.category === c ? '#fff' : '#8A8A8A' }}>
+                      style={{ backgroundColor: form.category === c ? accent : 'transparent', color: form.category === c ? '#fff' : '#C4C4C4' }}>
                       {c === 'need' ? 'Need' : 'Want'}
                     </button>
                   ))}
@@ -816,7 +865,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                       {linkedInvestmentObjs.map(inv => (
                         <span key={inv.id} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
                           {inv.name}
-                          <button type="button" onClick={() => toggleLink(inv.id)} className="w-4 h-4 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors leading-none">
+                          <button type="button" onClick={() => toggleLink(inv.id)} className="w-4 h-4 rounded-full flex items-center justify-center text-gray-700 hover:text-red-500 hover:bg-red-50 transition-colors leading-none">
                             ×
                           </button>
                         </span>
@@ -835,7 +884,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
               {isCustom && (
                 <div>
                   <button type="button" onClick={() => setShowAdvanced(v => !v)}
-                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-500 hover:text-gray-700 transition-colors">
+                    className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 hover:text-gold transition-colors">
                     <span>{showAdvanced ? '▾' : '▸'}</span> Advanced options
                   </button>
                   {showAdvanced && (
@@ -933,7 +982,7 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
 
         <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 shrink-0">
           <button onClick={() => (step === 1 ? onClose() : setStep(s => s - 1))}
-            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">
+            className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors">
             {step === 1 ? 'Cancel' : 'Back'}
           </button>
           {step < 3 ? (
@@ -974,7 +1023,7 @@ function InvestmentPickerModal({ investments, selectedIds, onToggle, onClose }) 
       <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
           <h3 className="font-bold text-gray-900">Link Investments</h3>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><CloseIcon /></button>
         </div>
         <div className="p-4 border-b border-gray-100 shrink-0">
           <input
@@ -1071,7 +1120,7 @@ function AddContributionModal({ goal, onSave, onClose }) {
       <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h3 className="font-bold text-gray-900">{isDebt ? 'Update Outstanding Balance' : 'Add Contribution'}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><CloseIcon /></button>
         </div>
         <div className="p-5 space-y-4">
           {isDebt ? (
@@ -1102,7 +1151,7 @@ function AddContributionModal({ goal, onSave, onClose }) {
           </div>
         </div>
         <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors">Cancel</button>
           <button onClick={handleSave} disabled={saving || disabled}
             className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-opacity" style={{ backgroundColor: accent }}>
             {saving ? 'Saving…' : 'Save'}
@@ -1144,7 +1193,7 @@ function GoalItemModal({ goal, item, onSave, onClose }) {
       <div className="bg-dark-card rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h3 className="font-bold text-gray-900">{item?.id ? 'Edit Item' : 'Add Item'}</h3>
-          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-400"><CloseIcon /></button>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><CloseIcon /></button>
         </div>
         <div className="p-5 space-y-4">
           <div>
@@ -1167,7 +1216,7 @@ function GoalItemModal({ goal, item, onSave, onClose }) {
               {['high', 'medium', 'low'].map(p => (
                 <button key={p} type="button" onClick={() => set('priority', p)}
                   className="flex-1 py-2 rounded-xl text-sm font-semibold border transition-colors capitalize"
-                  style={form.priority === p ? { backgroundColor: accent, borderColor: accent, color: '#fff' } : { borderColor: '#2A2A2A', color: '#8A8A8A' }}>
+                  style={form.priority === p ? { backgroundColor: accent, borderColor: accent, color: '#fff' } : { borderColor: '#6B6B6B', color: '#C4C4C4' }}>
                   {p}
                 </button>
               ))}
@@ -1183,7 +1232,7 @@ function GoalItemModal({ goal, item, onSave, onClose }) {
           </div>
         </div>
         <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-100">
-          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-600 hover:bg-gray-100 transition-colors">Cancel</button>
+          <button onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors">Cancel</button>
           <button onClick={handleSave} disabled={saving || !form.name.trim()}
             className="px-4 py-2 rounded-xl text-sm font-semibold text-white disabled:opacity-50 transition-opacity" style={{ backgroundColor: accent }}>
             {saving ? 'Saving…' : 'Save'}
@@ -1215,7 +1264,7 @@ function GoalItemsSection({ goal, items, accent, onAdd, onEdit, onToggle, onDele
             {items.length === 0 ? 'Nothing added yet' : `${bought}/${items.length} bought · ${fmtCr(remainingCost)} still to buy of ${fmtCr(total)}`}
           </p>
         </div>
-        <button onClick={onAdd} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold border border-gray-200 hover:bg-gray-50 transition-colors shrink-0">
+        <button onClick={onAdd} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors shrink-0">
           <span>+</span> Add Item
         </button>
       </div>
@@ -1242,13 +1291,13 @@ function GoalItemsSection({ goal, items, accent, onAdd, onEdit, onToggle, onDele
               <div className="flex items-center gap-1 shrink-0">
                 {it.url && (
                   <a href={it.url} target="_blank" rel="noreferrer" title="Open link"
-                    className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 text-xs">↗</a>
+                    className="p-1.5 rounded-lg text-gray-700 hover:text-gold hover:bg-gray-100 text-xs">↗</a>
                 )}
                 <span className={`text-sm font-semibold w-20 text-right ${it.is_purchased ? 'text-gray-400' : 'text-gray-800'}`}>
                   {it.price != null ? fmtCr(it.price) : '—'}
                 </span>
                 <button onClick={() => onDelete(it)} title="Delete item"
-                  className="p-1.5 rounded-lg text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors"><TrashIcon /></button>
+                  className="p-1.5 rounded-lg text-gray-700 hover:text-red-500 hover:bg-red-50 transition-colors"><TrashIcon /></button>
               </div>
             </div>
           ))}
@@ -1311,11 +1360,11 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
   return (
     <div className="p-6 max-w-3xl">
       <div className="flex items-center justify-between mb-5">
-        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-gray-900 transition-colors">
+        <button onClick={onBack} className="flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-gold transition-colors">
           <BackIcon /> Back to Goals
         </button>
         <div className="flex gap-2">
-          <button onClick={onEdit} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 border border-gray-200 hover:bg-gray-50 transition-colors">
+          <button onClick={onEdit} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors">
             Edit Goal
           </button>
           {!achieved && pct >= 95 && (
@@ -1465,7 +1514,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
           </div>
           {linkedInvestments.length > 0 && (
             <button onClick={onSyncAll} disabled={syncing}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold border border-gray-200 hover:bg-gray-50 transition-colors disabled:opacity-50">
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors disabled:opacity-50">
               {syncing ? 'Syncing…' : '↻ Sync All'}
             </button>
           )}
@@ -1546,6 +1595,7 @@ export function GoalsContent() {
   const [items, setItems] = useState([])
   const [itemModal, setItemModal] = useState(null) // null | {} (new) | item (edit)
   const [toast, setToast] = useState(null)
+  const [cloneSource, setCloneSource] = useState(null)
 
   const showToast = (msg, type = 'ok') => {
     setToast({ msg, type })
@@ -1667,6 +1717,19 @@ export function GoalsContent() {
     await bridge.deleteGoal(id)
     if (selectedGoal?.id === id) closeDetail()
     await load()
+  }
+
+  const handleClone = async (goal, title) => {
+    try {
+      await bridge.cloneGoal(goal.id, title)
+    } catch (e) {
+      console.error(e)
+      showToast('Could not clone goal', 'error')
+      return
+    }
+    setCloneSource(null)
+    await load()
+    showToast('Goal cloned! Edit to customize.')
   }
 
   const handleAchieve = async (goal) => {
@@ -1812,13 +1875,13 @@ export function GoalsContent() {
           <p className="text-sm text-gray-500 mt-0.5">{activeGoals.length} active · {achievedGoals.length} achieved</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-xl border border-gray-200 overflow-hidden">
+          <div className="flex rounded-xl border border-gray-400 overflow-hidden">
             <button onClick={() => setView('grid')} title="Card grid view"
-              className="p-2.5 transition-colors" style={{ backgroundColor: view === 'grid' ? '#D4AF37' : '#1A1A1A', color: view === 'grid' ? '#0A0A0A' : '#6B6B6B' }}>
+              className="p-2.5 transition-colors" style={{ backgroundColor: view === 'grid' ? '#D4AF37' : '#1A1A1A', color: view === 'grid' ? '#0A0A0A' : '#C4C4C4' }}>
               <GridIcon />
             </button>
             <button onClick={() => setView('list')} title="List view"
-              className="p-2.5 transition-colors" style={{ backgroundColor: view === 'list' ? '#D4AF37' : '#1A1A1A', color: view === 'list' ? '#0A0A0A' : '#6B6B6B' }}>
+              className="p-2.5 transition-colors" style={{ backgroundColor: view === 'list' ? '#D4AF37' : '#1A1A1A', color: view === 'list' ? '#0A0A0A' : '#C4C4C4' }}>
               <ListIcon />
             </button>
           </div>
@@ -1854,14 +1917,14 @@ export function GoalsContent() {
         <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
           {sorted.map(g => (
             <GoalCardGrid key={g.id} goal={g} linkedInvestments={goalInvestmentsMap[g.id]}
-              onView={openDetail} onEdit={openWizard} onDelete={handleDelete} onContribute={openContribution} />
+              onView={openDetail} onEdit={openWizard} onClone={setCloneSource} onDelete={handleDelete} onContribute={openContribution} />
           ))}
         </div>
       ) : (
         <div className="space-y-2">
           {sorted.map(g => (
             <GoalListRow key={g.id} goal={g} linkedInvestments={goalInvestmentsMap[g.id]}
-              onView={openDetail} onEdit={openWizard} onDelete={handleDelete} onContribute={openContribution} />
+              onView={openDetail} onEdit={openWizard} onClone={setCloneSource} onDelete={handleDelete} onContribute={openContribution} />
           ))}
         </div>
       )}
@@ -1871,6 +1934,9 @@ export function GoalsContent() {
       )}
       {contribGoal && (
         <AddContributionModal goal={contribGoal} onSave={handleAddContribution} onClose={closeContribution} />
+      )}
+      {cloneSource && (
+        <CloneGoalModal goal={cloneSource} onClone={handleClone} onClose={() => setCloneSource(null)} />
       )}
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white animate-in"

@@ -41,6 +41,9 @@ const bridge = {
   deleteGoal: (id) => IS_ELECTRON
     ? window.electronAPI.deleteGoal(id)
     : webCall('DELETE', `/goals/${id}`),
+  cloneGoal: (goalId, newTitle) => IS_ELECTRON
+    ? window.electronAPI.cloneGoal(goalId, newTitle)
+    : webCall('POST', `/goals/${goalId}/clone`, { title: newTitle }),
   getGoalContributions: (goalId) => IS_ELECTRON
     ? window.electronAPI.getGoalContributions(goalId)
     : webCall('GET', `/goals/${goalId}/contributions`),

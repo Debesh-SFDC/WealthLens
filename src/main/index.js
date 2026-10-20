@@ -598,6 +598,24 @@ function setupIpcHandlers() {
     return { success: true }
   })
 
+  // Copy a goal's settings under a new title; progress and achievement start fresh
+  ipcMain.handle('goals:clone', (_, { goalId, title }) => {
+    const g = db.prepare('SELECT * FROM goals WHERE id = ? AND deleted_at IS NULL').get(goalId)
+    if (!g) throw new Error('Goal not found')
+    const deviceId = getOrCreateDeviceId()
+    const result = db.prepare(`
+      INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
+        bank_or_provider, emoji, color, inflation_adjust, inflation_rate,
+        monthly_emi, notes, is_achieved, achieved_at, device_id)
+      VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
+    `).run(
+      randomUUID(), String(title || '').trim() || `Copy of ${g.title}`, g.type, g.category, g.target_amount,
+      g.target_date, g.bank_or_provider, g.emoji, g.color, g.inflation_adjust, g.inflation_rate,
+      g.monthly_emi, g.notes, deviceId
+    )
+    return db.prepare('SELECT * FROM goals WHERE id = ?').get(result.lastInsertRowid)
+  })
+
   ipcMain.handle('goals:delete', (_, id) => {
     const deviceId = getOrCreateDeviceId()
     // Soft delete — the schema's ON DELETE SET NULL / CASCADE only fire on a real
