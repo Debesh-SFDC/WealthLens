@@ -50,7 +50,7 @@ function TabButton({ active, onClick, icon, label }) {
     <button
       onClick={onClick}
       className="relative flex-1 flex flex-col items-center justify-center gap-0.5 h-full min-w-[44px] min-h-[44px]"
-      style={{ color: active ? '#D4AF37' : '#404040' }}
+      style={{ color: active ? '#D4AF37' : '#F5F5F5' }}
     >
       {active && <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-b-full" style={{ backgroundColor: '#D4AF37', boxShadow: '0 0 10px rgba(212,175,55,0.6)' }} />}
       {icon}

@@ -130,18 +130,18 @@ function NavButton({ item, isActive, onNavigate }) {
       style={{
         background: isActive ? 'linear-gradient(90deg, rgba(212,175,55,0.08) 0%, transparent 100%)' : 'transparent',
         borderLeft: `3px solid ${isActive ? '#D4AF37' : 'transparent'}`,
-        color: isActive ? '#D4AF37' : '#606060',
+        color: isActive ? '#D4AF37' : '#F5F5F5',
       }}
       onMouseEnter={(e) => {
         if (!isActive) {
           e.currentTarget.style.backgroundColor = 'rgba(212,175,55,0.05)'
-          e.currentTarget.style.color = '#A0A0A0'
+          e.currentTarget.style.color = '#F0D060'
         }
       }}
       onMouseLeave={(e) => {
         if (!isActive) {
           e.currentTarget.style.backgroundColor = 'transparent'
-          e.currentTarget.style.color = '#606060'
+          e.currentTarget.style.color = '#F5F5F5'
         }
       }}
     >
@@ -149,7 +149,7 @@ function NavButton({ item, isActive, onNavigate }) {
         className="transition-colors"
         style={{ color: isActive ? '#D4AF37' : undefined, filter: isActive ? 'drop-shadow(0 0 6px rgba(212,175,55,0.45))' : undefined }}
       >
-        <span className={isActive ? '' : 'text-[#404040] group-hover:text-[#707070]'}>{item.icon}</span>
+        <span className={isActive ? '' : 'text-[#F5F5F5] group-hover:text-[#F0D060]'}>{item.icon}</span>
       </span>
       <span>{item.label}</span>
     </button>
