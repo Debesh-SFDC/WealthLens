@@ -868,3 +868,75 @@ FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY id) - 1 AS rn
       WHERE user_id IN (SELECT user_id FROM wishlist_collections
                         GROUP BY user_id HAVING MAX(COALESCE(sort_order, 0)) = 0 AND COUNT(*) > 1)) r
 WHERE c.id = r.id;
+
+-- ── Ford EcoSport restoration — 5 phase goals with itemised checklists ───────
+-- Target = sum of each phase's items (₹1,75,200 in all). Guarded by goal title
+-- and by item name within the goal (deleted rows included), so re-running never
+-- duplicates or resurrects anything. Goals go after the existing ones in
+-- "My Order", in phase order. Must stay below the sort_order block above.
+-- Mirrors seedEcoSportRestoration() in src/db/database.js.
+INSERT INTO goals
+  (sync_id, user_id, title, type, category, target_amount, current_amount, target_date,
+   bank_or_provider, emoji, color, status, notes, is_achieved, sort_order, created_at, updated_at)
+SELECT md5(random()::text || v.title), (SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1),
+       v.title, 'life_goal', v.category, v.target_amount, 0, v.target_date,
+       'Savings Account', '🚗', '#D4AF37', 'active', v.notes, 0,
+       (SELECT COALESCE(MAX(sort_order), -1) FROM goals WHERE deleted_at IS NULL)
+         + ROW_NUMBER() OVER (ORDER BY v.phase),
+       now()::text, now()::text
+FROM (VALUES
+  (1, 'EcoSport Phase 1 — Mechanical Restoration', 'need', 59400, '2027-03-31',
+   'Extensive replacement scenario. Some parts overlap or may be supplied together. Workshop must check exact assemblies before ordering. Not necessary to replace every item.'),
+  (2, 'EcoSport Phase 2 — Exterior Makeover', 'want', 65000, '2027-06-30',
+   'Black roof, pillars, ORVMs and spoiler, then Deep Ruby Red full body repaint as the second step.'),
+  (3, 'EcoSport Phase 3 — Interior & Audio', 'want', 29300, '2027-09-30',
+   'Keep the original Ford SYNC system and manual keypad. No touchscreen replacement or dashboard cutting.'),
+  (4, 'EcoSport Phase 4 — Technology & Comfort', 'want', 5500, '2027-10-31',
+   'Existing front/rear cameras and charging setup retained.'),
+  (5, 'EcoSport Phase 5 — Premium Finishing', 'want', 16000, '2027-12-31',
+   NULL)
+) AS v(phase, title, category, target_amount, target_date, notes)
+WHERE EXISTS (SELECT 1 FROM users WHERE role = 'admin')
+  AND NOT EXISTS (SELECT 1 FROM goals g WHERE g.title = v.title);
+
+INSERT INTO goal_items (sync_id, goal_id, name, price, priority, is_purchased, sort_order, created_at, updated_at)
+SELECT md5(random()::text || v.goal_title || v.name), g.id, v.name, v.price, 'medium', 0, v.idx,
+       now()::text, now()::text
+FROM (VALUES
+  ('EcoSport Phase 1 — Mechanical Restoration', 0, 'Steering rack assembly', 14500),
+  ('EcoSport Phase 1 — Mechanical Restoration', 1, 'Rack ends + tie rod ends', 2200),
+  ('EcoSport Phase 1 — Mechanical Restoration', 2, 'Stabilizer links (pair)', 1300),
+  ('EcoSport Phase 1 — Mechanical Restoration', 3, 'Ball joints (pair)', 1300),
+  ('EcoSport Phase 1 — Mechanical Restoration', 4, 'Lower control arms / bushes', 4000),
+  ('EcoSport Phase 1 — Mechanical Restoration', 5, 'Front shock absorbers (pair)', 8000),
+  ('EcoSport Phase 1 — Mechanical Restoration', 6, 'Front shock mountings', 1600),
+  ('EcoSport Phase 1 — Mechanical Restoration', 7, 'Rear shock absorbers (pair)', 5000),
+  ('EcoSport Phase 1 — Mechanical Restoration', 8, 'Rear shock mountings / bushes', 2000),
+  ('EcoSport Phase 1 — Mechanical Restoration', 9, 'Clutch kit + bearing', 8000),
+  ('EcoSport Phase 1 — Mechanical Restoration', 10, 'Clutch labour', 3000),
+  ('EcoSport Phase 1 — Mechanical Restoration', 11, 'Gearbox inspection / oil', 2000),
+  ('EcoSport Phase 1 — Mechanical Restoration', 12, 'Steering and suspension labour', 5000),
+  ('EcoSport Phase 1 — Mechanical Restoration', 13, 'Wheel alignment / balancing', 1500),
+  ('EcoSport Phase 2 — Exterior Makeover', 0, 'Black roof painting', 5000),
+  ('EcoSport Phase 2 — Exterior Makeover', 1, 'Black A/B/C pillars', 2000),
+  ('EcoSport Phase 2 — Exterior Makeover', 2, 'Black ORVMs', 1500),
+  ('EcoSport Phase 2 — Exterior Makeover', 3, 'Black rear spoiler', 1500),
+  ('EcoSport Phase 2 — Exterior Makeover', 4, 'Deep Ruby Red body repaint (second phase)', 55000),
+  ('EcoSport Phase 3 — Interior & Audio', 0, 'Seat cleaning / upholstery restoration', 8000),
+  ('EcoSport Phase 3 — Interior & Audio', 1, 'Steering wheel restoration', 1500),
+  ('EcoSport Phase 3 — Interior & Audio', 2, 'Gear knob restoration', 800),
+  ('EcoSport Phase 3 — Interior & Audio', 3, 'Dashboard and centre-console restoration', 2000),
+  ('EcoSport Phase 3 — Interior & Audio', 4, 'Door-pad restoration', 3000),
+  ('EcoSport Phase 3 — Interior & Audio', 5, 'Carpet and flooring restoration', 2000),
+  ('EcoSport Phase 3 — Interior & Audio', 6, 'Roof-liner restoration', 2000),
+  ('EcoSport Phase 3 — Interior & Audio', 7, 'Four-speaker audio upgrade', 10000),
+  ('EcoSport Phase 4 — Technology & Comfort', 0, 'Aftermarket TPMS', 4000),
+  ('EcoSport Phase 4 — Technology & Comfort', 1, 'Warm-white footwell lighting', 1500),
+  ('EcoSport Phase 5 — Premium Finishing', 0, 'Original wheels refinished in glossy black', 8000),
+  ('EcoSport Phase 5 — Premium Finishing', 1, 'Black grille with chrome detailing', 3000),
+  ('EcoSport Phase 5 — Premium Finishing', 2, 'Headlight restoration', 1500),
+  ('EcoSport Phase 5 — Premium Finishing', 3, 'Rubber trims / exterior detailing', 1500),
+  ('EcoSport Phase 5 — Premium Finishing', 4, 'Engine-bay cleaning and final detailing', 2000)
+) AS v(goal_title, idx, name, price)
+JOIN LATERAL (SELECT id FROM goals WHERE title = v.goal_title AND deleted_at IS NULL ORDER BY id LIMIT 1) g ON TRUE
+WHERE NOT EXISTS (SELECT 1 FROM goal_items gi WHERE gi.goal_id = g.id AND gi.name = v.name);

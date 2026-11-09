@@ -49,6 +49,7 @@ export function initDatabase() {
   seedDreamVehicles()
   migrateWishlistToGoals()
   migrateSortOrder()
+  seedEcoSportRestoration()
   return db
 }
 
@@ -1482,6 +1483,114 @@ function migrateSortOrder() {
     }
   })
   tx()
+}
+
+// Ford EcoSport restoration — five phase goals, each with an itemised
+// "Items to Buy" checklist. Target = sum of the phase's item prices. Guarded by
+// goal title and by item name within the goal (deleted rows included), so it is
+// added at most once and never resurrected after the user edits or deletes it.
+// New goals go after the existing ones in "My Order", in phase order. Runs after
+// migrateSortOrder() so sort_order exists. Mirrors scripts/setup-postgres.sql.
+function seedEcoSportRestoration() {
+  const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+  if (!admin) return
+
+  const PHASES = [
+    {
+      title: 'EcoSport Phase 1 — Mechanical Restoration', category: 'need', target_date: '2027-03-31', target_amount: 59400,
+      notes: 'Extensive replacement scenario. Some parts overlap or may be supplied together. Workshop must check exact assemblies before ordering. Not necessary to replace every item.',
+      items: [
+        ['Steering rack assembly', 14500],
+        ['Rack ends + tie rod ends', 2200],
+        ['Stabilizer links (pair)', 1300],
+        ['Ball joints (pair)', 1300],
+        ['Lower control arms / bushes', 4000],
+        ['Front shock absorbers (pair)', 8000],
+        ['Front shock mountings', 1600],
+        ['Rear shock absorbers (pair)', 5000],
+        ['Rear shock mountings / bushes', 2000],
+        ['Clutch kit + bearing', 8000],
+        ['Clutch labour', 3000],
+        ['Gearbox inspection / oil', 2000],
+        ['Steering and suspension labour', 5000],
+        ['Wheel alignment / balancing', 1500],
+      ],
+    },
+    {
+      title: 'EcoSport Phase 2 — Exterior Makeover', category: 'want', target_date: '2027-06-30', target_amount: 65000,
+      notes: 'Black roof, pillars, ORVMs and spoiler, then Deep Ruby Red full body repaint as the second step.',
+      items: [
+        ['Black roof painting', 5000],
+        ['Black A/B/C pillars', 2000],
+        ['Black ORVMs', 1500],
+        ['Black rear spoiler', 1500],
+        ['Deep Ruby Red body repaint (second phase)', 55000],
+      ],
+    },
+    {
+      title: 'EcoSport Phase 3 — Interior & Audio', category: 'want', target_date: '2027-09-30', target_amount: 29300,
+      notes: 'Keep the original Ford SYNC system and manual keypad. No touchscreen replacement or dashboard cutting.',
+      items: [
+        ['Seat cleaning / upholstery restoration', 8000],
+        ['Steering wheel restoration', 1500],
+        ['Gear knob restoration', 800],
+        ['Dashboard and centre-console restoration', 2000],
+        ['Door-pad restoration', 3000],
+        ['Carpet and flooring restoration', 2000],
+        ['Roof-liner restoration', 2000],
+        ['Four-speaker audio upgrade', 10000],
+      ],
+    },
+    {
+      title: 'EcoSport Phase 4 — Technology & Comfort', category: 'want', target_date: '2027-10-31', target_amount: 5500,
+      notes: 'Existing front/rear cameras and charging setup retained.',
+      items: [
+        ['Aftermarket TPMS', 4000],
+        ['Warm-white footwell lighting', 1500],
+      ],
+    },
+    {
+      title: 'EcoSport Phase 5 — Premium Finishing', category: 'want', target_date: '2027-12-31', target_amount: 16000,
+      notes: null,
+      items: [
+        ['Original wheels refinished in glossy black', 8000],
+        ['Black grille with chrome detailing', 3000],
+        ['Headlight restoration', 1500],
+        ['Rubber trims / exterior detailing', 1500],
+        ['Engine-bay cleaning and final detailing', 2000],
+      ],
+    },
+  ]
+
+  const goalExists = db.prepare('SELECT 1 FROM goals WHERE title = ?')
+  const liveGoal = db.prepare('SELECT id FROM goals WHERE title = ? AND deleted_at IS NULL ORDER BY id LIMIT 1')
+  const nextOrder = db.prepare('SELECT COALESCE(MAX(sort_order), -1) + 1 AS n FROM goals WHERE deleted_at IS NULL')
+  const insertGoal = db.prepare(`
+    INSERT INTO goals
+      (sync_id, user_id, title, type, category, target_amount, current_amount, target_date,
+       bank_or_provider, emoji, color, status, notes, is_achieved, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, 'life_goal', ?, ?, 0, ?, 'Savings Account', '🚗', '#D4AF37', 'active', ?, 0, ?, ?, ?)
+  `)
+  const itemExists = db.prepare('SELECT 1 FROM goal_items WHERE goal_id = ? AND name = ?')
+  const insertItem = db.prepare(`
+    INSERT INTO goal_items (sync_id, goal_id, name, price, priority, is_purchased, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, 'medium', 0, ?, ?, ?)
+  `)
+  const now = new Date().toISOString()
+
+  db.transaction(() => {
+    for (const ph of PHASES) {
+      if (!goalExists.get(ph.title)) {
+        insertGoal.run(randomUUID(), admin.id, ph.title, ph.category, ph.target_amount, ph.target_date,
+          ph.notes, nextOrder.get().n, now, now)
+      }
+      const goal = liveGoal.get(ph.title)
+      if (!goal) continue
+      ph.items.forEach(([name, price], i) => {
+        if (!itemExists.get(goal.id, name)) insertItem.run(randomUUID(), goal.id, name, price, i, now, now)
+      })
+    }
+  })()
 }
 
 export function logSyncEvent(db, { deviceId, status, rowsUploaded = 0, rowsDownloaded = 0, errorMessage = null }) {
