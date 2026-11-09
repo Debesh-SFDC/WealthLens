@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useId } from 'react'
 import bridge from '../lib/bridge'
+import { SortableList, SortableItem, DragHandle, OrderBadge, ReorderHint } from '../components/Sortable'
 
 // Goal↔investment linking and investment-sync are Electron-only (no web
 // routes); contributions and goal items go through the bridge and work in both
@@ -419,7 +420,7 @@ function LinkedInvestmentChips({ linkedInvestments, className = 'mb-3' }) {
   )
 }
 
-function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute }) {
+function GoalCardGrid({ goal, rank, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute }) {
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
@@ -432,21 +433,25 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onClone, onDele
 
   return (
     <div
-      className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group overflow-hidden"
+      className="h-full bg-dark-card rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer group overflow-hidden"
       onClick={() => onView(goal)}
     >
       <div className="h-1" style={{ backgroundColor: ringColor }} />
       <div className="p-5">
         <div className="flex items-start justify-between mb-3">
           <div className="flex items-center gap-2.5 min-w-0">
+            <DragHandle label={`Drag to reorder ${goal.title}`} />
             <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 select-none" style={{ backgroundColor: ringColor + '18' }}>
               {goal.emoji || meta.icon}
             </div>
             <div className="min-w-0">
               <h3 className="font-semibold text-gray-900 leading-tight text-sm truncate">{goal.title}</h3>
-              <span className="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[10px] font-semibold" style={typeBadgeStyle(goal, accent)}>
-                {meta.label}
-              </span>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <OrderBadge n={rank} />
+                <span className="inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap truncate" style={typeBadgeStyle(goal, accent)}>
+                  {meta.label}
+                </span>
+              </div>
             </div>
           </div>
           <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
@@ -507,7 +512,7 @@ function GoalCardGrid({ goal, linkedInvestments, onView, onEdit, onClone, onDele
 }
 
 // ── List view row ─────────────────────────────────────────────────────────
-function GoalListRow({ goal, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute }) {
+function GoalListRow({ goal, rank, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute }) {
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
@@ -524,12 +529,14 @@ function GoalListRow({ goal, linkedInvestments, onView, onEdit, onClone, onDelet
       onClick={() => onView(goal)}
     >
       <div className="flex items-center gap-3 w-56 shrink-0 min-w-0">
+        <DragHandle label={`Drag to reorder ${goal.title}`} />
         <div className="w-10 h-10 rounded-xl flex items-center justify-center text-xl shrink-0 select-none" style={{ backgroundColor: ringColor + '18' }}>
           {goal.emoji || meta.icon}
         </div>
         <div className="min-w-0">
           <p className="font-semibold text-gray-900 text-sm truncate">{goal.title}</p>
           <div className="flex items-center gap-1.5 mt-0.5">
+            <OrderBadge n={rank} />
             <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold shrink-0" style={typeBadgeStyle(goal, accent)}>{meta.label}</span>
             {goal.bank_or_provider && <span className="text-[11px] text-gray-400 truncate">{goal.bank_or_provider}</span>}
             <ItemCountBadge goal={goal} />
@@ -1248,8 +1255,42 @@ const PRIORITY_DOT = { high: '#E74C3C', medium: '#D4AF37', low: '#6B6B6B' }
 // Checklist of things to buy with this goal's savings — what used to be the
 // standalone Wishlist. Ticking an item marks it bought; it doesn't touch the
 // saved amount (log the spend as a negative contribution if you want that).
-function GoalItemsSection({ goal, items, accent, onAdd, onEdit, onToggle, onDelete, onUseTotalAsTarget }) {
+function GoalItemRow({ it, rank, accent, onEdit, onToggle, onDelete }) {
+  return (
+    <div className="flex items-start gap-3 px-5 py-3 group">
+      <DragHandle label={`Drag to reorder ${it.name}`} className="-my-1" />
+      <input type="checkbox" checked={Boolean(it.is_purchased)} onChange={() => onToggle(it)}
+        className="mt-1 w-4 h-4 rounded shrink-0 cursor-pointer" style={{ accentColor: accent }}
+        aria-label={`Mark ${it.name} as bought`} />
+      <button className="flex-1 min-w-0 text-left" onClick={() => onEdit(it)}>
+        <div className="flex items-center gap-1.5">
+          <OrderBadge n={rank} />
+          <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_DOT[it.priority] || PRIORITY_DOT.medium }} title={`${it.priority} priority`} />
+          <p className={`text-sm font-medium truncate ${it.is_purchased ? 'line-through text-gray-400' : 'text-gray-800'}`}>{it.name}</p>
+        </div>
+        {(it.brand || it.notes) && (
+          <p className="text-xs text-gray-400 mt-0.5 truncate">{[it.brand, it.notes].filter(Boolean).join(' · ')}</p>
+        )}
+      </button>
+      <div className="flex items-center gap-1 shrink-0">
+        {it.url && (
+          <a href={it.url} target="_blank" rel="noreferrer" title="Open link"
+            className="p-1.5 rounded-lg text-gray-700 hover:text-gold hover:bg-gray-100 text-xs">↗</a>
+        )}
+        <span className={`text-sm font-semibold w-20 text-right ${it.is_purchased ? 'text-gray-400' : 'text-gray-800'}`}>
+          {it.price != null ? fmtCr(it.price) : '—'}
+        </span>
+        <button onClick={() => onDelete(it)} title="Delete item"
+          className="p-1.5 rounded-lg text-gray-700 hover:text-red-500 hover:bg-red-50 transition-colors"><TrashIcon /></button>
+      </div>
+    </div>
+  )
+}
+
+function GoalItemsSection({ goal, items, accent, onAdd, onEdit, onToggle, onDelete, onUseTotalAsTarget, onReorder }) {
   const open = items.filter(i => !i.is_purchased)
+  const purchased = items.filter(i => i.is_purchased)
+  const openIds = open.map(i => i.id)
   const total = items.reduce((s, i) => s + (Number(i.price) || 0), 0)
   const remainingCost = open.reduce((s, i) => s + (Number(i.price) || 0), 0)
   const bought = items.length - open.length
@@ -1274,32 +1315,16 @@ function GoalItemsSection({ goal, items, accent, onAdd, onEdit, onToggle, onDele
         </div>
       ) : (
         <div className="divide-y divide-gray-50">
-          {items.map(it => (
-            <div key={it.id} className="flex items-start gap-3 px-5 py-3 group">
-              <input type="checkbox" checked={Boolean(it.is_purchased)} onChange={() => onToggle(it)}
-                className="mt-1 w-4 h-4 rounded shrink-0 cursor-pointer" style={{ accentColor: accent }}
-                aria-label={`Mark ${it.name} as bought`} />
-              <button className="flex-1 min-w-0 text-left" onClick={() => onEdit(it)}>
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: PRIORITY_DOT[it.priority] || PRIORITY_DOT.medium }} title={`${it.priority} priority`} />
-                  <p className={`text-sm font-medium truncate ${it.is_purchased ? 'line-through text-gray-400' : 'text-gray-800'}`}>{it.name}</p>
-                </div>
-                {(it.brand || it.notes) && (
-                  <p className="text-xs text-gray-400 mt-0.5 truncate">{[it.brand, it.notes].filter(Boolean).join(' · ')}</p>
-                )}
-              </button>
-              <div className="flex items-center gap-1 shrink-0">
-                {it.url && (
-                  <a href={it.url} target="_blank" rel="noreferrer" title="Open link"
-                    className="p-1.5 rounded-lg text-gray-700 hover:text-gold hover:bg-gray-100 text-xs">↗</a>
-                )}
-                <span className={`text-sm font-semibold w-20 text-right ${it.is_purchased ? 'text-gray-400' : 'text-gray-800'}`}>
-                  {it.price != null ? fmtCr(it.price) : '—'}
-                </span>
-                <button onClick={() => onDelete(it)} title="Delete item"
-                  className="p-1.5 rounded-lg text-gray-700 hover:text-red-500 hover:bg-red-50 transition-colors"><TrashIcon /></button>
-              </div>
-            </div>
+          {/* Open items follow "My Order" and can be dragged; bought items sit below, unnumbered. */}
+          <SortableList ids={openIds} onReorder={onReorder}>
+            {open.map((it, idx) => (
+              <SortableItem key={it.id} id={it.id} disabled={!onReorder || open.length < 2} className="bg-dark-card">
+                <GoalItemRow it={it} rank={idx + 1} accent={accent} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} />
+              </SortableItem>
+            ))}
+          </SortableList>
+          {purchased.map(it => (
+            <GoalItemRow key={it.id} it={it} accent={accent} onEdit={onEdit} onToggle={onToggle} onDelete={onDelete} />
           ))}
         </div>
       )}
@@ -1579,6 +1604,18 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
 }
 
 // ── Main Goals page ──────────────────────────────────────────────────────────
+// "My Order" is the user's own drag-and-drop sequence (goals.sort_order) and
+// the default; dragging only works while it's selected.
+const SORT_OPTIONS = [
+  { id: 'my', label: 'My Order' },
+  { id: 'deadline', label: 'Deadline' },
+  { id: 'progress', label: 'Progress' },
+  { id: 'target', label: 'Target amount' },
+  { id: 'name', label: 'Name' },
+]
+
+const bySortOrder = (a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || a.id - b.id
+
 export function GoalsContent() {
   const [goals, setGoals] = useState([])
   const [investments, setInvestments] = useState([])
@@ -1596,6 +1633,7 @@ export function GoalsContent() {
   const [itemModal, setItemModal] = useState(null) // null | {} (new) | item (edit)
   const [toast, setToast] = useState(null)
   const [cloneSource, setCloneSource] = useState(null)
+  const [sortBy, setSortBy] = useState('my')
 
   const showToast = (msg, type = 'ok') => {
     setToast({ msg, type })
@@ -1786,7 +1824,29 @@ export function GoalsContent() {
     if (ok) setItemModal(null)
   }
 
+  // Optimistic: the list reorders instantly, then one request saves it. A
+  // failed save puts the old order back and says so; success is silent.
+  const handleReorderItems = async (openIds) => {
+    const goalId = selectedGoal?.id
+    if (!goalId) return
+    const prev = items
+    const pos = new Map(openIds.map((id, i) => [id, i]))
+    setItems(list => {
+      const open = list.filter(i => !i.is_purchased).sort((a, b) => pos.get(a.id) - pos.get(b.id))
+        .map(i => ({ ...i, sort_order: pos.get(i.id) }))
+      return [...open, ...list.filter(i => i.is_purchased)]
+    })
+    try {
+      await bridge.reorderGoalItems(goalId, openIds)
+    } catch (e) {
+      console.error(e)
+      setItems(prev)
+      showToast('Could not save the new order', 'error')
+    }
+  }
+
   const itemHandlers = selectedGoal && {
+    onReorder: handleReorderItems,
     onAdd: () => setItemModal({}),
     onEdit: (it) => setItemModal(it),
     onToggle: (it) => runItemAction(
@@ -1810,20 +1870,48 @@ export function GoalsContent() {
     },
   }
 
-  const sorted = useMemo(() => {
+  const { sortedActive, sortedAchieved, rankById } = useMemo(() => {
     const active = goals.filter(g => !g.is_achieved)
     const achieved = goals.filter(g => g.is_achieved)
-    active.sort((a, b) => {
+    // Priority badge (#1, #2…) always reflects My Order, whichever sort is shown.
+    const rank = new Map([...active].sort(bySortOrder).map((g, i) => [g.id, i + 1]))
+    const byDeadline = (a, b) => {
       const da = daysRemaining(a.target_date)
       const db_ = daysRemaining(b.target_date)
       if (da === null && db_ === null) return 0
       if (da === null) return 1
       if (db_ === null) return -1
       return da - db_
-    })
+    }
+    const comparators = {
+      my: bySortOrder,
+      deadline: byDeadline,
+      progress: (a, b) => progressPct(b) - progressPct(a),
+      target: (a, b) => effectiveTarget(b) - effectiveTarget(a),
+      name: (a, b) => String(a.title || '').localeCompare(String(b.title || '')),
+    }
+    active.sort(comparators[sortBy] || bySortOrder)
     achieved.sort((a, b) => new Date(b.achieved_at || 0) - new Date(a.achieved_at || 0))
-    return [...active, ...achieved]
-  }, [goals])
+    return { sortedActive: active, sortedAchieved: achieved, rankById: rank }
+  }, [goals, sortBy])
+  const canReorder = sortBy === 'my' && sortedActive.length > 1
+
+  // Drop on the Goals page: optimistic, one request, revert + toast on failure.
+  // Achieved goals keep their relative order after the active ones.
+  const handleReorderGoals = async (activeIds) => {
+    const prev = goals
+    const achievedIds = goals.filter(g => g.is_achieved).sort(bySortOrder).map(g => g.id)
+    const ids = [...activeIds, ...achievedIds]
+    const pos = new Map(ids.map((id, i) => [id, i]))
+    setGoals(list => list.map(g => (pos.has(g.id) ? { ...g, sort_order: pos.get(g.id) } : g)))
+    try {
+      await bridge.reorderGoals(ids)
+    } catch (e) {
+      console.error(e)
+      setGoals(prev)
+      showToast('Could not save the new order', 'error')
+    }
+  }
 
   const activeGoals = goals.filter(g => !g.is_achieved)
   const achievedGoals = goals.filter(g => g.is_achieved)
@@ -1869,12 +1957,17 @@ export function GoalsContent() {
 
   return (
     <div className="p-6">
-      <div className="flex items-center justify-between mb-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Goals</h2>
           <p className="text-sm text-gray-500 mt-0.5">{activeGoals.length} active · {achievedGoals.length} achieved</p>
         </div>
         <div className="flex items-center gap-2">
+          <label className="sr-only" htmlFor="goals-sort">Sort goals</label>
+          <select id="goals-sort" value={sortBy} onChange={e => setSortBy(e.target.value)} title="Sort goals"
+            className="px-3 py-2.5 rounded-xl border border-gray-400 text-sm font-medium bg-[#1A1A1A] text-gray-200 focus:outline-none focus:ring-2 focus:ring-[#D4AF37]">
+            {SORT_OPTIONS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
           <div className="flex rounded-xl border border-gray-400 overflow-hidden">
             <button onClick={() => setView('grid')} title="Card grid view"
               className="p-2.5 transition-colors" style={{ backgroundColor: view === 'grid' ? '#D4AF37' : '#1A1A1A', color: view === 'grid' ? '#0A0A0A' : '#C4C4C4' }}>
@@ -1905,7 +1998,7 @@ export function GoalsContent() {
         <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
           {[1, 2, 3].map(i => <div key={i} className="h-56 bg-gray-100 rounded-2xl animate-pulse" />)}
         </div>
-      ) : sorted.length === 0 ? (
+      ) : goals.length === 0 ? (
         <div className="flex items-center justify-center h-56 rounded-2xl bg-dark-card border border-dashed border-gray-200">
           <div className="text-center">
             <p className="text-4xl mb-3">🎯</p>
@@ -1913,20 +2006,28 @@ export function GoalsContent() {
             <p className="text-sm text-gray-400 mt-1">+ Add Goal to start tracking an emergency fund, life goal, or debt payoff</p>
           </div>
         </div>
-      ) : view === 'grid' ? (
-        <div className="grid grid-cols-2 xl:grid-cols-3 gap-4">
-          {sorted.map(g => (
-            <GoalCardGrid key={g.id} goal={g} linkedInvestments={goalInvestmentsMap[g.id]}
-              onView={openDetail} onEdit={openWizard} onClone={setCloneSource} onDelete={handleDelete} onContribute={openContribution} />
-          ))}
-        </div>
       ) : (
-        <div className="space-y-2">
-          {sorted.map(g => (
-            <GoalListRow key={g.id} goal={g} linkedInvestments={goalInvestmentsMap[g.id]}
-              onView={openDetail} onEdit={openWizard} onClone={setCloneSource} onDelete={handleDelete} onContribute={openContribution} />
-          ))}
-        </div>
+        <>
+          {sortBy !== 'my' && sortedActive.length > 1 && <ReorderHint onSwitch={() => setSortBy('my')} />}
+          {(() => {
+            const Card = view === 'grid' ? GoalCardGrid : GoalListRow
+            const renderCard = (g) => (
+              <Card goal={g} rank={rankById.get(g.id)} linkedInvestments={goalInvestmentsMap[g.id]}
+                onView={openDetail} onEdit={openWizard} onClone={setCloneSource} onDelete={handleDelete} onContribute={openContribution} />
+            )
+            return (
+              <div className={view === 'grid' ? 'grid grid-cols-2 xl:grid-cols-3 gap-4' : 'space-y-2'}>
+                {/* Active goals are sortable (My Order only); achieved goals follow, fixed. */}
+                <SortableList ids={sortedActive.map(g => g.id)} onReorder={handleReorderGoals} layout={view}>
+                  {sortedActive.map(g => (
+                    <SortableItem key={g.id} id={g.id} disabled={!canReorder}>{renderCard(g)}</SortableItem>
+                  ))}
+                </SortableList>
+                {sortedAchieved.map(g => <div key={g.id}>{renderCard(g)}</div>)}
+              </div>
+            )
+          })()}
+        </>
       )}
 
       {showWizard && (

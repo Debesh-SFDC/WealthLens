@@ -48,6 +48,7 @@ export function initDatabase() {
   seedPlanningGoals()
   seedDreamVehicles()
   migrateWishlistToGoals()
+  migrateSortOrder()
   return db
 }
 
@@ -1418,6 +1419,66 @@ function migrateWishlistToGoals() {
         it.priority || 'medium', it.status === 'purchased' ? 1 : 0, it.notes ?? null,
         it.id, it.id, now, now
       )
+    }
+  })
+  tx()
+}
+
+// Manual sequencing ("My Order") for goals, goal checklist items, wishlist
+// collections and wishlist items. Each backfill runs only on the run that adds
+// the column, so the order people have dragged into place is never reset.
+// Mirrors the same step in scripts/setup-postgres.sql.
+function migrateSortOrder() {
+  const hasCol = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some(c => c.name === col)
+
+  const tx = db.transaction(() => {
+    if (!hasCol('goals', 'sort_order')) {
+      db.exec('ALTER TABLE goals ADD COLUMN sort_order INTEGER DEFAULT 0')
+      // One global order (the Goals page lists every goal together): soonest
+      // deadline first, goals without a deadline last, then oldest first.
+      const ids = db.prepare(`
+        SELECT id FROM goals
+        ORDER BY target_date IS NULL, target_date ASC, created_at ASC, id ASC
+      `).all()
+      const set = db.prepare('UPDATE goals SET sort_order = ? WHERE id = ?')
+      ids.forEach((r, i) => set.run(i, r.id))
+
+      // goal_items already had sort_order, but it held the source wishlist id
+      // (or 0) and was never read. Renumber per goal in today's display order (id).
+      const items = db.prepare('SELECT id, goal_id FROM goal_items ORDER BY goal_id, id').all()
+      const setItem = db.prepare('UPDATE goal_items SET sort_order = ? WHERE id = ?')
+      let lastGoal = null, n = 0
+      for (const it of items) {
+        if (it.goal_id !== lastGoal) { lastGoal = it.goal_id; n = 0 }
+        setItem.run(n++, it.id)
+      }
+    }
+
+    if (!hasCol('wishlist_items', 'sort_order')) {
+      db.exec('ALTER TABLE wishlist_items ADD COLUMN sort_order INTEGER DEFAULT 0')
+      const rows = db.prepare(`
+        SELECT id, user_id, collection_id FROM wishlist_items
+        ORDER BY user_id, COALESCE(collection_id, 0), created_at ASC, id ASC
+      `).all()
+      const set = db.prepare('UPDATE wishlist_items SET sort_order = ? WHERE id = ?')
+      let key = null, n = 0
+      for (const r of rows) {
+        const k = `${r.user_id}:${r.collection_id ?? 0}`
+        if (k !== key) { key = k; n = 0 }
+        set.run(n++, r.id)
+      }
+    }
+
+    // Collections already have sort_order — only number them (by id) for a
+    // user whose collections are all still 0.
+    const unordered = db.prepare(`
+      SELECT user_id FROM wishlist_collections
+      GROUP BY user_id HAVING MAX(COALESCE(sort_order, 0)) = 0 AND COUNT(*) > 1
+    `).all()
+    const setColl = db.prepare('UPDATE wishlist_collections SET sort_order = ? WHERE id = ?')
+    for (const { user_id } of unordered) {
+      db.prepare('SELECT id FROM wishlist_collections WHERE user_id = ? ORDER BY id').all(user_id)
+        .forEach((r, i) => setColl.run(i, r.id))
     }
   })
   tx()

@@ -44,6 +44,10 @@ const bridge = {
   cloneGoal: (goalId, newTitle) => IS_ELECTRON
     ? window.electronAPI.cloneGoal(goalId, newTitle)
     : webCall('POST', `/goals/${goalId}/clone`, { title: newTitle }),
+  // ids = every goal id in the new "My Order"
+  reorderGoals: (ids) => IS_ELECTRON
+    ? window.electronAPI.reorderGoals(ids)
+    : webCall('PUT', '/goals/reorder', { ids }),
   getGoalContributions: (goalId) => IS_ELECTRON
     ? window.electronAPI.getGoalContributions(goalId)
     : webCall('GET', `/goals/${goalId}/contributions`),
@@ -65,6 +69,9 @@ const bridge = {
   deleteGoalItem: (data) => IS_ELECTRON
     ? window.electronAPI.deleteGoalItem(data)
     : webCall('DELETE', `/goals/${data.goal_id}/items/${data.id}`),
+  reorderGoalItems: (goalId, ids) => IS_ELECTRON
+    ? window.electronAPI.reorderGoalItems(goalId, ids)
+    : webCall('PUT', `/goals/${goalId}/items/reorder`, { ids }),
 
   // Investments — real preload names
   getAllInvestments: (goalId) => IS_ELECTRON
@@ -293,6 +300,9 @@ const bridge = {
   moveWishlistItem: (itemId, collectionId) => IS_ELECTRON
     ? window.electronAPI.moveWishlistItem(itemId, collectionId)
     : webCall('PUT', `/wishlist/${itemId}/move`, { collection_id: collectionId }),
+  reorderWishlistItems: (collectionId, ids) => IS_ELECTRON
+    ? window.electronAPI.reorderWishlistItems(collectionId, ids)
+    : webCall('PUT', '/wishlist/reorder', { collection_id: collectionId, ids }),
 
   // Wishlist collections — folder-style grouping, scoped to the caller
   getWishlistCollections: () => IS_ELECTRON
@@ -307,6 +317,9 @@ const bridge = {
   deleteWishlistCollection: (id) => IS_ELECTRON
     ? window.electronAPI.deleteWishlistCollection(id)
     : webCall('DELETE', `/wishlist/collections/${id}`),
+  reorderWishlistCollections: (ids) => IS_ELECTRON
+    ? window.electronAPI.reorderWishlistCollections(ids)
+    : webCall('PUT', '/wishlist/collections/reorder', { ids }),
 
   // Goal ↔ Wishlist links — connect a savings goal to a wishlist collection
   getGoalWishlistLinks: () => IS_ELECTRON

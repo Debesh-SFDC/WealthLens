@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateGoal: (data) => ipcRenderer.invoke('goals:update', data),
   deleteGoal: (id) => ipcRenderer.invoke('goals:delete', id),
   cloneGoal: (goalId, title) => ipcRenderer.invoke('goals:clone', { goalId, title }),
+  reorderGoals: (ids) => ipcRenderer.invoke('goals:reorder', ids),
   syncGoalInvestment: (goalId) => ipcRenderer.invoke('goals:syncLinkedInvestment', goalId),
   getGoalContributions: (goalId) => ipcRenderer.invoke('goalContributions:getAll', goalId),
   addGoalContribution: (data) => ipcRenderer.invoke('goalContributions:create', data),
@@ -44,6 +45,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createGoalItem: (data) => ipcRenderer.invoke('goalItems:create', data),
   updateGoalItem: (data) => ipcRenderer.invoke('goalItems:update', data),
   deleteGoalItem: (data) => ipcRenderer.invoke('goalItems:delete', data),
+  reorderGoalItems: (goalId, ids) => ipcRenderer.invoke('goalItems:reorder', { goalId, ids }),
   getGoalInvestments: (goalId) => ipcRenderer.invoke('goalInvestments:getForGoal', goalId),
   getAllGoalInvestmentLinks: () => ipcRenderer.invoke('goalInvestments:getAllLinks'),
   setGoalInvestments: (goalId, investmentIds) => ipcRenderer.invoke('goalInvestments:setForGoal', { goalId, investmentIds }),
@@ -143,12 +145,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateWishlistItem:  (data)    => ipcRenderer.invoke('wishlist:update', data),
   deleteWishlistItem:  (id)      => ipcRenderer.invoke('wishlist:delete', id),
   moveWishlistItem:    (itemId, collectionId) => ipcRenderer.invoke('wishlist:moveItem', { itemId, collectionId }),
+  reorderWishlistItems: (collectionId, ids) => ipcRenderer.invoke('wishlist:reorderItems', { collectionId, ids }),
 
   // Wishlist collections
   getWishlistCollections:   ()     => ipcRenderer.invoke('wishlist:getCollections'),
   createWishlistCollection: (data) => ipcRenderer.invoke('wishlist:createCollection', data),
   updateWishlistCollection: (data) => ipcRenderer.invoke('wishlist:updateCollection', data),
   deleteWishlistCollection: (id)   => ipcRenderer.invoke('wishlist:deleteCollection', id),
+  reorderWishlistCollections: (ids) => ipcRenderer.invoke('wishlist:reorderCollections', ids),
 
   // Goal ↔ Wishlist links
   getGoalWishlistLinks:   ()     => ipcRenderer.invoke('goalWishlistLinks:getAll'),

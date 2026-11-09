@@ -827,3 +827,44 @@ FROM (
 ) m
 WHERE m.goal_id IS NOT NULL
   AND NOT EXISTS (SELECT 1 FROM goal_items gi WHERE gi.source_wishlist_item_id = m.id);
+
+-- ── Manual sequencing ("My Order") ───────────────────────────────────────────
+-- sort_order on goals and wishlist_items (wishlist_collections and goal_items
+-- already have it). Each backfill runs only when its column is first added, so
+-- re-running this script never resets an order the user dragged into place.
+-- Mirrors migrateSortOrder() in src/db/database.js.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name = 'goals' AND column_name = 'sort_order') THEN
+    ALTER TABLE goals ADD COLUMN sort_order INTEGER DEFAULT 0;
+    -- One global order: soonest deadline first, no deadline last, then oldest.
+    UPDATE goals g SET sort_order = r.rn
+    FROM (SELECT id, ROW_NUMBER() OVER (ORDER BY target_date ASC NULLS LAST, created_at ASC, id ASC) - 1 AS rn
+          FROM goals) r
+    WHERE g.id = r.id;
+    -- goal_items.sort_order held the source wishlist id (or 0) and was never
+    -- read; renumber per goal in today's display order (id).
+    UPDATE goal_items gi SET sort_order = r.rn
+    FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY goal_id ORDER BY id) - 1 AS rn FROM goal_items) r
+    WHERE gi.id = r.id;
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name = 'wishlist_items' AND column_name = 'sort_order') THEN
+    ALTER TABLE wishlist_items ADD COLUMN sort_order INTEGER DEFAULT 0;
+    UPDATE wishlist_items w SET sort_order = r.rn
+    FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY user_id, COALESCE(collection_id, 0)
+                                        ORDER BY created_at ASC, id ASC) - 1 AS rn
+          FROM wishlist_items) r
+    WHERE w.id = r.id;
+  END IF;
+END $$;
+
+-- Collections: only number them (by id) for a user whose collections are all 0.
+UPDATE wishlist_collections c SET sort_order = r.rn
+FROM (SELECT id, ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY id) - 1 AS rn
+      FROM wishlist_collections
+      WHERE user_id IN (SELECT user_id FROM wishlist_collections
+                        GROUP BY user_id HAVING MAX(COALESCE(sort_order, 0)) = 0 AND COUNT(*) > 1)) r
+WHERE c.id = r.id;

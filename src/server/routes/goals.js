@@ -1,6 +1,7 @@
 const express = require('express')
 const { randomUUID } = require('crypto')
 const { getDb } = require('../db')
+const { parseIds, buildReorder } = require('../reorder')
 
 const router = express.Router()
 
@@ -9,7 +10,7 @@ const GOALS_WITH_ITEM_COUNTS = `
   SELECT g.*,
     (SELECT CAST(COUNT(*) AS INTEGER) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL) AS item_count,
     (SELECT CAST(COUNT(*) AS INTEGER) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL AND i.is_purchased = 1) AS item_bought_count
-  FROM goals g WHERE g.deleted_at IS NULL ORDER BY g.created_at DESC`
+  FROM goals g WHERE g.deleted_at IS NULL ORDER BY g.sort_order ASC, g.id ASC`
 
 // GET /api/goals — mirrors goals:getAll
 router.get('/', async (req, res) => {
@@ -26,8 +27,9 @@ router.post('/', async (req, res) => {
   const { rows } = await db.query(
     `INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
        bank_or_provider, emoji, color, inflation_adjust, inflation_rate, monthly_emi, notes,
-       created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       created_at, updated_at, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM goals WHERE deleted_at IS NULL))
      RETURNING id`,
     [
       randomUUID(), d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
@@ -37,6 +39,20 @@ router.post('/', async (req, res) => {
     ]
   )
   res.json({ id: rows[0].id })
+})
+
+// PUT /api/goals/reorder — mirrors goals:reorder. Body { ids: [3, 1, 7] } is
+// the full new "My Order"; sort_order = index for each id in one statement.
+// Goals are a single global list (admin-only, like every route in this file),
+// so there is no per-user scope here. Registered before PUT /:id so "reorder"
+// is never read as an id.
+router.put('/reorder', async (req, res) => {
+  const ids = parseIds(req.body?.ids)
+  if (!ids) return res.status(400).json({ error: 'ids must be a non-empty array of unique goal ids' })
+  const db = getDb()
+  const { sql, params } = buildReorder('goals', ids, new Date().toISOString())
+  const { rowCount } = await db.query(sql, params)
+  res.json({ success: true, updated: rowCount })
 })
 
 // PUT /api/goals/:id — mirrors goals:update
@@ -70,15 +86,21 @@ router.post('/:id/clone', async (req, res) => {
   const g = src[0]
   const title = String(req.body?.title || '').trim() || `Copy of ${g.title}`
   const now = new Date().toISOString()
+  // The copy goes right after the original in "My Order": open a gap first.
+  const after = Number(g.sort_order) || 0
+  await db.query(
+    'UPDATE goals SET sort_order = sort_order + 1 WHERE sort_order > ? AND deleted_at IS NULL',
+    [after]
+  )
   const { rows } = await db.query(
     `INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
        bank_or_provider, emoji, color, inflation_adjust, inflation_rate, monthly_emi, notes,
-       is_achieved, achieved_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)
+       is_achieved, achieved_at, created_at, updated_at, sort_order)
+     VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?)
      RETURNING id`,
     [
       randomUUID(), title, g.type, g.category, g.target_amount, g.target_date, g.bank_or_provider,
-      g.emoji, g.color, g.inflation_adjust, g.inflation_rate, g.monthly_emi, g.notes, now, now,
+      g.emoji, g.color, g.inflation_adjust, g.inflation_rate, g.monthly_emi, g.notes, now, now, after + 1,
     ]
   )
   const { rows: created } = await db.query('SELECT * FROM goals WHERE id = ?', [rows[0].id])
@@ -148,7 +170,7 @@ router.delete('/:id/contributions/:cid', async (req, res) => {
 router.get('/:id/items', async (req, res) => {
   const db = getDb()
   const { rows } = await db.query(
-    'SELECT * FROM goal_items WHERE goal_id = ? AND deleted_at IS NULL ORDER BY is_purchased ASC, id ASC',
+    'SELECT * FROM goal_items WHERE goal_id = ? AND deleted_at IS NULL ORDER BY is_purchased ASC, sort_order ASC, id ASC',
     [req.params.id]
   )
   res.json(rows)
@@ -161,13 +183,27 @@ router.post('/:id/items', async (req, res) => {
   const db = getDb()
   const now = new Date().toISOString()
   const { rows } = await db.query(
-    `INSERT INTO goal_items (sync_id, goal_id, name, brand, url, price, priority, notes, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO goal_items (sync_id, goal_id, name, brand, url, price, priority, notes, created_at, updated_at, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM goal_items WHERE goal_id = ? AND deleted_at IS NULL))
      RETURNING id`,
     [randomUUID(), req.params.id, String(d.name).trim(), d.brand || null, d.url || null,
-      d.price === '' || d.price == null ? null : Number(d.price), d.priority || 'medium', d.notes || null, now, now]
+      d.price === '' || d.price == null ? null : Number(d.price), d.priority || 'medium', d.notes || null, now, now,
+      req.params.id]
   )
   res.json({ id: rows[0].id })
+})
+
+// PUT /api/goals/:id/items/reorder — mirrors goalItems:reorder. Body { ids }
+// is the new order of this goal's checklist; only rows of this goal change.
+// Registered before PUT /:id/items/:itemId so "reorder" isn't read as an id.
+router.put('/:id/items/reorder', async (req, res) => {
+  const ids = parseIds(req.body?.ids)
+  if (!ids) return res.status(400).json({ error: 'ids must be a non-empty array of unique item ids' })
+  const db = getDb()
+  const { sql, params } = buildReorder('goal_items', ids, new Date().toISOString(), 'AND goal_id = ?', [req.params.id])
+  const { rowCount } = await db.query(sql, params)
+  res.json({ success: true, updated: rowCount })
 })
 
 // PUT /api/goals/:id/items/:itemId — mirrors goalItems:update

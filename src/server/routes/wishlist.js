@@ -1,6 +1,7 @@
 const express = require('express')
 const { randomUUID } = require('crypto')
 const { getDb } = require('../db')
+const { parseIds, buildReorder } = require('../reorder')
 
 const router = express.Router()
 
@@ -25,7 +26,7 @@ router.get('/', async (req, res) => {
     query += ' AND collection_id = ?'; params.push(collection_id)
   }
   if (search)   { query += ' AND (name LIKE ? OR brand LIKE ?)'; params.push(`%${search}%`, `%${search}%`) }
-  query += ' ORDER BY created_at DESC'
+  query += ' ORDER BY sort_order ASC, id ASC'
   const { rows } = await db.query(query, params)
   res.json(rows)
 })
@@ -41,17 +42,37 @@ router.post('/', async (req, res) => {
   const now = new Date().toISOString()
   const { rows } = await db.query(
     `INSERT INTO wishlist_items (sync_id, user_id, name, brand, category, url, price, currency,
-       priority, status, purchase_timing, notes, group_name, target_month, target_year, collection_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       priority, status, purchase_timing, notes, group_name, target_month, target_year, collection_id, created_at, updated_at,
+       sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM wishlist_items
+         WHERE user_id = ? AND deleted_at IS NULL AND COALESCE(collection_id, 0) = COALESCE(?, 0)))
      RETURNING id`,
     [
       randomUUID(), req.user.id, d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null,
       d.price ?? null, d.currency ?? 'INR', d.priority ?? 'medium', d.status ?? 'wishlist',
       d.purchase_timing ?? 'No Plan', d.notes ?? null, d.group_name ?? null,
       d.target_month ?? null, d.target_year ?? null, d.collection_id ?? null, now, now,
+      req.user.id, d.collection_id ?? null,
     ]
   )
   res.json({ id: rows[0].id })
+})
+
+// PUT /api/wishlist/reorder — Body { collection_id, ids } is the new order of
+// the items in one collection (collection_id null = Uncategorized). Only the
+// caller's own rows in that collection change, all in one statement.
+// Registered before the /:id routes so "reorder" is never read as an id.
+router.put('/reorder', async (req, res) => {
+  const ids = parseIds(req.body?.ids)
+  if (!ids) return res.status(400).json({ error: 'ids must be a non-empty array of unique item ids' })
+  const collectionId = req.body?.collection_id ?? null
+  const db = getDb()
+  const { sql, params } = collectionId == null
+    ? buildReorder('wishlist_items', ids, new Date().toISOString(), 'AND user_id = ? AND collection_id IS NULL', [req.user.id])
+    : buildReorder('wishlist_items', ids, new Date().toISOString(), 'AND user_id = ? AND collection_id = ?', [req.user.id, collectionId])
+  const { rowCount } = await db.query(sql, params)
+  res.json({ success: true, updated: rowCount })
 })
 
 // PUT /api/wishlist/:id/move — move an item to a different collection (or to

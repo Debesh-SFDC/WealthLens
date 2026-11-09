@@ -1,6 +1,7 @@
 const express = require('express')
 const { randomUUID } = require('crypto')
 const { getDb } = require('../db')
+const { parseIds, buildReorder } = require('../reorder')
 
 const router = express.Router()
 
@@ -37,14 +38,29 @@ router.post('/', async (req, res) => {
   const { rows } = await db.query(
     `INSERT INTO wishlist_collections
        (sync_id, user_id, name, description, emoji, color, sort_order, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?,
+       COALESCE(?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM wishlist_collections
+                    WHERE user_id = ? AND deleted_at IS NULL)),
+       ?, ?)
      RETURNING id`,
     [
       randomUUID(), req.user.id, String(d.name).trim(), d.description ?? null,
-      d.emoji || '📦', d.color || '#6C63FF', d.sort_order ?? 0, now, now,
+      d.emoji || '📦', d.color || '#6C63FF', d.sort_order ?? null, req.user.id, now, now,
     ]
   )
   res.json({ id: rows[0].id })
+})
+
+// PUT /api/wishlist/collections/reorder — Body { ids } is the new order of the
+// caller's collections; one statement, scoped to req.user.id. Registered
+// before PUT /:id so "reorder" is never read as an id.
+router.put('/reorder', async (req, res) => {
+  const ids = parseIds(req.body?.ids)
+  if (!ids) return res.status(400).json({ error: 'ids must be a non-empty array of unique collection ids' })
+  const db = getDb()
+  const { sql, params } = buildReorder('wishlist_collections', ids, new Date().toISOString(), 'AND user_id = ?', [req.user.id])
+  const { rowCount } = await db.query(sql, params)
+  res.json({ success: true, updated: rowCount })
 })
 
 // PUT /api/wishlist/collections/:id — update name / description / emoji / color.
@@ -56,11 +72,11 @@ router.put('/:id', async (req, res) => {
   const now = new Date().toISOString()
   const { rowCount } = await db.query(
     `UPDATE wishlist_collections
-       SET name = ?, description = ?, emoji = ?, color = ?, sort_order = ?, updated_at = ?
+       SET name = ?, description = ?, emoji = ?, color = ?, sort_order = COALESCE(?, sort_order), updated_at = ?
      WHERE id = ? AND user_id = ?`,
     [
       String(d.name).trim(), d.description ?? null, d.emoji || '📦', d.color || '#6C63FF',
-      d.sort_order ?? 0, now, req.params.id, req.user.id,
+      d.sort_order ?? null, now, req.params.id, req.user.id,
     ]
   )
   if (!rowCount) return res.status(404).json({ error: 'Collection not found' })

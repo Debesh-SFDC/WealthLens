@@ -553,23 +553,47 @@ function setupIpcHandlers() {
     return { id: result.lastInsertRowid }
   })
 
+  // ── Manual sequencing ("My Order") ───────────────────────────────────────
+  // A drop sends the full new order; sort_order = index for every id, in one
+  // transaction. `scope` adds the ownership filter (e.g. 'AND user_id = ?').
+  const reorderRows = (table, rawIds, scope = '', scopeParams = []) => {
+    if (!Array.isArray(rawIds) || rawIds.length === 0) throw new Error('ids must be a non-empty array')
+    const ids = rawIds.map(Number)
+    if (ids.some(n => !Number.isInteger(n) || n <= 0) || new Set(ids).size !== ids.length) {
+      throw new Error('ids must be unique positive integers')
+    }
+    const now = new Date().toISOString()
+    const stmt = db.prepare(
+      `UPDATE ${table} SET sort_order = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL ${scope}`
+    )
+    let updated = 0
+    db.transaction(() => {
+      ids.forEach((id, i) => { updated += stmt.run(i, now, id, ...scopeParams).changes })
+    })()
+    return { success: true, updated }
+  }
+
   // ── Goals ─────────────────────────────────────────────────────────────────
   ipcMain.handle('goals:getAll', () => {
     return db.prepare(`
       SELECT g.*,
         (SELECT COUNT(*) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL) AS item_count,
         (SELECT COUNT(*) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL AND i.is_purchased = 1) AS item_bought_count
-      FROM goals g WHERE g.deleted_at IS NULL ORDER BY g.created_at DESC
+      FROM goals g WHERE g.deleted_at IS NULL ORDER BY g.sort_order ASC, g.id ASC
     `).all()
   })
+
+  // Goals are one global list, so no per-user scope (same as goals:update).
+  ipcMain.handle('goals:reorder', (_, ids) => reorderRows('goals', ids))
 
   ipcMain.handle('goals:create', (_, d) => {
     const deviceId = getOrCreateDeviceId()
     const result = db.prepare(`
       INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
         bank_or_provider, emoji, color, inflation_adjust, inflation_rate,
-        monthly_emi, notes, device_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        monthly_emi, notes, device_id, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM goals WHERE deleted_at IS NULL))
     `).run(
       randomUUID(), d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
       d.target_date ?? null, d.bank_or_provider ?? null,
@@ -603,17 +627,22 @@ function setupIpcHandlers() {
     const g = db.prepare('SELECT * FROM goals WHERE id = ? AND deleted_at IS NULL').get(goalId)
     if (!g) throw new Error('Goal not found')
     const deviceId = getOrCreateDeviceId()
-    const result = db.prepare(`
-      INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
-        bank_or_provider, emoji, color, inflation_adjust, inflation_rate,
-        monthly_emi, notes, is_achieved, achieved_at, device_id)
-      VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?)
-    `).run(
-      randomUUID(), String(title || '').trim() || `Copy of ${g.title}`, g.type, g.category, g.target_amount,
-      g.target_date, g.bank_or_provider, g.emoji, g.color, g.inflation_adjust, g.inflation_rate,
-      g.monthly_emi, g.notes, deviceId
-    )
-    return db.prepare('SELECT * FROM goals WHERE id = ?').get(result.lastInsertRowid)
+    // The copy goes right after the original in "My Order": open a gap first.
+    const after = Number(g.sort_order) || 0
+    const newId = db.transaction(() => {
+      db.prepare('UPDATE goals SET sort_order = sort_order + 1 WHERE sort_order > ? AND deleted_at IS NULL').run(after)
+      return db.prepare(`
+        INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
+          bank_or_provider, emoji, color, inflation_adjust, inflation_rate,
+          monthly_emi, notes, is_achieved, achieved_at, device_id, sort_order)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)
+      `).run(
+        randomUUID(), String(title || '').trim() || `Copy of ${g.title}`, g.type, g.category, g.target_amount,
+        g.target_date, g.bank_or_provider, g.emoji, g.color, g.inflation_adjust, g.inflation_rate,
+        g.monthly_emi, g.notes, deviceId, after + 1
+      ).lastInsertRowid
+    })()
+    return db.prepare('SELECT * FROM goals WHERE id = ?').get(newId)
   })
 
   ipcMain.handle('goals:delete', (_, id) => {
@@ -710,17 +739,22 @@ function setupIpcHandlers() {
   // ── Goal items — the shopping checklist inside a goal ─────────────────────
   ipcMain.handle('goalItems:getAll', (_, goalId) => {
     return db.prepare(
-      'SELECT * FROM goal_items WHERE goal_id = ? AND deleted_at IS NULL ORDER BY is_purchased ASC, id ASC'
+      'SELECT * FROM goal_items WHERE goal_id = ? AND deleted_at IS NULL ORDER BY is_purchased ASC, sort_order ASC, id ASC'
     ).all(goalId)
   })
+
+  ipcMain.handle('goalItems:reorder', (_, { goalId, ids } = {}) =>
+    reorderRows('goal_items', ids, 'AND goal_id = ?', [goalId]))
 
   ipcMain.handle('goalItems:create', (_, d = {}) => {
     const now = new Date().toISOString()
     const info = db.prepare(`
-      INSERT INTO goal_items (sync_id, goal_id, name, brand, url, price, priority, notes, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO goal_items (sync_id, goal_id, name, brand, url, price, priority, notes, created_at, updated_at, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM goal_items WHERE goal_id = ? AND deleted_at IS NULL))
     `).run(randomUUID(), d.goal_id, String(d.name || '').trim(), d.brand || null, d.url || null,
-      d.price === '' || d.price == null ? null : Number(d.price), d.priority || 'medium', d.notes || null, now, now)
+      d.price === '' || d.price == null ? null : Number(d.price), d.priority || 'medium', d.notes || null, now, now,
+      d.goal_id)
     return { id: info.lastInsertRowid }
   })
 
@@ -1588,22 +1622,34 @@ function setupIpcHandlers() {
       query += ' AND collection_id = ?'; params.push(collection_id)
     }
     if (search)   { query += ' AND (name LIKE ? OR brand LIKE ?)'; params.push(`%${search}%`, `%${search}%`) }
-    query += ' ORDER BY created_at DESC'
+    query += ' ORDER BY sort_order ASC, id ASC'
     return db.prepare(query).all(...params)
   })
+
+  // New order of the items in one collection (collectionId null = Uncategorized).
+  ipcMain.handle('wishlist:reorderItems', (_, { collectionId, ids } = {}) => collectionId == null
+    ? reorderRows('wishlist_items', ids, 'AND user_id = ? AND collection_id IS NULL', [currentUserSession?.id])
+    : reorderRows('wishlist_items', ids, 'AND user_id = ? AND collection_id = ?', [currentUserSession?.id, collectionId]))
+
+  ipcMain.handle('wishlist:reorderCollections', (_, ids) =>
+    reorderRows('wishlist_collections', ids, 'AND user_id = ?', [currentUserSession?.id]))
 
   ipcMain.handle('wishlist:create', (_, d = {}) => {
     if (!d.name) throw new Error('name is required')
     const now = new Date().toISOString()
     const info = db.prepare(`
       INSERT INTO wishlist_items (sync_id, user_id, name, brand, category, url, price, currency,
-        priority, status, purchase_timing, notes, group_name, target_month, target_year, collection_id, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        priority, status, purchase_timing, notes, group_name, target_month, target_year, collection_id, created_at, updated_at,
+        sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM wishlist_items
+          WHERE user_id = ? AND deleted_at IS NULL AND COALESCE(collection_id, 0) = COALESCE(?, 0)))
     `).run(
       randomUUID(), currentUserSession?.id, d.name, d.brand ?? null, d.category ?? 'Other', d.url ?? null,
       d.price ?? null, d.currency ?? 'INR', d.priority ?? 'medium', d.status ?? 'wishlist',
       d.purchase_timing ?? 'No Plan', d.notes ?? null, d.group_name ?? null,
-      d.target_month ?? null, d.target_year ?? null, d.collection_id ?? null, now, now
+      d.target_month ?? null, d.target_year ?? null, d.collection_id ?? null, now, now,
+      currentUserSession?.id, d.collection_id ?? null
     )
     return { id: info.lastInsertRowid }
   })
@@ -1662,10 +1708,13 @@ function setupIpcHandlers() {
     const now = new Date().toISOString()
     const info = db.prepare(`
       INSERT INTO wishlist_collections (sync_id, user_id, name, description, emoji, color, sort_order, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?,
+        COALESCE(?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM wishlist_collections
+                     WHERE user_id = ? AND deleted_at IS NULL)),
+        ?, ?)
     `).run(
       randomUUID(), currentUserSession?.id, String(d.name).trim(), d.description ?? null,
-      d.emoji || '📦', d.color || '#6C63FF', d.sort_order ?? 0, now, now
+      d.emoji || '📦', d.color || '#6C63FF', d.sort_order ?? null, currentUserSession?.id, now, now
     )
     return { id: info.lastInsertRowid }
   })
@@ -1674,11 +1723,12 @@ function setupIpcHandlers() {
     if (!d.name || !String(d.name).trim()) throw new Error('name is required')
     const now = new Date().toISOString()
     const info = db.prepare(`
-      UPDATE wishlist_collections SET name = ?, description = ?, emoji = ?, color = ?, sort_order = ?, updated_at = ?
+      UPDATE wishlist_collections SET name = ?, description = ?, emoji = ?, color = ?,
+        sort_order = COALESCE(?, sort_order), updated_at = ?
       WHERE id = ? AND user_id = ?
     `).run(
       String(d.name).trim(), d.description ?? null, d.emoji || '📦', d.color || '#6C63FF',
-      d.sort_order ?? 0, now, d.id, currentUserSession?.id
+      d.sort_order ?? null, now, d.id, currentUserSession?.id
     )
     if (!info.changes) throw new Error('Collection not found')
     return { success: true }
