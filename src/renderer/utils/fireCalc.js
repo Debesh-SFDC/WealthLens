@@ -1,64 +1,108 @@
 // Pure FIRE (Financial Independence, Retire Early) calculation engine.
 // No UI, no IPC — takes a plain inputs object, returns a plain results object.
+//
+// Model (all rows are "year Y", Y = currentYear + t):
+//   - Each included instrument is projected on its own:
+//       balance(0)   = currentBalance
+//       balance(t+1) = balance(t) × (1 + r) + monthly(t) × FV12(r)
+//       monthly(t)   = monthly0 × (1 + stepUp)^t          (t = 0 → no step-up)
+//       FV12(r)      = FV of 12 end-of-month deposits at rm = (1+r)^(1/12) − 1
+//   - Lump sums and the cash part of future expenses land in a separate "cash flows"
+//     bucket in their own year (including the current year), which then compounds at
+//     the portfolio's display-blended return.
+//   - Corpus(Y) = Σ instrument balances + cash-flow bucket (floored at 0 for display).
+//   - FI target(Y) = inflated life-stage expense × FI multiple + PV of EMIs still running.
 
 export const FIRE_MULTIPLIERS = { lean: 25, regular: 30, fat: 40, barista: 20 }
-const PROJECTION_YEARS = 40
+export const DEFAULT_RETIREMENT_DATE = '2041-08-12'
+const MIN_PROJECTION_YEARS = 40
+const MAX_PROJECTION_YEARS = 80
 const EMI_DISCOUNT_RATE = 0.07
 
-// Step 1 — blended return rate, weighted by each instrument's monthly contribution.
-// Falls back to weighting by current balance when nobody has a monthly contribution,
-// so a portfolio that's 100% lumpsum/EPF-passbook-only still yields a usable blend.
-export function computeBlended(instruments) {
-  const totalMonthly = instruments.reduce((s, i) => s + (Number(i.monthlyContribution) || 0), 0)
+// ── Input sanitising ───────────────────────────────────────────────────────
+// Blank / null / NaN → fallback. A real 0 stays 0.
+export function num(v, fallback = 0) {
+  if (v === null || v === undefined || v === '') return fallback
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
+const RATE_MIN = -50, RATE_MAX = 50 // % per year
+const rate = (v, fb = 0) => clamp(num(v, fb), RATE_MIN, RATE_MAX)
+const yearOrNull = v => {
+  const n = num(v, null)
+  return n != null && n >= 1900 && n <= 2200 ? Math.round(n) : null
+}
 
-  let blendedAnnual = 0
-  if (totalMonthly > 0) {
-    blendedAnnual = instruments.reduce((s, i) => {
-      const weight = (Number(i.monthlyContribution) || 0) / totalMonthly
-      return s + weight * (Number(i.annualReturnPct) || 0)
-    }, 0)
-  } else {
-    const totalBalance = instruments.reduce((s, i) => s + (Number(i.currentBalance) || 0), 0)
-    if (totalBalance > 0) {
-      blendedAnnual = instruments.reduce((s, i) => {
-        const weight = (Number(i.currentBalance) || 0) / totalBalance
-        return s + weight * (Number(i.annualReturnPct) || 0)
-      }, 0)
-    }
+// FV of 12 end-of-month deposits of 1 at an annual effective rate (percent).
+export function fv12(annualPct) {
+  const r = annualPct / 100
+  if (r <= -1) return 12
+  const rm = Math.pow(1 + r, 1 / 12) - 1
+  if (Math.abs(rm) < 1e-12) return 12
+  return (Math.pow(1 + rm, 12) - 1) / rm
+}
+
+function normalizeInstrument(i) {
+  return {
+    name: i?.name || 'Investment',
+    type: i?.type || null,
+    key: i?.key ?? null,
+    currentBalance: Math.max(0, num(i?.currentBalance, 0)),
+    monthlyContribution: Math.max(0, num(i?.monthlyContribution, 0)),
+    annualReturnPct: rate(i?.annualReturnPct, 0),
+    includeInCorpus: i?.includeInCorpus !== false,
+    isExtra: !!i?.isExtra,
+    note: i?.note || null, // UI-only: why it's excluded / where the rate came from
   }
+}
 
+// Display-only blended return, weighted by (balance + 12 × monthly SIP).
+export function computeBlended(instruments) {
+  const list = (instruments || []).map(normalizeInstrument)
+  const totalMonthly = list.reduce((s, i) => s + i.monthlyContribution, 0)
+  const totalWeight = list.reduce((s, i) => s + i.currentBalance + 12 * i.monthlyContribution, 0)
+  const blendedAnnual = totalWeight > 0
+    ? list.reduce((s, i) => s + (i.currentBalance + 12 * i.monthlyContribution) / totalWeight * i.annualReturnPct, 0)
+    : 0
   return { totalMonthly, blendedAnnual, blendedMonthly: blendedAnnual / 12 }
 }
 
-// Step 2 — auto-generate loan/EMI entries from financed future expenses.
+// ── Loans ──────────────────────────────────────────────────────────────────
 function generateLoansFromExpenses(futureExpenses, inflationPct, currentYear) {
   const generated = []
   for (const fe of futureExpenses) {
-    const financedPct = Number(fe.financedPct) || 0
-    if (financedPct <= 0) continue
-
-    const yearsFromNow = fe.year - currentYear
-    const loanAmount = Number(fe.costToday) * (financedPct / 100) * Math.pow(1 + inflationPct / 100, yearsFromNow)
-
-    const monthlyRate = (Number(fe.loanInterestPct) || 0) / 1200
-    const n = (Number(fe.loanTenureYears) || 0) * 12
+    if (fe.financedPct <= 0 || fe.year == null) continue
+    const n = Math.round(fe.loanTenureYears * 12)
     if (n <= 0) continue
-
-    const monthlyEmi = monthlyRate === 0
+    const yearsFromNow = Math.max(0, fe.year - currentYear)
+    // Loan principal is the financed share of the cost inflated to the purchase year.
+    const loanAmount = fe.costToday * (fe.financedPct / 100) * Math.pow(1 + inflationPct / 100, yearsFromNow)
+    const mr = fe.loanInterestPct / 1200
+    const monthlyEmi = mr === 0
       ? loanAmount / n
-      : loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, n)) / (Math.pow(1 + monthlyRate, n) - 1)
-
+      : loanAmount * (mr * Math.pow(1 + mr, n)) / (Math.pow(1 + mr, n) - 1)
     generated.push({
       name: fe.name,
       annualEmi: monthlyEmi * 12,
+      loanAmount,
       startYear: fe.year,
-      endYear: fe.year + Number(fe.loanTenureYears),
+      endYear: fe.year + Math.round(fe.loanTenureYears),
+      generated: true,
     })
   }
   return generated
 }
 
-// Step 4a — kid stage at a given year, gated by how many kids this scenario plans for.
+function emiPvAt(loans, year) {
+  const active = loans.filter(l => l.startYear <= year && year < l.endYear)
+  const pv = active.reduce((s, l) => {
+    const n = l.endYear - year
+    return s + l.annualEmi * (1 - Math.pow(1 + EMI_DISCOUNT_RATE, -n)) / EMI_DISCOUNT_RATE
+  }, 0)
+  return { active, pv }
+}
+
 function kidsAtYear(year, scenarioKidsPlanned, kid1Year, kid2Year) {
   let kids = 0
   if (scenarioKidsPlanned >= 1 && kid1Year != null && year >= kid1Year) kids = 1
@@ -66,146 +110,248 @@ function kidsAtYear(year, scenarioKidsPlanned, kid1Year, kid2Year) {
   return kids
 }
 
-function runScenario(inputs, resolved, scenarioKidsPlanned) {
-  const {
-    currentYear, currentAge, inflationPct, fiMultiple, fireType, baristaAnnualIncome,
-    expenseNoKids, expenseOneKid, expenseTwoKids, kid1Year, kid2Year,
-    sipStepUpPct, lumpSums, futureExpenses,
-  } = inputs
-  const { totalMonthly, blendedAnnual, blendedMonthly, initialCorpus, allLoans } = resolved
+// ── Normalise the whole inputs object once ─────────────────────────────────
+export function normalizeInputs(inputs = {}) {
+  const currentYear = Math.round(num(inputs.currentYear, new Date().getFullYear()))
+  const ageKnown = num(inputs.currentAge, null) != null
+  const currentAge = Math.round(clamp(num(inputs.currentAge, 30), 0, 120))
+  const inflationPct = clamp(num(inputs.inflationPct, 6), 0, 30)
+  const sipStepUpPct = clamp(num(inputs.sipStepUpPct, 0), -50, 100)
+  const fireType = FIRE_MULTIPLIERS[inputs.fireType] ? inputs.fireType : 'regular'
+  const override = num(inputs.fireTypeMultiplierOverride, null)
+  const fiMultiple = clamp(
+    override != null && override > 0 ? override : (FIRE_MULTIPLIERS[fireType] ?? num(inputs.fiMultiple, 30)),
+    1, 200
+  )
+  const baristaAnnualIncome = fireType === 'barista' ? Math.max(0, num(inputs.baristaAnnualIncome, 0)) : 0
 
-  const yearlyData = []
-  let prevCorpus = initialCorpus
-  let fireYear = null
+  const targetDateStr = typeof inputs.targetRetirementDate === 'string' && /^\d{4}-\d{2}-\d{2}/.test(inputs.targetRetirementDate)
+    ? inputs.targetRetirementDate.slice(0, 10) : null
+  const targetYear = targetDateStr ? Number(targetDateStr.slice(0, 4)) : null
 
-  for (let year = currentYear; year <= currentYear + PROJECTION_YEARS; year++) {
-    const yearsFromNow = year - currentYear
-    const kids = kidsAtYear(year, scenarioKidsPlanned, kid1Year, kid2Year)
+  const futureExpenses = (inputs.futureExpenses || []).map(fe => ({
+    name: fe?.name || 'Expense',
+    costToday: Math.max(0, num(fe?.costToday, 0)),
+    year: yearOrNull(fe?.year),
+    financedPct: clamp(num(fe?.financedPct, 0), 0, 100),
+    loanInterestPct: clamp(num(fe?.loanInterestPct, 0), 0, 50),
+    loanTenureYears: clamp(num(fe?.loanTenureYears, 0), 0, 40),
+  }))
+  const lumpSums = (inputs.lumpSums || []).map(ls => ({
+    name: ls?.name || 'Lump sum',
+    amount: num(ls?.amount, 0),
+    year: yearOrNull(ls?.year),
+  }))
+  const loans = (inputs.loans || []).map(l => ({
+    name: l?.name || 'Loan',
+    loanType: l?.loanType || 'other',
+    annualEmi: Math.max(0, num(l?.annualEmi, 0)),
+    startYear: yearOrNull(l?.startYear),
+    endYear: yearOrNull(l?.endYear),
+  })).filter(l => l.annualEmi > 0 && l.startYear != null && l.endYear != null && l.endYear > l.startYear)
 
-    let baseExpense = kids === 0 ? expenseNoKids : kids === 1 ? expenseOneKid : expenseTwoKids
-    if (fireType === 'barista' && baristaAnnualIncome) {
-      baseExpense = Math.max(0, baseExpense - baristaAnnualIncome)
-    }
+  const additionalInstruments = (inputs.additionalInstruments || []).map(a => ({
+    name: a?.name || 'Extra investment',
+    monthlyAmount: Math.max(0, num(a?.monthlyAmount, 0)),
+    annualReturnPct: rate(a?.annualReturnPct, 0),
+  })).filter(a => a.monthlyAmount > 0)
 
-    const expenseNominal = baseExpense * Math.pow(1 + inflationPct / 100, yearsFromNow)
-    const core = expenseNominal * fiMultiple
+  const kidsPlanned = clamp(Math.round(num(inputs.kidsPlanned, 0)), 0, 2)
 
-    const activeLoans = allLoans.filter(l => l.startYear <= year && year < l.endYear)
-    const totalEmiPv = activeLoans.reduce((s, l) => {
-      const n = l.endYear - year
-      return s + l.annualEmi * (1 - Math.pow(1 + EMI_DISCOUNT_RATE, -n)) / EMI_DISCOUNT_RATE
-    }, 0)
-    const fiTarget = core + totalEmiPv
-
-    let corpus
-    if (year === currentYear) {
-      corpus = initialCorpus
-    } else {
-      const monthlyRate = blendedMonthly / 100
-      const currentMonthly = totalMonthly * Math.pow(1 + sipStepUpPct / 100, yearsFromNow)
-      const sipContribution = monthlyRate === 0
-        ? currentMonthly * 12
-        : currentMonthly * (Math.pow(1 + monthlyRate, 12) - 1) / monthlyRate
-
-      corpus = prevCorpus * (1 + blendedAnnual / 100) + sipContribution
-
-      for (const ls of lumpSums) {
-        if (ls.year === year) corpus += Number(ls.amount) || 0
-      }
-
-      for (const fe of futureExpenses) {
-        if (fe.year === year) {
-          const financedPct = Number(fe.financedPct) || 0
-          const cashPortion = Number(fe.costToday) * Math.pow(1 + inflationPct / 100, yearsFromNow) * (1 - financedPct / 100)
-          corpus -= cashPortion
-          corpus = Math.max(0, corpus)
-        }
-      }
-    }
-
-    const gap = corpus - fiTarget
-    const hit = corpus >= fiTarget
-    if (hit && fireYear === null) fireYear = year
-
-    yearlyData.push({
-      year, age: currentAge + yearsFromNow, corpus, fiTarget, gap, hit,
-      expenseNominal, kidsAtThisYear: kids, activeLoans,
-    })
-
-    prevCorpus = corpus
-  }
-
-  const yearsToFIRE = fireYear !== null ? fireYear - currentYear : null
-  const ageAtFIRE = fireYear !== null ? currentAge + yearsToFIRE : null
-
-  return { fireYear, ageAtFIRE, yearsToFIRE, yearlyData }
-}
-
-function runFullCalc(instruments, inputs) {
-  const {
-    currentYear, currentAge, retirementAge,
-    sipStepUpPct = 0,
-    expenseNoKids = 0, expenseOneKid = 0, expenseTwoKids = 0,
-    kidsPlanned = 0, kid1Year = null, kid2Year = null,
-    inflationPct = 6, fiMultiple = 30, fireType = 'regular', fireTypeMultiplierOverride = null,
-    baristaAnnualIncome = null,
-    loans = [], futureExpenses = [], lumpSums = [],
-  } = inputs
-
-  const { totalMonthly, blendedAnnual, blendedMonthly } = computeBlended(instruments)
-  const initialCorpus = instruments.reduce((s, i) => s + (Number(i.currentBalance) || 0), 0)
-  const generatedLoans = generateLoansFromExpenses(futureExpenses, inflationPct, currentYear)
-  const allLoans = [...loans, ...generatedLoans]
-
-  const resolvedFiMultiple = fireTypeMultiplierOverride || FIRE_MULTIPLIERS[fireType] || fiMultiple || 30
-
-  const normalizedInputs = {
-    currentYear, currentAge, retirementAge, inflationPct,
-    fiMultiple: resolvedFiMultiple, fireType, baristaAnnualIncome,
-    expenseNoKids, expenseOneKid, expenseTwoKids, kid1Year, kid2Year,
-    sipStepUpPct, lumpSums, futureExpenses,
-  }
-  const resolved = { totalMonthly, blendedAnnual, blendedMonthly, initialCorpus, allLoans }
-
-  const scenarios = {
-    noKids: runScenario(normalizedInputs, resolved, 0),
-    oneKid: runScenario(normalizedInputs, resolved, 1),
-    twoKids: runScenario(normalizedInputs, resolved, 2),
-  }
-
-  const scenarioKeyByKidsPlanned = { 0: 'noKids', 1: 'oneKid', 2: 'twoKids' }
-  const selectedScenarioKey = scenarioKeyByKidsPlanned[kidsPlanned] || 'noKids'
+  const lastYear = Math.max(currentYear + MIN_PROJECTION_YEARS, targetYear != null ? targetYear + 1 : 0)
+  const projectionYears = Math.min(MAX_PROJECTION_YEARS, lastYear - currentYear)
 
   return {
-    blendedReturnPct: blendedAnnual,
-    totalMonthlyContribution: totalMonthly,
-    fiMultiple: resolvedFiMultiple,
-    generatedLoans,
-    scenarios,
-    selectedScenarioKey,
-    selectedScenario: scenarios[selectedScenarioKey],
+    currentYear, currentAge, ageKnown,
+    retirementAge: num(inputs.retirementAge, null),
+    targetRetirementDate: targetDateStr, targetYear,
+    inflationPct, sipStepUpPct, fireType, fiMultiple,
+    fiMultipleSource: override != null && override > 0 ? 'custom' : 'fireType',
+    baristaAnnualIncome,
+    expenseNoKids: Math.max(0, num(inputs.expenseNoKids, 0)),
+    expenseOneKid: Math.max(0, num(inputs.expenseOneKid, 0)),
+    expenseTwoKids: Math.max(0, num(inputs.expenseTwoKids, 0)),
+    kidsPlanned,
+    kid1Year: yearOrNull(inputs.kid1Year),
+    kid2Year: yearOrNull(inputs.kid2Year),
+    instruments: (inputs.instruments || []).map(normalizeInstrument),
+    additionalInstruments,
+    loans, futureExpenses, lumpSums,
+    projectionYears,
   }
 }
 
-// additionalInstruments: [{ name, monthlyAmount, annualReturnPct }] — hypothetical extra SIPs
-// from the "What If I Invest More?" simulator. When present, also runs the full projection
-// with them merged into the portfolio so the UI can show baseline vs. enhanced without a
-// second calculateFIRE() call.
-export function calculateFIRE(inputs) {
-  const { instruments = [], additionalInstruments = [] } = inputs
-  const baseline = runFullCalc(instruments, inputs)
+// ── Corpus projection (independent of kids scenario) ──────────────────────
+// Returns per-year corpus + per-year monthly contribution for the given instruments.
+function projectCorpus(n, instruments) {
+  const included = instruments.filter(i => i.includeInCorpus)
+  const { blendedAnnual } = computeBlended(included)
+  const factors = included.map(i => fv12(i.annualReturnPct))
+  const stepUp = 1 + n.sipStepUpPct / 100
+  const inflate = t => Math.pow(1 + n.inflationPct / 100, t)
 
-  if (!additionalInstruments.length) {
-    return { ...baseline, enhanced: null }
+  const balances = included.map(i => i.currentBalance)
+  let cashBucket = 0
+  const rows = []
+
+  for (let t = 0; t <= n.projectionYears; t++) {
+    const year = n.currentYear + t
+    if (t > 0) {
+      for (let k = 0; k < included.length; k++) {
+        const inst = included[k]
+        const monthlyPrev = inst.monthlyContribution * Math.pow(stepUp, t - 1)
+        balances[k] = balances[k] * (1 + inst.annualReturnPct / 100) + monthlyPrev * factors[k]
+      }
+      cashBucket *= 1 + blendedAnnual / 100
+    }
+    // Cash flows dated this year (current year included).
+    let lumpIn = 0, cashOut = 0
+    for (const ls of n.lumpSums) if (ls.year === year) lumpIn += ls.amount
+    for (const fe of n.futureExpenses) {
+      if (fe.year === year) cashOut += fe.costToday * inflate(t) * (1 - fe.financedPct / 100)
+    }
+    cashBucket += lumpIn - cashOut
+
+    const instrumentTotal = balances.reduce((s, b) => s + b, 0)
+    const rawCorpus = instrumentTotal + cashBucket
+    const monthlySip = included.reduce((s, i) => s + i.monthlyContribution, 0) * Math.pow(stepUp, t)
+    rows.push({
+      year, t,
+      corpus: Math.max(0, Number.isFinite(rawCorpus) ? rawCorpus : 0),
+      monthlySip: Number.isFinite(monthlySip) ? monthlySip : 0,
+      lumpIn, cashOut,
+    })
+  }
+  return { rows, blendedAnnual, totalMonthly: included.reduce((s, i) => s + i.monthlyContribution, 0) }
+}
+
+function scenarioTargets(n, allLoans, scenarioKidsPlanned) {
+  const out = []
+  for (let t = 0; t <= n.projectionYears; t++) {
+    const year = n.currentYear + t
+    const kids = kidsAtYear(year, scenarioKidsPlanned, n.kid1Year, n.kid2Year)
+    let baseExpense = kids === 0 ? n.expenseNoKids : kids === 1 ? n.expenseOneKid : n.expenseTwoKids
+    if (n.fireType === 'barista') baseExpense = Math.max(0, baseExpense - n.baristaAnnualIncome)
+    const expenseNominal = baseExpense * Math.pow(1 + n.inflationPct / 100, t)
+    const { active, pv } = emiPvAt(allLoans, year)
+    out.push({ year, kids, expenseNominal, activeLoans: active, emiPv: pv, fiTarget: expenseNominal * n.fiMultiple + pv })
+  }
+  return out
+}
+
+function buildScenario(n, corpusRows, targets) {
+  let fireYear = null
+  const yearlyData = corpusRows.map((c, idx) => {
+    const tg = targets[idx]
+    const gap = c.corpus - tg.fiTarget
+    // A zero target (no expenses entered) is not "FIRE reached".
+    const hit = tg.fiTarget > 0 && c.corpus >= tg.fiTarget
+    if (hit && fireYear === null) fireYear = c.year
+    return {
+      year: c.year, age: n.currentAge + c.t,
+      corpus: c.corpus, fiTarget: tg.fiTarget, gap, hit,
+      expenseNominal: tg.expenseNominal, kidsAtThisYear: tg.kids,
+      activeLoans: tg.activeLoans, emiPv: tg.emiPv,
+      monthlySip: c.monthlySip,
+    }
+  })
+  const yearsToFIRE = fireYear !== null ? fireYear - n.currentYear : null
+  return { fireYear, yearsToFIRE, ageAtFIRE: yearsToFIRE !== null ? n.currentAge + yearsToFIRE : null, yearlyData }
+}
+
+const SCENARIO_KEY_BY_KIDS = { 0: 'noKids', 1: 'oneKid', 2: 'twoKids' }
+
+function runFullCalc(n, instruments) {
+  const generatedLoans = generateLoansFromExpenses(n.futureExpenses, n.inflationPct, n.currentYear)
+  const allLoans = [...n.loans, ...generatedLoans]
+  const proj = projectCorpus(n, instruments)
+
+  const scenarios = {
+    noKids: buildScenario(n, proj.rows, scenarioTargets(n, allLoans, 0)),
+    oneKid: buildScenario(n, proj.rows, scenarioTargets(n, allLoans, 1)),
+    twoKids: buildScenario(n, proj.rows, scenarioTargets(n, allLoans, 2)),
+  }
+  const selectedScenarioKey = SCENARIO_KEY_BY_KIDS[n.kidsPlanned] || 'noKids'
+  const sel = scenarios[selectedScenarioKey]
+
+  let targetCheck = null
+  if (n.targetYear != null) {
+    const row = sel.yearlyData.find(r => r.year === n.targetYear)
+    if (row) {
+      targetCheck = {
+        targetDate: n.targetRetirementDate, targetYear: n.targetYear,
+        age: row.age, corpus: row.corpus, needed: row.fiTarget, gap: row.gap,
+        ahead: row.gap >= 0,
+      }
+    } else {
+      targetCheck = { targetDate: n.targetRetirementDate, targetYear: n.targetYear, outOfRange: true }
+    }
   }
 
-  const extraInstruments = additionalInstruments.map(a => ({
-    name: a.name,
-    currentBalance: 0,
-    monthlyContribution: Number(a.monthlyAmount) || 0,
-    annualReturnPct: Number(a.annualReturnPct) || 0,
-  }))
-  const enhanced = runFullCalc([...instruments, ...extraInstruments], inputs)
+  return {
+    blendedReturnPct: proj.blendedAnnual,
+    totalMonthlyContribution: proj.totalMonthly,
+    fiMultiple: n.fiMultiple,
+    generatedLoans,
+    allLoans,
+    scenarios,
+    selectedScenarioKey,
+    selectedScenario: sel,
+    targetCheck,
+  }
+}
 
-  return { ...baseline, enhanced }
+function extrasAsInstruments(additionalInstruments) {
+  return additionalInstruments.map(a => normalizeInstrument({
+    name: a.name, currentBalance: 0, monthlyContribution: a.monthlyAmount,
+    annualReturnPct: a.annualReturnPct, includeInCorpus: true, isExtra: true,
+  }))
+}
+
+// inputs.additionalInstruments: [{ name, monthlyAmount, annualReturnPct }] — hypothetical
+// extra SIPs from the "What If I Invest More?" simulator. When present, the projection
+// is also run with them merged in (`enhanced`).
+export function calculateFIRE(inputs = {}) {
+  const n = normalizeInputs(inputs)
+  const baseline = runFullCalc(n, n.instruments)
+  const enhanced = n.additionalInstruments.length
+    ? runFullCalc(n, [...n.instruments, ...extrasAsInstruments(n.additionalInstruments)])
+    : null
+  return { ...baseline, enhanced, inputsUsed: n }
+}
+
+// Smallest extra monthly SIP (stepping up at the same rate, earning the portfolio's
+// blended return) such that corpus ≥ FI target in the target year, for the selected
+// scenario. Solved by bisection. Returns:
+//   { extraMonthly: 0 } when already on track,
+//   { extraMonthly: X, returnPct } when reachable,
+//   { extraMonthly: null, reason } when no SIP can help (e.g. target is this year).
+export function solveExtraMonthlyForTarget(inputs = {}) {
+  const n = normalizeInputs({ ...inputs, additionalInstruments: [] })
+  if (n.targetYear == null) return { extraMonthly: null, reason: 'No target date' }
+  const base = runFullCalc(n, n.instruments)
+  const tc = base.targetCheck
+  if (!tc || tc.outOfRange) return { extraMonthly: null, reason: 'Target date outside projection range' }
+  if (tc.needed <= 0) return { extraMonthly: null, reason: 'No expenses entered' }
+  if (tc.gap >= 0) return { extraMonthly: 0, returnPct: base.blendedReturnPct }
+  if (n.targetYear <= n.currentYear) return { extraMonthly: null, reason: 'Target year is the current year — a new SIP has no time to grow' }
+
+  const returnPct = base.blendedReturnPct
+  const gapAt = x => {
+    const extra = normalizeInstrument({ name: 'Extra SIP', currentBalance: 0, monthlyContribution: x, annualReturnPct: returnPct, isExtra: true })
+    const r = runFullCalc(n, [...n.instruments, extra]).targetCheck
+    return r.gap
+  }
+  let lo = 0, hi = 1000
+  let guard = 0
+  while (gapAt(hi) < 0) {
+    lo = hi; hi *= 2
+    if (++guard > 40 || hi > 1e10) return { extraMonthly: null, reason: 'Not reachable with any realistic SIP' }
+  }
+  for (let i = 0; i < 60 && hi - lo > 1; i++) {
+    const mid = (lo + hi) / 2
+    if (gapAt(mid) >= 0) hi = mid
+    else lo = mid
+  }
+  return { extraMonthly: Math.ceil(hi), returnPct }
 }

@@ -3,7 +3,8 @@ import bridge from '../lib/bridge'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Legend,
 } from 'recharts'
-import { calculateFIRE, computeBlended } from '../utils/fireCalc'
+import { calculateFIRE, computeBlended, solveExtraMonthlyForTarget, DEFAULT_RETIREMENT_DATE } from '../utils/fireCalc'
+import Toast from './Toast'
 
 // ── Formatters ────────────────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -26,6 +27,13 @@ function computeAge(dob) {
   return a
 }
 
+// Blank/null/NaN → fallback; a real 0 stays 0 (unlike `Number(x) || fallback`).
+function numOr(v, fallback) {
+  if (v === null || v === undefined || v === '') return fallback
+  const n = Number(v)
+  return Number.isFinite(n) ? n : fallback
+}
+
 let rowIdSeq = 0
 const makeId = () => `r${++rowIdSeq}`
 
@@ -38,7 +46,8 @@ const TYPE_RETURN_DEFAULTS = {
 // Types where the user is expected to have set their own rate (interest_rate column) —
 // missing one of these means the FIRE calc is silently falling back to a generic default.
 const RATE_EDITABLE_TYPES = ['mf_sip', 'mf_lumpsum', 'stocks', 'fd', 'rd']
-const RECURRING_TYPES = ['mf_sip', 'epf', 'ppf', 'nps', 'rd']
+// Goal types whose linked investments are reserved cash, not retirement corpus.
+const NON_CORPUS_GOAL_TYPES = { emergency_fund: 'Emergency fund', opportunity_fund: 'Opportunity fund' }
 
 // Fund-specific return defaults, keyed by a substring match on the investment name —
 // checked before the generic per-type default so known funds (e.g. a midcap fund vs.
@@ -90,23 +99,49 @@ function effectiveBalance(inv) {
   return Number(inv.current_value) || 0
 }
 
-function buildInstruments(investments) {
+function instrumentKey(inv) {
+  return `inv:${inv.id ?? inv.sync_id ?? inv.name}`
+}
+
+// Maps investments → calc instruments. Rules:
+//  - monthly_sip_amount counts for every type except insurance.
+//  - insurance: interest_rate holds premium-paying YEARS, never a return — so it gets the
+//    generic default for display, no contributions, and is excluded from corpus by default.
+//  - investments linked to an emergency/opportunity-fund goal are excluded by default.
+//  - the per-instrument "Include in FIRE corpus" override wins over the default.
+function buildInstruments(investments, goalTypeById = {}, overrides = {}) {
   return investments.map(inv => {
+    const isInsurance = inv.type === 'insurance'
     const stored = Number(inv.interest_rate) || 0
-    const hasCustomRate = stored > 0
+    const hasCustomRate = !isInsurance && stored > 0
     const annualReturnPct = hasCustomRate
       ? stored
       : (resolveNamedReturnDefault(inv.name) ?? TYPE_RETURN_DEFAULTS[inv.type] ?? 8)
-    const monthlyContribution = RECURRING_TYPES.includes(inv.type) ? (Number(inv.monthly_sip_amount) || 0) : 0
+    const monthlyContribution = isInsurance ? 0 : Math.max(0, Number(inv.monthly_sip_amount) || 0)
+    const goalType = inv.goal_id != null ? goalTypeById[inv.goal_id] : null
+    let defaultInclude = true
+    let defaultReason = null
+    if (isInsurance) { defaultInclude = false; defaultReason = 'Insurance policy' }
+    else if (NON_CORPUS_GOAL_TYPES[goalType]) { defaultInclude = false; defaultReason = `${NON_CORPUS_GOAL_TYPES[goalType]} goal` }
+    const key = instrumentKey(inv)
+    const ov = overrides?.[key]
+    const includeInCorpus = typeof ov?.include === 'boolean' ? ov.include : defaultInclude
+    const note = !includeInCorpus
+      ? (typeof ov?.include === 'boolean' ? 'Excluded by you' : `Excluded by default — ${defaultReason}`)
+      : (typeof ov?.include === 'boolean' && !defaultInclude ? `Included by you (default off — ${defaultReason})` : null)
     return {
-      name: inv.name, type: inv.type,
+      key, name: inv.name, type: inv.type,
       currentBalance: effectiveBalance(inv),
       monthlyContribution,
       annualReturnPct,
       hasCustomRate,
+      includeInCorpus, defaultInclude, note,
     }
   })
 }
+
+// EMI/loan-looking lines in the salary plan's needs+wants (audit item f).
+const EMI_NAME_RE = /\b(emi|emis|loan|loans)\b/i
 
 // ── Chart colors (validated categorical set — see dataviz skill) ─────────
 const COLORS = {
@@ -115,6 +150,7 @@ const COLORS = {
   targetOneKid: '#3498DB',
   targetTwoKids: '#9B59B6',
   fire: '#F39C12',
+  target: '#2DD4BF',
 }
 
 const FIRE_TYPES = [
@@ -231,6 +267,10 @@ function CollapsibleSection({ title, open, onToggle, children }) {
   )
 }
 
+function SuggestedBadge() {
+  return <span className="ml-1.5 inline-block px-1.5 py-px rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200 align-middle">Suggested — please review</span>
+}
+
 function FieldRow({ label, hint, children }) {
   return (
     <div>
@@ -288,9 +328,10 @@ function LoanRow({ row, currentYear, onUpdate, onRemove }) {
         startYear: String(currentYear),
         endYear: String(currentYear + def.tenureYears),
         isExample: false,
+        suggested: false,
       })
     } else {
-      onUpdate(row._id, { loanType: 'other', isExample: false })
+      onUpdate(row._id, { loanType: 'other', isExample: false, suggested: false })
     }
   }
 
@@ -310,6 +351,7 @@ function LoanRow({ row, currentYear, onUpdate, onRemove }) {
 
       {/* Row 1 — type + custom name */}
       <div className="flex items-center gap-2 flex-wrap pr-16">
+        {row.suggested && <SuggestedBadge />}
         <select value={row.loanType || ''} onChange={e => handleTypeChange(e.target.value)}
           className={`${inputCls} w-auto min-w-[150px]`}>
           <option value="" disabled>Select loan type</option>
@@ -317,7 +359,7 @@ function LoanRow({ row, currentYear, onUpdate, onRemove }) {
         </select>
         {isOther && (
           <input placeholder="Loan name" value={row.name || ''}
-            onChange={e => onUpdate(row._id, { name: e.target.value, isExample: false })}
+            onChange={e => onUpdate(row._id, { name: e.target.value, isExample: false, suggested: false })}
             className={`${inputCls} flex-1 min-w-[120px]`} />
         )}
       </div>
@@ -326,17 +368,17 @@ function LoanRow({ row, currentYear, onUpdate, onRemove }) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
         <FieldRow label="Annual EMI ₹" hint="Total amount paid per year (monthly EMI × 12)">
           <input type="number" value={row.annualEmi ?? ''}
-            onChange={e => onUpdate(row._id, { annualEmi: e.target.value, isExample: false })}
+            onChange={e => onUpdate(row._id, { annualEmi: e.target.value, isExample: false, suggested: false })}
             className={inputCls} />
         </FieldRow>
         <FieldRow label="Start Year" hint="Year you took or will take this loan">
           <input type="number" value={row.startYear ?? ''}
-            onChange={e => onUpdate(row._id, { startYear: e.target.value, isExample: false })}
+            onChange={e => onUpdate(row._id, { startYear: e.target.value, isExample: false, suggested: false })}
             className={inputCls} />
         </FieldRow>
         <FieldRow label="End Year" hint="Year loan is fully paid off">
           <input type="number" value={row.endYear ?? ''}
-            onChange={e => onUpdate(row._id, { endYear: e.target.value, isExample: false })}
+            onChange={e => onUpdate(row._id, { endYear: e.target.value, isExample: false, suggested: false })}
             className={inputCls} />
         </FieldRow>
       </div>
@@ -616,15 +658,195 @@ const SCENARIO_PILLS = [
   ['twoKids', '2 Kids'],
 ]
 
+// ── Target-date card ──────────────────────────────────────────────────────
+function fmtDateLabel(iso) {
+  if (!iso) return '—'
+  const d = new Date(`${iso}T00:00:00`)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+function TargetDateCard({ targetDate, row, extraSip, stepUpPct }) {
+  if (!row) {
+    return (
+      <div className="bg-dark-card rounded-2xl border border-gray-100 p-4">
+        <p className="text-sm font-bold text-gray-800">🎯 Target retirement date: {fmtDateLabel(targetDate)}</p>
+        <p className="text-xs text-gray-500 mt-1">This date is outside the projection range.</p>
+      </div>
+    )
+  }
+  const ahead = row.gap >= 0
+  return (
+    <div className="bg-dark-card rounded-2xl border p-4 space-y-1.5" style={{ borderColor: ahead ? '#114333' : '#542020' }}>
+      <p className="text-sm font-bold text-gray-800">🎯 Target retirement date: {fmtDateLabel(targetDate)} <span className="font-normal text-gray-500">(age {row.age})</span></p>
+      <p className="text-xs text-gray-600">
+        At your target date: corpus <b className="text-gray-800">{fmtCr(row.corpus)}</b> vs needed <b className="text-gray-800">{fmtCr(row.fiTarget)}</b> →{' '}
+        <b style={{ color: ahead ? '#34D399' : '#F87171' }}>{ahead ? 'ahead' : 'short'} by {fmtCr(Math.abs(row.gap))}</b>
+      </p>
+      <p className="text-xs text-gray-600">
+        Extra monthly SIP needed to hit the target date:{' '}
+        {extraSip?.extraMonthly == null
+          ? <b className="text-gray-800">— <span className="font-normal text-gray-500">({extraSip?.reason || 'not computable'})</span></b>
+          : extraSip.extraMonthly === 0
+            ? <b style={{ color: '#34D399' }}>none — you're on track</b>
+            : <><b className="text-gray-800">{fmt(extraSip.extraMonthly)}/month</b> <span className="text-gray-500">starting now, stepping up {Number(stepUpPct).toFixed(0)}%/yr, at {Number(extraSip.returnPct).toFixed(1)}% return</span></>}
+      </p>
+      <p className="text-[10px] text-gray-400">Projection is yearly — the {row.year} row is used for this date.</p>
+    </div>
+  )
+}
+
+// ── "Inputs used in this calculation" panel ──────────────────────────────
+function KV({ k, v, warn }) {
+  return (
+    <div className="flex justify-between gap-3 py-1 border-b border-gray-50 text-xs">
+      <span className="text-gray-500">{k}</span>
+      <span className={`text-right font-medium ${warn ? 'text-amber-600' : 'text-gray-800'}`}>{v}</span>
+    </div>
+  )
+}
+
+function InputsUsedPanel({ results, context }) {
+  const [open, setOpen] = useState(false)
+  const n = results.inputsUsed
+  const included = n.instruments.filter(i => i.includeInCorpus)
+  const countedSip = included.reduce((s, i) => s + i.monthlyContribution, 0)
+  const includedBalance = included.reduce((s, i) => s + i.currentBalance, 0)
+  const planInv = context?.planInvestmentMonthly ?? null
+  const reconDiff = planInv != null && Math.max(planInv, countedSip) > 0
+    ? Math.abs(planInv - countedSip) / Math.max(planInv, countedSip) : 0
+  const reconWarn = planInv != null && reconDiff > 0.10
+  const yr = v => v ?? '—'
+
+  return (
+    <div className="bg-dark-card rounded-2xl border border-gray-100 overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50">
+        <span className="text-sm font-bold text-gray-800">🧾 Inputs used in this calculation</span>
+        <span className="text-xs text-gray-400">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 mt-2 mb-1">Profile & assumptions</p>
+              <KV k="Current age" v={`${n.currentAge}${n.ageKnown ? '' : ' (assumed — set DOB in Settings)'}`} warn={!n.ageKnown} />
+              <KV k="Current year" v={n.currentYear} />
+              <KV k="Target retirement date" v={n.targetRetirementDate ? `${fmtDateLabel(n.targetRetirementDate)} (${n.targetYear})` : '—'} />
+              <KV k="Retirement age (profile)" v={n.retirementAge != null ? `${n.retirementAge} — display only` : '—'} />
+              <KV k="Inflation" v={`${n.inflationPct}%/yr`} />
+              <KV k="FIRE type" v={n.fireType} />
+              <KV k="FI multiple" v={`${n.fiMultiple}× (${n.fiMultipleSource === 'custom' ? 'custom override' : 'from FIRE type'})`} />
+              {n.fireType === 'barista' && <KV k="Barista income" v={`${fmt(n.baristaAnnualIncome)}/yr`} />}
+              <KV k="SIP step-up" v={`${n.sipStepUpPct}%/yr (year 0 = no step-up)`} />
+              <KV k="Projection horizon" v={`${n.currentYear}–${n.currentYear + n.projectionYears}`} />
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 mt-2 mb-1">Living expenses (today's ₹/yr)</p>
+              <KV k="No kids" v={fmt(n.expenseNoKids)} warn={n.expenseNoKids === 0} />
+              <KV k="1 kid" v={fmt(n.expenseOneKid)} warn={n.kidsPlanned >= 1 && n.expenseOneKid === 0} />
+              <KV k="2 kids" v={fmt(n.expenseTwoKids)} warn={n.kidsPlanned >= 2 && n.expenseTwoKids === 0} />
+              <KV k="Kids planned" v={n.kidsPlanned} />
+              <KV k="Kid 1 arrives" v={yr(n.kid1Year)} warn={n.kidsPlanned >= 1 && n.kid1Year == null} />
+              <KV k="Kid 2 arrives" v={yr(n.kid2Year)} warn={n.kidsPlanned >= 2 && n.kid2Year == null} />
+            </div>
+          </div>
+
+          <div>
+            <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Instruments</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-400 border-b border-gray-100">
+                    <th className="text-left py-1.5">Name</th>
+                    <th className="text-left py-1.5 px-2">Type</th>
+                    <th className="text-right py-1.5 px-2">Balance</th>
+                    <th className="text-right py-1.5 px-2">Monthly SIP</th>
+                    <th className="text-right py-1.5 px-2">Return</th>
+                    <th className="text-right py-1.5">In corpus</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {n.instruments.map((i, idx) => (
+                    <tr key={idx} className={i.includeInCorpus ? '' : 'opacity-50'}>
+                      <td className="py-1.5 text-gray-700">{i.name}{i.note && <span className="block text-[10px] text-gray-400">{i.note}</span>}</td>
+                      <td className="py-1.5 px-2 text-gray-500">{i.type || '—'}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-800">{fmtCr(i.currentBalance)}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-700">{i.monthlyContribution ? fmt(i.monthlyContribution) : '—'}</td>
+                      <td className="py-1.5 px-2 text-right text-gray-700">{i.annualReturnPct.toFixed(2)}%</td>
+                      <td className="py-1.5 text-right font-semibold">{i.includeInCorpus ? 'Yes' : 'No'}</td>
+                    </tr>
+                  ))}
+                  {n.instruments.length === 0 && <tr><td colSpan={6} className="py-3 text-center text-gray-400">No instruments received</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-2">
+              <KV k="Included opening balance" v={fmtCr(includedBalance)} />
+              <KV k="Counted monthly SIPs (investments table)" v={`${fmt(countedSip)}/month`} />
+              <KV k="Blended return (display only — balance + 12×SIP weighted)" v={`${results.blendedReturnPct.toFixed(2)}%`} />
+              {planInv != null && (
+                <KV k="Salary plan investments vs counted SIPs"
+                  v={`${fmt(planInv)}/month vs ${fmt(countedSip)}/month${reconWarn ? ` ⚠️ differ by ${(reconDiff * 100).toFixed(0)}%` : ' ✓'}`}
+                  warn={reconWarn} />
+              )}
+              {reconWarn && (
+                <p className="text-[11px] text-amber-600 mt-1">
+                  ⚠️ Your salary plan invests a different amount each month than the SIPs recorded in Investments. Only the Investments table is used — update monthly SIP amounts there if they're out of date.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6">
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Loans / EMIs (PV added to FI target)</p>
+              {results.allLoans.length === 0 && <p className="text-xs text-gray-400 italic">None</p>}
+              {results.allLoans.map((l, i) => (
+                <KV key={i} k={`${l.name}${l.generated ? ' (from future expense)' : ''}`} v={`${fmt(l.annualEmi)}/yr · ${l.startYear}–${l.endYear}`} />
+              ))}
+              {context?.emiWarning && <p className="text-[11px] text-amber-600 mt-1">⚠️ {context.emiWarning}</p>}
+            </div>
+            <div>
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 mb-1">Future expenses (cash part deducted in that year)</p>
+              {n.futureExpenses.length === 0 && <p className="text-xs text-gray-400 italic">None</p>}
+              {n.futureExpenses.map((f, i) => (
+                <KV key={i} k={f.name} v={`${fmt(f.costToday)} today · ${f.year ?? 'no year — ignored'} · ${f.financedPct}% financed`} warn={f.year == null} />
+              ))}
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 mt-3 mb-1">Lump sums (added in that year)</p>
+              {n.lumpSums.length === 0 && <p className="text-xs text-gray-400 italic">None</p>}
+              {n.lumpSums.map((l, i) => (
+                <KV key={i} k={l.name} v={`${fmt(l.amount)} · ${l.year ?? 'no year — ignored'}`} warn={l.year == null} />
+              ))}
+              <p className="text-[10px] uppercase tracking-wide text-gray-400 mt-3 mb-1">Extra investments (simulator)</p>
+              {n.additionalInstruments.length === 0 && <p className="text-xs text-gray-400 italic">None</p>}
+              {n.additionalInstruments.map((a, i) => (
+                <KV key={i} k={a.name} v={`${fmt(a.monthlyAmount)}/month @ ${a.annualReturnPct}%`} />
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Results tab ────────────────────────────────────────────────────────────
-function FireResults({ results, form, currentYear, selectedScenarioKey, setSelectedScenarioKey, showAllYears, setShowAllYears }) {
+function FireResults({ results, form, currentYear, selectedScenarioKey, setSelectedScenarioKey, showAllYears, setShowAllYears, context }) {
   const sel = results.scenarios[selectedScenarioKey]
   const hc = heroPalette(sel.yearsToFIRE)
   const targetKey = selectedScenarioKey === 'noKids' ? 'fiTargetNoKids' : selectedScenarioKey === 'oneKid' ? 'fiTargetOneKid' : 'fiTargetTwoKids'
+  const targetYear = results.inputsUsed?.targetYear ?? null
+  const lastProjectedYear = sel.yearlyData[sel.yearlyData.length - 1]?.year ?? currentYear + 40
 
   const chartEndYear = Math.min(
-    currentYear + 40,
-    (sel.fireYear ?? currentYear + 35) + 5
+    lastProjectedYear,
+    Math.max((sel.fireYear ?? currentYear + 35) + 5, targetYear != null ? targetYear + 2 : 0)
+  )
+
+  // Target date check for the scenario being viewed (calc's targetCheck is for the planned one).
+  const targetRow = targetYear != null ? sel.yearlyData.find(r => r.year === targetYear) : null
+  const extraSip = useMemo(
+    () => solveExtraMonthlyForTarget({ ...results.lastInputs, kidsPlanned: { noKids: 0, oneKid: 1, twoKids: 2 }[selectedScenarioKey] }),
+    [results, selectedScenarioKey]
   )
 
   const enhSel = results.enhanced?.scenarios[selectedScenarioKey] ?? null
@@ -691,16 +913,16 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
     }
 
     if (sel.fireYear != null) {
-      const epfPpf = inputs.instruments.filter(i => ['epf', 'ppf'].includes(i.type))
+      const epfPpf = inputs.instruments.filter(i => ['epf', 'ppf'].includes(i.type) && i.includeInCorpus !== false)
       if (epfPpf.length > 0) {
-        const soloRes = calculateFIRE({ ...inputs, instruments: epfPpf })
+        const soloRes = calculateFIRE({ ...inputs, instruments: epfPpf, lumpSums: [], futureExpenses: [], additionalInstruments: [] })
         const row = soloRes.scenarios.noKids.yearlyData.find(r => r.year === sel.fireYear)
         if (row) chips.push(`💡 Your EPF + PPF alone will be worth ~${fmtCr(row.corpus)} by your FIRE year (${sel.fireYear})`)
       }
     }
 
-    if (sel.yearsToFIRE != null) {
-      const grownSip = results.totalMonthlyContribution * Math.pow(1 + Number(inputs.sipStepUpPct) / 100, sel.yearsToFIRE)
+    if (sel.yearsToFIRE != null && results.totalMonthlyContribution > 0) {
+      const grownSip = sel.yearlyData.find(r => r.year === sel.fireYear)?.monthlySip ?? 0
       chips.push(`💡 At FIRE, your SIP will have grown to ${fmt(grownSip)}/month (from step-up)`)
     }
 
@@ -720,7 +942,7 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
           </>
         ) : (
           <>
-            <p className="text-2xl font-bold mb-1" style={{ color: hc.text }}>🔥 FIRE not reached in the next 40 years</p>
+            <p className="text-2xl font-bold mb-1" style={{ color: hc.text }}>🔥 FIRE not reached within the projection</p>
             <p className="text-sm" style={{ color: hc.text }}>Try increasing your SIP, step-up %, or reconsidering your FIRE type.</p>
           </>
         )}
@@ -788,9 +1010,19 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
               <ReferenceLine x={sel.fireYear} stroke={COLORS.fire} strokeDasharray="4 4" strokeWidth={1.5}
                 label={{ value: 'FIRE! 🔥', position: 'top', fill: COLORS.fire, fontSize: 12, fontWeight: 700 }} />
             )}
+            {targetYear != null && targetYear <= chartEndYear && (
+              <ReferenceLine x={targetYear} stroke={COLORS.target} strokeWidth={1.5}
+                label={{ value: `Target ${targetYear}`, position: 'insideTopLeft', fill: COLORS.target, fontSize: 11, fontWeight: 700 }} />
+            )}
           </LineChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Target retirement date check */}
+      {targetYear != null && (
+        <TargetDateCard targetDate={results.inputsUsed.targetRetirementDate} row={targetRow}
+          extraSip={extraSip} stepUpPct={results.inputsUsed.sipStepUpPct} />
+      )}
 
       {/* Year by year table */}
       <div className="bg-dark-card rounded-2xl border border-gray-100 p-4">
@@ -811,13 +1043,12 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
             </thead>
             <tbody className="divide-y divide-gray-50">
               {visibleRows.map(row => {
-                const yearsFromNow = row.year - currentYear
-                const monthlySip = results.totalMonthlyContribution * Math.pow(1 + Number(results.lastInputs.sipStepUpPct) / 100, yearsFromNow)
+                const monthlySip = row.monthlySip
                 const isFireYear = row.year === sel.fireYear
                 const gapPctAbs = row.fiTarget > 0 ? Math.abs(row.gap) / row.fiTarget : 1
                 const status = row.hit ? '✅ FIRE Ready' : (gapPctAbs < 0.1 ? '🎯 Almost' : '⏳ Building')
                 return (
-                  <tr key={row.year} className={isFireYear ? 'bg-emerald-50 font-semibold' : ''}>
+                  <tr key={row.year} className={isFireYear ? 'bg-emerald-50 font-semibold' : row.year === targetYear ? 'bg-amber-50' : ''}>
                     <td className="py-2 pr-2 text-gray-700">{row.year}</td>
                     <td className="py-2 px-2 text-right text-gray-700">{row.age}</td>
                     <td className="py-2 px-2 text-right text-gray-700">{row.kidsAtThisYear}</td>
@@ -840,6 +1071,8 @@ function FireResults({ results, form, currentYear, selectedScenarioKey, setSelec
           </button>
         )}
       </div>
+
+      <InputsUsedPanel results={results} context={context} />
 
       {/* Insights */}
       {insights.length > 0 && (
@@ -865,6 +1098,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState(null)
   const [activePlan, setActivePlan] = useState(null)
+  const [goals, setGoals] = useState([])
   const [saving, setSaving] = useState(false)
   const [results, setResults] = useState(null)
   const [selectedScenarioKey, setSelectedScenarioKey] = useState('noKids')
@@ -878,6 +1112,8 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
   const [loansAutoSeeded, setLoansAutoSeeded] = useState(false)
   const [showPrefillBanner, setShowPrefillBanner] = useState(false)
   const [pendingAutoCalculate, setPendingAutoCalculate] = useState(false)
+  const [toast, setToast] = useState(null) // { message, type }
+  const showToast = (message, type = 'success') => setToast({ message, type })
 
   const [form, setForm] = useState({
     fireType: 'regular',
@@ -889,10 +1125,12 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
     kidsPlanned: 0,
     kid1Year: '', kid2Year: '',
     inflationPct: '6',
+    expensesSuggested: false, // pre-filled living expenses not yet reviewed
     loans: [],
     futureExpenses: [],
     lumpSums: [],
     additionalInstruments: [],
+    instrumentOverrides: {}, // { [investmentKey]: { include: bool } }
   })
 
   useEffect(() => {
@@ -900,14 +1138,34 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
     ;(async () => {
       setLoading(true)
       try {
-        const [profileRes, planRes, savedRes] = await Promise.all([
+        // allSettled so one failing call (e.g. fire-settings) doesn't wipe out
+        // profile/plan, and a load error is surfaced rather than read as "never saved".
+        const [profileR, planR, savedR, goalsR] = await Promise.allSettled([
           bridge.getProfile(),
           bridge.getActivePlan(),
-          window.electronAPI.getFireSettings(),
+          bridge.getFireSettings(),
+          bridge.getAllGoals(),
         ])
         if (cancelled) return
-        setProfile(profileRes)
-        setActivePlan(planRes)
+        if (profileR.status === 'fulfilled') setProfile(profileR.value)
+        if (planR.status === 'fulfilled') setActivePlan(planR.value)
+        if (goalsR.status === 'fulfilled') setGoals(goalsR.value || [])
+        const failed = [
+          profileR.status === 'rejected' && 'profile',
+          planR.status === 'rejected' && 'salary plan',
+          savedR.status === 'rejected' && 'saved FIRE settings',
+          goalsR.status === 'rejected' && 'goals',
+        ].filter(Boolean)
+        if (failed.length) {
+          ;[profileR, planR, savedR, goalsR].forEach(r => r.status === 'rejected' && console.error(r.reason))
+          showToast(`Could not load ${failed.join(', ')} — showing defaults`, 'error')
+        }
+        const savedRes = savedR.status === 'fulfilled' ? savedR.value : null
+        const parseList = v => {
+          if (Array.isArray(v)) return v
+          if (typeof v === 'string') { try { const p = JSON.parse(v); return Array.isArray(p) ? p : [] } catch { return [] } }
+          return []
+        }
         if (savedRes) {
           setForm(f => ({
             ...f,
@@ -923,33 +1181,34 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
             kid2Year: savedRes.kid2_year ? String(savedRes.kid2_year) : '',
             inflationPct: String(savedRes.inflation_pct ?? 6),
             baristaAnnualIncome: savedRes.barista_income ? String(savedRes.barista_income) : '',
-            loans: (savedRes.loans_json || []).map(r => ({ ...r, _id: makeId() })),
-            futureExpenses: (savedRes.future_expenses_json || []).map(r => ({ ...r, _id: makeId() })),
-            lumpSums: (savedRes.lump_sums_json || []).map(r => ({ ...r, _id: makeId() })),
-            additionalInstruments: (savedRes.additional_instruments_json || []).map(r => ({ ...r, _id: makeId() })),
+            loans: parseList(savedRes.loans_json).map(r => ({ ...r, _id: makeId() })),
+            futureExpenses: parseList(savedRes.future_expenses_json).map(r => ({ ...r, _id: makeId() })),
+            lumpSums: parseList(savedRes.lump_sums_json).map(r => ({ ...r, _id: makeId() })),
+            additionalInstruments: parseList(savedRes.additional_instruments_json).map(r => ({ ...r, _id: makeId() })),
+            instrumentOverrides: (savedRes.instrument_overrides_json && typeof savedRes.instrument_overrides_json === 'object' && !Array.isArray(savedRes.instrument_overrides_json))
+              ? savedRes.instrument_overrides_json : {},
           }))
-          if ((savedRes.loans_json || []).length > 0) setLoansAutoSeeded(true)
-        } else {
-          // Never saved before — seed with the user's known real-world numbers so
-          // Results are meaningful on first open instead of a blank calculator.
+          if (parseList(savedRes.loans_json).length > 0) setLoansAutoSeeded(true)
+        } else if (savedR.status === 'fulfilled') {
+          // Never saved before — seed with suggested numbers so Results are meaningful
+          // on first open. Every pre-filled value is flagged "Suggested — please review"
+          // until edited, and the auto-calculation below does NOT save them.
           setForm(f => ({
             ...f,
             expenseNoKids: '1800000',
             expenseOneKid: '2200000',
             expenseTwoKids: '2600000',
+            expensesSuggested: true,
             kidsPlanned: 1,
             kid1Year: '2028',
             kid2Year: '',
             loans: [
-              { _id: makeId(), loanType: 'home', name: '', annualEmi: '0', startYear: '2026', endYear: '2026' },
-              { _id: makeId(), loanType: 'car', name: '', annualEmi: '34200', startYear: '2026', endYear: '2029' },
+              { _id: makeId(), loanType: 'car', name: '', annualEmi: '34200', startYear: '2026', endYear: '2029', suggested: true },
             ],
             futureExpenses: [
-              { _id: makeId(), name: 'Next Car', costToday: '800000', year: '2027', financedPct: '60', loanInterestPct: '9', loanTenureYears: '3' },
+              { _id: makeId(), name: 'Next Car', costToday: '800000', year: '2027', financedPct: '60', loanInterestPct: '9', loanTenureYears: '3', suggested: true },
             ],
-            lumpSums: [
-              { _id: makeId(), name: 'Opportunity Fund deployment', amount: '900000', year: '2026' },
-            ],
+            lumpSums: [],
           }))
           setLoansAutoSeeded(true) // real (pre-filled) loans already present — don't also seed generic examples
           setShowPrefillBanner(true)
@@ -957,6 +1216,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
         }
       } catch (e) {
         console.error(e)
+        showToast(`FIRE planner failed to load: ${e.message || e}`, 'error')
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -969,21 +1229,32 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
   useEffect(() => {
     if (!loading && pendingAutoCalculate) {
       setPendingAutoCalculate(false)
-      handleCalculate()
+      handleCalculate({ save: false })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, pendingAutoCalculate])
 
   const age = profile?.date_of_birth ? computeAge(profile.date_of_birth) : null
   const retirementAge = profile?.retirement_age || 60
+  const targetRetirementDate = profile?.retirement_date || DEFAULT_RETIREMENT_DATE
   const currentYear = new Date().getFullYear()
 
-  const instrumentsForCalc = useMemo(() => buildInstruments(investments), [investments])
+  const goalTypeById = useMemo(() => Object.fromEntries((goals || []).map(g => [g.id, g.type])), [goals])
+  const instrumentsForCalc = useMemo(
+    () => buildInstruments(investments, goalTypeById, form.instrumentOverrides),
+    [investments, goalTypeById, form.instrumentOverrides]
+  )
+  function toggleInstrumentInclude(inst) {
+    setForm(f => ({ ...f, instrumentOverrides: { ...(f.instrumentOverrides || {}), [inst.key]: { include: !inst.includeInCorpus } } }))
+  }
   const missingRateInvestments = useMemo(
     () => investments.filter(inv => RATE_EDITABLE_TYPES.includes(inv.type) && !(Number(inv.interest_rate) > 0)),
     [investments]
   )
-  const previewBlended = useMemo(() => computeBlended(instrumentsForCalc).blendedAnnual, [instrumentsForCalc])
+  const previewBlended = useMemo(
+    () => computeBlended(instrumentsForCalc.filter(i => i.includeInCorpus)).blendedAnnual,
+    [instrumentsForCalc]
+  )
 
   const suggestedAnnualExpense = useMemo(() => {
     if (!activePlan?.items) return 0
@@ -992,6 +1263,23 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
       .reduce((s, i) => s + (Number(i.amount) || 0), 0) * 12
   }, [activePlan])
 
+  // Salary plan "investment" lines — shown for reconciliation only, never counted.
+  const planInvestmentMonthly = useMemo(() => {
+    if (!activePlan?.items) return null
+    return activePlan.items
+      .filter(i => i.category === 'investment')
+      .reduce((s, i) => s + (Number(i.amount) || 0), 0)
+  }, [activePlan])
+
+  // Audit item f: EMI-like lines inside needs+wants + loans entered → possible double count.
+  const emiWarning = useMemo(() => {
+    const items = (activePlan?.items || []).filter(i => (i.category === 'needs' || i.category === 'wants') && EMI_NAME_RE.test(i.name || ''))
+    const hasLoans = form.loans.some(l => Number(l.annualEmi) > 0 && Number(l.endYear) > currentYear) ||
+      form.futureExpenses.some(f2 => Number(f2.financedPct) > 0)
+    if (!items.length || !hasLoans) return null
+    const monthly = items.reduce((s, i) => s + (Number(i.amount) || 0), 0)
+    return `Your salary plan's needs+wants include ${fmt(monthly)}/month of EMI/loan lines (${items.map(i => i.name).join(', ')}). If your living-expense figure came from "Use this", those EMIs may be counted twice — once in expenses and again under Loans/EMIs. Remove them from one place.`
+  }, [activePlan, form.loans, form.futureExpenses, currentYear])
   function updateForm(patch) { setForm(f => ({ ...f, ...patch })) }
   function addRow(listKey, row) { setForm(f => ({ ...f, [listKey]: [...f[listKey], { ...row, _id: makeId() }] })) }
   function updateRow(listKey, id, patch) { setForm(f => ({ ...f, [listKey]: f[listKey].map(r => r._id === id ? { ...r, ...patch } : r) })) }
@@ -1007,21 +1295,25 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
     toggleSection('loans')
   }
 
+  const calcInputs = useMemo(() => buildCalcInputs(), // eslint-disable-line react-hooks/exhaustive-deps
+    [form, instrumentsForCalc, age, retirementAge, targetRetirementDate, currentYear])
+  const calcInputsBaseline = useMemo(() => ({ ...calcInputs, additionalInstruments: [] }), [calcInputs])
+
   function buildCalcInputs() {
     return {
       currentYear,
-      currentAge: age ?? 30,
+      currentAge: age, // null → calc assumes 30 and flags it in "Inputs used"
       retirementAge,
+      targetRetirementDate,
       instruments: instrumentsForCalc,
-      sipStepUpPct: Number(form.sipStepUpPct) || 0,
+      sipStepUpPct: numOr(form.sipStepUpPct, 0),
       expenseNoKids: Number(form.expenseNoKids) || 0,
       expenseOneKid: Number(form.expenseOneKid) || 0,
       expenseTwoKids: Number(form.expenseTwoKids) || 0,
       kidsPlanned: Number(form.kidsPlanned) || 0,
       kid1Year: form.kid1Year ? Number(form.kid1Year) : null,
       kid2Year: form.kid2Year ? Number(form.kid2Year) : null,
-      inflationPct: Number(form.inflationPct) || 6,
-      fiMultiple: 30,
+      inflationPct: numOr(form.inflationPct, 6),
       fireType: form.fireType,
       fireTypeMultiplierOverride: form.useCustomMultiple ? (Number(form.customMultiple) || null) : null,
       baristaAnnualIncome: form.fireType === 'barista' ? (Number(form.baristaAnnualIncome) || 0) : null,
@@ -1032,15 +1324,17 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
           name: loanDisplayName(l), loanType: l.loanType || 'other',
           annualEmi: Number(l.annualEmi) || 0,
           startYear: Number(l.startYear), endYear: Number(l.endYear),
+          ...(l.suggested ? { suggested: true } : {}),
         })),
       futureExpenses: form.futureExpenses.filter(f2 => f2.name).map(f2 => ({
-        name: f2.name, costToday: Number(f2.costToday) || 0, year: Number(f2.year),
+        name: f2.name, costToday: Number(f2.costToday) || 0, year: f2.year ? Number(f2.year) : null,
+        ...(f2.suggested ? { suggested: true } : {}),
         financedPct: Number(f2.financedPct) || 0,
         loanInterestPct: Number(f2.loanInterestPct) || 0,
         loanTenureYears: Number(f2.loanTenureYears) || 0,
       })),
       lumpSums: form.lumpSums.filter(l => l.name).map(l => ({
-        name: l.name, amount: Number(l.amount) || 0, year: Number(l.year),
+        name: l.name, amount: Number(l.amount) || 0, year: l.year ? Number(l.year) : null,
       })),
       additionalInstruments: form.additionalInstruments
         .filter(r => Number(r.monthlyAmount) > 0)
@@ -1062,27 +1356,28 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
     if (!sectionsOpen.additionalInvestments) toggleSection('additionalInvestments')
   }
 
-  async function handleCalculate() {
+  async function handleCalculate({ save = true } = {}) {
     const inputs = buildCalcInputs()
     const res = calculateFIRE(inputs)
     setResults({ ...res, lastInputs: inputs })
     setSelectedScenarioKey(res.selectedScenarioKey)
     setTab('results')
     setShowAllYears(false)
+    if (!save) return
 
     setSaving(true)
     try {
-      await window.electronAPI.saveFireSettings({
+      await bridge.saveFireSettings({
         fire_type: form.fireType,
         fi_multiple: form.useCustomMultiple ? (Number(form.customMultiple) || null) : null,
-        sip_step_up_pct: Number(form.sipStepUpPct) || 10,
+        sip_step_up_pct: numOr(form.sipStepUpPct, 10),
         expense_no_kids: Number(form.expenseNoKids) || 0,
         expense_one_kid: Number(form.expenseOneKid) || 0,
         expense_two_kids: Number(form.expenseTwoKids) || 0,
         kids_planned: Number(form.kidsPlanned) || 0,
         kid1_year: form.kid1Year ? Number(form.kid1Year) : null,
         kid2_year: form.kid2Year ? Number(form.kid2Year) : null,
-        inflation_pct: Number(form.inflationPct) || 6,
+        inflation_pct: numOr(form.inflationPct, 6),
         barista_income: form.fireType === 'barista' ? (Number(form.baristaAnnualIncome) || 0) : null,
         loans_json: inputs.loans,
         future_expenses_json: inputs.futureExpenses,
@@ -1090,9 +1385,12 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
         additional_instruments_json: form.additionalInstruments
           .filter(r => Number(r.monthlyAmount) > 0)
           .map(r => ({ type: r.type, customName: r.customName || '', monthlyAmount: Number(r.monthlyAmount) || 0, annualReturnPct: Number(r.annualReturnPct) || 0 })),
+        instrument_overrides_json: form.instrumentOverrides || {},
       })
+      showToast('FIRE settings saved')
     } catch (e) {
       console.error(e)
+      showToast(`Could not save FIRE settings: ${e.message || e}`, 'error')
     } finally {
       setSaving(false)
     }
@@ -1104,6 +1402,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
 
   return (
     <div className={standalone ? '' : 'bg-dark-card rounded-2xl border border-gray-100 shadow-sm mb-4 overflow-hidden'}>
+      <Toast message={toast?.message} type={toast?.type} visible={!!toast} onHide={() => setToast(null)} />
       {standalone ? (
         results?.selectedScenario?.fireYear && (
           <div className="flex items-center gap-3 mb-4">
@@ -1166,7 +1465,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                   <CollapsibleSection title="Your Profile" open={sectionsOpen.profile} onToggle={() => toggleSection('profile')}>
                     <div className="grid grid-cols-3 gap-3">
                       <InfoTile label="Current Age" value={age != null ? `${age} yrs` : '—'} hint={age == null ? 'Set DOB in Settings' : null} />
-                      <InfoTile label="Target Retirement Age" value={`${retirementAge} yrs`} />
+                      <InfoTile label="Target Retirement" value={fmtDateLabel(targetRetirementDate)} hint={profile?.retirement_date ? null : 'Default — set in Settings'} />
                       <InfoTile label="Current Year" value={String(currentYear)} />
                     </div>
 
@@ -1231,19 +1530,24 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                             <th className="text-right py-1.5">Balance</th>
                             <th className="text-right py-1.5">Monthly SIP</th>
                             <th className="text-right py-1.5">Return %</th>
+                            <th className="text-right py-1.5 pl-2" title="Include in FIRE corpus">In FIRE corpus</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
                           {instrumentsForCalc.map((i, idx) => (
-                            <tr key={idx}>
-                              <td className="py-1.5 text-gray-700">{i.name}</td>
+                            <tr key={i.key || idx} className={i.includeInCorpus ? '' : 'opacity-50'}>
+                              <td className="py-1.5 text-gray-700">{i.name}{i.note && <span className="block text-[10px] text-gray-400">{i.note}</span>}</td>
                               <td className="py-1.5 text-right font-medium text-gray-800">{fmtCr(i.currentBalance)}</td>
                               <td className="py-1.5 text-right text-gray-700">{i.monthlyContribution ? fmt(i.monthlyContribution) : '—'}</td>
                               <td className={`py-1.5 text-right font-medium ${i.hasCustomRate ? 'text-gray-700' : 'text-amber-600'}`}>{i.annualReturnPct.toFixed(2)}%</td>
+                              <td className="py-1.5 pl-2 text-right">
+                                <input type="checkbox" checked={i.includeInCorpus} onChange={() => toggleInstrumentInclude(i)}
+                                  aria-label={`Include ${i.name} in FIRE corpus`} />
+                              </td>
                             </tr>
                           ))}
                           {instrumentsForCalc.length === 0 && (
-                            <tr><td colSpan={4} className="py-4 text-center text-gray-400">No investments found</td></tr>
+                            <tr><td colSpan={5} className="py-4 text-center text-gray-400">No investments found</td></tr>
                           )}
                         </tbody>
                       </table>
@@ -1252,6 +1556,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
 
                     <div className="px-4 py-3 rounded-xl bg-indigo-50 border border-indigo-100">
                       <p className="text-sm font-bold text-indigo-700">📊 Your blended return: {previewBlended.toFixed(1)}%/year</p>
+                      <p className="text-[10px] text-indigo-500 mt-0.5">Display only — each instrument is projected at its own rate. Insurance and emergency/opportunity-fund holdings are off by default.</p>
                     </div>
 
                     <FieldRow label="Annual SIP step-up %">
@@ -1262,15 +1567,16 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
 
                   {/* Section C — Living Expenses */}
                   <CollapsibleSection title="Living Expenses (Today's ₹)" open={sectionsOpen.expenses} onToggle={() => toggleSection('expenses')}>
+                    {form.expensesSuggested && <p className="text-xs text-amber-700"><SuggestedBadge /> These figures are pre-filled estimates.</p>}
                     <div className="grid grid-cols-3 gap-3">
                       <FieldRow label="No kids (₹/year)">
-                        <input type="number" className={inputCls} value={form.expenseNoKids} onChange={e => updateForm({ expenseNoKids: e.target.value })} />
+                        <input type="number" className={inputCls} value={form.expenseNoKids} onChange={e => updateForm({ expenseNoKids: e.target.value, expensesSuggested: false })} />
                       </FieldRow>
                       <FieldRow label="With 1 kid (₹/year)">
-                        <input type="number" className={inputCls} value={form.expenseOneKid} onChange={e => updateForm({ expenseOneKid: e.target.value })} />
+                        <input type="number" className={inputCls} value={form.expenseOneKid} onChange={e => updateForm({ expenseOneKid: e.target.value, expensesSuggested: false })} />
                       </FieldRow>
                       <FieldRow label="With 2 kids (₹/year)">
-                        <input type="number" className={inputCls} value={form.expenseTwoKids} onChange={e => updateForm({ expenseTwoKids: e.target.value })} />
+                        <input type="number" className={inputCls} value={form.expenseTwoKids} onChange={e => updateForm({ expenseTwoKids: e.target.value, expensesSuggested: false })} />
                       </FieldRow>
                     </div>
                     {suggestedAnnualExpense > 0 && (
@@ -1278,10 +1584,15 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                         <p className="text-xs text-blue-800">
                           Based on your current salary plan ({fmt(suggestedAnnualExpense / 12)}/mo in needs+wants — ~{fmtCr(suggestedAnnualExpense)}/year). Increase this for lifestyle inflation if needed.
                         </p>
-                        <button onClick={() => updateForm({ expenseNoKids: String(Math.round(suggestedAnnualExpense)) })}
+                        <button onClick={() => updateForm({ expenseNoKids: String(Math.round(suggestedAnnualExpense)), expensesSuggested: false })}
                           className="shrink-0 px-3 py-1 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700">
                           Use this
                         </button>
+                      </div>
+                    )}
+                    {emiWarning && (
+                      <div className="px-3 py-2.5 rounded-xl bg-amber-50 border border-amber-200">
+                        <p className="text-xs text-amber-800">⚠️ {emiWarning}</p>
                       </div>
                     )}
                   </CollapsibleSection>
@@ -1339,18 +1650,19 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                       )}
                       {form.futureExpenses.map(row => (
                         <div key={row._id} className="p-3 rounded-xl bg-gray-50 border border-gray-100 space-y-2">
+                          {row.suggested && <SuggestedBadge />}
                           <div className="flex items-center gap-2 flex-wrap">
                             <input placeholder="Item (e.g. Car purchase)" value={row.name}
-                              onChange={e => updateRow('futureExpenses', row._id, { name: e.target.value })}
+                              onChange={e => updateRow('futureExpenses', row._id, { name: e.target.value, suggested: false })}
                               className={`${inputCls} flex-1 min-w-[140px]`} />
                             <input type="number" placeholder="Today's cost ₹" value={row.costToday}
-                              onChange={e => updateRow('futureExpenses', row._id, { costToday: e.target.value })}
+                              onChange={e => updateRow('futureExpenses', row._id, { costToday: e.target.value, suggested: false })}
                               className={`${inputCls} w-32`} />
                             <input type="number" placeholder="Year" value={row.year}
-                              onChange={e => updateRow('futureExpenses', row._id, { year: e.target.value })}
+                              onChange={e => updateRow('futureExpenses', row._id, { year: e.target.value, suggested: false })}
                               className={`${inputCls} w-24`} />
                             <input type="number" placeholder="Financed %" value={row.financedPct}
-                              onChange={e => updateRow('futureExpenses', row._id, { financedPct: e.target.value })}
+                              onChange={e => updateRow('futureExpenses', row._id, { financedPct: e.target.value, suggested: false })}
                               className={`${inputCls} w-24`} />
                             <button onClick={() => removeRow('futureExpenses', row._id)} className="ml-auto text-gray-400 hover:text-red-500 text-sm font-bold px-1.5 shrink-0">×</button>
                           </div>
@@ -1358,10 +1670,10 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                             <div className="flex items-center gap-2 pl-1">
                               <span className="text-[11px] text-gray-400 shrink-0">Loan:</span>
                               <input type="number" placeholder="Rate %" value={row.loanInterestPct}
-                                onChange={e => updateRow('futureExpenses', row._id, { loanInterestPct: e.target.value })}
+                                onChange={e => updateRow('futureExpenses', row._id, { loanInterestPct: e.target.value, suggested: false })}
                                 className={`${inputCls} w-20`} />
                               <input type="number" placeholder="Tenure yrs" value={row.loanTenureYears}
-                                onChange={e => updateRow('futureExpenses', row._id, { loanTenureYears: e.target.value })}
+                                onChange={e => updateRow('futureExpenses', row._id, { loanTenureYears: e.target.value, suggested: false })}
                                 className={`${inputCls} w-24`} />
                             </div>
                           )}
@@ -1398,8 +1710,8 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                       rows={form.additionalInstruments}
                       currentYear={currentYear}
                       investments={investments}
-                      calcInputsWithExtras={buildCalcInputs()}
-                      calcInputsBaseline={{ ...buildCalcInputs(), additionalInstruments: [] }}
+                      calcInputsWithExtras={calcInputs}
+                      calcInputsBaseline={calcInputsBaseline}
                       onAdd={() => addAdditionalInvestmentRow()}
                       onUpdate={(id, patch) => updateRow('additionalInstruments', id, patch)}
                       onRemove={id => removeRow('additionalInstruments', id)}
@@ -1407,7 +1719,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                     />
                   </CollapsibleSection>
 
-                  <button onClick={handleCalculate} disabled={saving}
+                  <button onClick={() => handleCalculate()} disabled={saving}
                     className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-sm font-bold shadow-sm transition-colors disabled:opacity-60">
                     {saving ? 'Saving…' : '🔥 Calculate FIRE'}
                   </button>
@@ -1418,6 +1730,7 @@ export default function FirePlanner({ investments = [], onNavigate, standalone =
                     results={results} form={form} currentYear={currentYear}
                     selectedScenarioKey={selectedScenarioKey} setSelectedScenarioKey={setSelectedScenarioKey}
                     showAllYears={showAllYears} setShowAllYears={setShowAllYears}
+                    context={{ planInvestmentMonthly, emiWarning }}
                   />
                 )
               )}

@@ -1157,6 +1157,7 @@ function setupIpcHandlers() {
       future_expenses_json: row.future_expenses_json ? JSON.parse(row.future_expenses_json) : [],
       lump_sums_json: row.lump_sums_json ? JSON.parse(row.lump_sums_json) : [],
       additional_instruments_json: row.additional_instruments_json ? JSON.parse(row.additional_instruments_json) : [],
+      instrument_overrides_json: row.instrument_overrides_json ? JSON.parse(row.instrument_overrides_json) : {},
     }
   })
 
@@ -1171,6 +1172,7 @@ function setupIpcHandlers() {
       JSON.stringify(d.future_expenses_json ?? []),
       JSON.stringify(d.lump_sums_json ?? []),
       JSON.stringify(d.additional_instruments_json ?? []),
+      JSON.stringify(d.instrument_overrides_json ?? {}),
     ]
     if (existing) {
       db.prepare(`
@@ -1180,7 +1182,7 @@ function setupIpcHandlers() {
           kids_planned = ?, kid1_year = ?, kid2_year = ?,
           inflation_pct = ?, barista_income = ?,
           loans_json = ?, future_expenses_json = ?, lump_sums_json = ?,
-          additional_instruments_json = ?,
+          additional_instruments_json = ?, instrument_overrides_json = ?,
           updated_at = datetime('now')
         WHERE id = ?
       `).run(...params, existing.id)
@@ -1193,8 +1195,8 @@ function setupIpcHandlers() {
         kids_planned, kid1_year, kid2_year,
         inflation_pct, barista_income,
         loans_json, future_expenses_json, lump_sums_json,
-        additional_instruments_json, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        additional_instruments_json, instrument_overrides_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     `).run(...params)
     return { id: result.lastInsertRowid }
   })

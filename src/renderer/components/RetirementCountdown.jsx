@@ -110,6 +110,7 @@ export default function RetirementCountdown({
   const [fire, setFire] = useState(null)
   const [currentNetWorth, setCurrentNetWorth] = useState(currentNetWorthProp ?? 0)
   const [scenarioKids, setScenarioKids] = useState(null) // null until fire settings load
+  const [fireLoadError, setFireLoadError] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -117,7 +118,7 @@ export default function RetirementCountdown({
       setLoading(true)
       const [prof, fireRes, stats] = await Promise.all([
         profileProp ? Promise.resolve(profileProp) : bridge.getProfile().catch(() => null),
-        bridge.getFireSettings().catch(() => null),
+        bridge.getFireSettings().catch(e => { console.error('getFireSettings failed', e); setFireLoadError(true); return null }),
         currentNetWorthProp != null ? Promise.resolve(null) : bridge.getDashboardStats().catch(() => null),
       ])
       if (cancelled) return
@@ -273,6 +274,8 @@ export default function RetirementCountdown({
         ) : (
           <p className="mt-4 text-xs text-white/55">Add your annual expenses in the FIRE Planner to see your target corpus.</p>
         )
+      ) : fireLoadError ? (
+        <p className="mt-4 text-xs" style={{ color: '#F87171' }}>⚠️ Couldn't load FIRE settings — target corpus unavailable.</p>
       ) : (
         <p className="mt-4 text-xs text-white/55">Set up the FIRE Planner to see your target.</p>
       )}

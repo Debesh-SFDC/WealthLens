@@ -152,8 +152,8 @@ const bridge = {
     ? window.electronAPI.saveProfile(data)
     : webCall('PUT', '/profile', data),
 
-  // FIRE planner settings — Electron-only today (no web route yet); callers
-  // treat a rejection as "not set up".
+  // FIRE planner settings — IPC in Electron, /api/fire-settings on web.
+  // Resolves null when never saved; rejects on a real load/save failure.
   getFireSettings: () => IS_ELECTRON
     ? window.electronAPI.getFireSettings()
     : webCall('GET', '/fire-settings'),

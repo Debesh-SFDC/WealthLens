@@ -752,10 +752,12 @@ function createFirePlannerTable() {
       future_expenses_json TEXT,
       lump_sums_json     TEXT,
       additional_instruments_json TEXT,
+      instrument_overrides_json TEXT,
       updated_at         TEXT DEFAULT (datetime('now'))
     );
   `)
   try { db.exec('ALTER TABLE fire_planner_settings ADD COLUMN additional_instruments_json TEXT') } catch {}
+  try { db.exec('ALTER TABLE fire_planner_settings ADD COLUMN instrument_overrides_json TEXT') } catch {}
 }
 
 // Travel module (Phase 1: trips, itinerary, budget; Phase 2: packing, documents,

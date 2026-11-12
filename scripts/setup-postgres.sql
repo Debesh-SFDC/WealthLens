@@ -940,3 +940,30 @@ FROM (VALUES
 ) AS v(goal_title, idx, name, price)
 JOIN LATERAL (SELECT id FROM goals WHERE title = v.goal_title AND deleted_at IS NULL ORDER BY id LIMIT 1) g ON TRUE
 WHERE NOT EXISTS (SELECT 1 FROM goal_items gi WHERE gi.goal_id = g.id AND gi.name = v.name);
+
+-- ═══ FIRE planner settings ═══════════════════════════════════════════════
+-- Single-row settings table backing GET/PUT /api/fire-settings (mirrors the
+-- SQLite table in src/db/database.js). JSON list columns are TEXT.
+CREATE TABLE IF NOT EXISTS fire_planner_settings (
+  id                          SERIAL PRIMARY KEY,
+  user_id                     INTEGER,
+  fire_type                   TEXT DEFAULT 'regular',
+  fi_multiple                 REAL,
+  sip_step_up_pct             REAL DEFAULT 10,
+  expense_no_kids             REAL DEFAULT 0,
+  expense_one_kid             REAL DEFAULT 0,
+  expense_two_kids            REAL DEFAULT 0,
+  kids_planned                INTEGER DEFAULT 0,
+  kid1_year                   INTEGER,
+  kid2_year                   INTEGER,
+  inflation_pct               REAL DEFAULT 6,
+  barista_income              REAL,
+  loans_json                  TEXT,
+  future_expenses_json        TEXT,
+  lump_sums_json              TEXT,
+  additional_instruments_json TEXT,
+  instrument_overrides_json   TEXT,
+  updated_at                  TEXT
+);
+ALTER TABLE fire_planner_settings ADD COLUMN IF NOT EXISTS additional_instruments_json TEXT;
+ALTER TABLE fire_planner_settings ADD COLUMN IF NOT EXISTS instrument_overrides_json TEXT;

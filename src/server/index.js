@@ -22,6 +22,7 @@ const wishlistRouter = require('./routes/wishlist')
 const wishlistCollectionsRouter = require('./routes/wishlistCollections')
 const goalWishlistLinksRouter = require('./routes/goalWishlistLinks')
 const tasksRouter = require('./routes/tasks')
+const fireSettingsRouter = require('./routes/fireSettings')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -57,6 +58,9 @@ app.use('/api/sync', requireAuth, requireAdmin, syncRouter)
 
 // Profile — admin only
 app.use('/api/profile', requireAuth, requireAdmin, profileRouter)
+
+// FIRE planner settings — admin only
+app.use('/api/fire-settings', requireAuth, requireAdmin, fireSettingsRouter)
 
 // Tracker summary — tracker-accessible, read-only aggregate view
 app.use('/api/tracker', requireAuth, trackerRouter)
