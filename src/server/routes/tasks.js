@@ -11,17 +11,30 @@ const router = express.Router()
 const TYPES      = ['task', 'idea']
 const STATUSES   = ['pending', 'done', 'archived']
 const PRIORITIES = ['high', 'medium', 'low']
+const CATEGORIES = ['job', 'personal', 'project']
 
-// GET /api/tasks?type=&status=&date= — caller's own tasks. `date` (YYYY-MM-DD)
-// matches due_date on that day, whether or not it carries a time component.
+// project_name is a free-text tag that only means something on 'project'
+// items; blank → null.
+function cleanProjectName(v) {
+  const s = v == null ? '' : String(v).trim()
+  return s ? s.slice(0, 60) : null
+}
+
+// GET /api/tasks?type=&status=&date=&category= — caller's own tasks. `date`
+// (YYYY-MM-DD) matches due_date on that day, whether or not it carries a time
+// component.
 router.get('/', async (req, res) => {
-  const { type, status, date } = req.query || {}
+  const { type, status, date, category } = req.query || {}
+  if (category && !CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: `category must be one of ${CATEGORIES.join(', ')}` })
+  }
   const db = getDb()
   let query = 'SELECT * FROM tasks WHERE user_id = ? AND deleted_at IS NULL'
   const params = [req.user.id]
   if (type)   { query += ' AND type = ?';          params.push(type) }
   if (status) { query += ' AND status = ?';        params.push(status) }
   if (date)   { query += ' AND due_date LIKE ?';   params.push(`${date}%`) }
+  if (category) { query += ' AND category = ?';    params.push(category) }
   query += ' ORDER BY created_at DESC'
   const { rows } = await db.query(query, params)
   res.json(rows)
@@ -36,17 +49,22 @@ router.post('/', async (req, res) => {
   const type     = TYPES.includes(d.type) ? d.type : 'task'
   const status   = STATUSES.includes(d.status) ? d.status : 'pending'
   const priority = PRIORITIES.includes(d.priority) ? d.priority : 'medium'
+  if (d.category != null && !CATEGORIES.includes(d.category)) {
+    return res.status(400).json({ error: `category must be one of ${CATEGORIES.join(', ')}` })
+  }
+  const category = d.category || 'personal'
+  const project_name = category === 'project' ? cleanProjectName(d.project_name) : null
 
   const db = getDb()
   const now = new Date().toISOString()
   const { rows } = await db.query(
     `INSERT INTO tasks (sync_id, user_id, title, description, type, status, priority,
-       due_date, done_at, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       category, project_name, due_date, done_at, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING id`,
     [
       randomUUID(), req.user.id, title, d.description ?? null, type, status, priority,
-      d.due_date || null, status === 'done' ? now : null, now, now,
+      category, project_name, d.due_date || null, status === 'done' ? now : null, now, now,
     ]
   )
   res.json({ id: rows[0].id })
@@ -57,6 +75,9 @@ router.post('/', async (req, res) => {
 // when status moves to 'done' and cleared when it moves back.
 router.put('/:id', async (req, res) => {
   const d = req.body || {}
+  if (d.category !== undefined && !CATEGORIES.includes(d.category)) {
+    return res.status(400).json({ error: `category must be one of ${CATEGORIES.join(', ')}` })
+  }
   const db = getDb()
   const { rows } = await db.query(
     'SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
@@ -74,12 +95,17 @@ router.put('/:id', async (req, res) => {
   const description = d.description !== undefined ? (d.description || null) : cur.description
   const due_date    = d.due_date !== undefined ? (d.due_date || null) : cur.due_date
   const done_at = status === 'done' ? (cur.status === 'done' ? cur.done_at : now) : null
+  const category = d.category !== undefined ? d.category : (cur.category || 'personal')
+  // Moving off 'project' drops the tag; otherwise it changes only when sent.
+  const project_name = category !== 'project' ? null
+    : d.project_name !== undefined ? cleanProjectName(d.project_name) : cur.project_name
 
   await db.query(
     `UPDATE tasks SET title = ?, description = ?, type = ?, status = ?, priority = ?,
-       due_date = ?, done_at = ?, updated_at = ?
+       category = ?, project_name = ?, due_date = ?, done_at = ?, updated_at = ?
      WHERE id = ? AND user_id = ?`,
-    [title, description, type, status, priority, due_date, done_at, now, req.params.id, req.user.id]
+    [title, description, type, status, priority, category, project_name, due_date, done_at,
+      now, req.params.id, req.user.id]
   )
   res.json({ success: true, done_at })
 })

@@ -733,6 +733,21 @@ CREATE TABLE IF NOT EXISTS tasks (
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id);
 
+-- Task/idea categories — 'job' | 'personal' | 'project', plus an optional
+-- free-text project_name tag. Safe to re-run: the backfill only touches NULLs
+-- (never a category the user picked) and the CHECK is added once by name.
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS category TEXT DEFAULT 'personal';
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS project_name TEXT;
+UPDATE tasks SET category = 'personal' WHERE category IS NULL;
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'tasks_category_check') THEN
+    ALTER TABLE tasks ADD CONSTRAINT tasks_category_check
+      CHECK (category IN ('job', 'personal', 'project'));
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_tasks_user_category ON tasks(user_id, category);
+
 -- ── Goal items — the shopping checklist inside a goal ───────────────────────
 -- Replaces the standalone Wishlist: each wishlist collection became a "Want"
 -- goal (with its own contribution bank) and its items live here. The old

@@ -81,3 +81,104 @@ export const IDEA_COLORS = [
 export function ideaColor(id) {
   return IDEA_COLORS[Math.abs(Number(id) || 0) % IDEA_COLORS.length]
 }
+
+// ── Categories ──────────────────────────────────────────────────────────────
+// Every task/idea is 'job' | 'personal' | 'project'; 'project' items can carry
+// a free-text project_name tag ("Lifelog", "Metakani"). Gold stays the app
+// accent — these colors only mark category.
+export const CATEGORIES = [
+  { id: 'job',      label: 'Job',              short: 'Job',      color: '#3498DB' },
+  { id: 'personal', label: 'Personal',         short: 'Personal', color: '#2ECC71' },
+  { id: 'project',  label: 'Personal Project', short: 'Project',  color: '#9B59B6' },
+]
+export const CATEGORY_META = Object.fromEntries(CATEGORIES.map(c => [c.id, c]))
+export function categoryOf(task) {
+  return CATEGORY_META[task?.category] ? task.category : 'personal'
+}
+
+// Last category used in a quick-capture bar, shared by the Dashboard and Desk
+// Mode so the next capture defaults to it.
+const LAST_CATEGORY_KEY = 'tasks_last_category'
+export function readLastCategory() {
+  try {
+    const v = localStorage.getItem(LAST_CATEGORY_KEY)
+    return CATEGORY_META[v] ? v : 'personal'
+  } catch { return 'personal' }
+}
+export function writeLastCategory(v) {
+  try { localStorage.setItem(LAST_CATEGORY_KEY, v) } catch {}
+}
+
+// ── Deadlines ───────────────────────────────────────────────────────────────
+function parseDay(day) {
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+export function addDays(today, n) {
+  const d = parseDay(today)
+  d.setDate(d.getDate() + n)
+  return localDateStr(d)
+}
+// Whole calendar days from `today` to the task's due day (negative = overdue).
+export function daysUntil(task, today = localDateStr()) {
+  const day = dueDay(task)
+  if (!day) return null
+  return Math.round((parseDay(day) - parseDay(today)) / 86400000)
+}
+
+export const DUE_COLORS = {
+  overdue:  '#F87171',
+  today:    '#FB923C',
+  tomorrow: '#FBBF24',
+  week:     '#FDE047',
+  later:    'rgba(255,255,255,0.6)',
+  none:     'rgba(255,255,255,0.45)',
+}
+
+// Relative, color-coded due label for Desk Mode:
+// "3d overdue" · "Today" · "Tomorrow" · "Thu 19 Nov" (≤7 days) · "12 Dec" · "No date"
+export function relativeDue(task, today = localDateStr()) {
+  const n = daysUntil(task, today)
+  if (n === null) return { kind: 'none', label: 'No date', color: DUE_COLORS.none }
+  if (n < 0)  return { kind: 'overdue', label: `${-n}d overdue`, color: DUE_COLORS.overdue }
+  if (n === 0) return { kind: 'today', label: 'Today', color: DUE_COLORS.today }
+  if (n === 1) return { kind: 'tomorrow', label: 'Tomorrow', color: DUE_COLORS.tomorrow }
+  const d = parseDay(dueDay(task))
+  if (n <= 7) {
+    const label = `${d.toLocaleDateString('en-GB', { weekday: 'short' })} ${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}`
+    return { kind: 'week', label, color: DUE_COLORS.week }
+  }
+  const sameYear = d.getFullYear() === parseDay(today).getFullYear()
+  const label = `${d.getDate()} ${d.toLocaleDateString('en-GB', { month: 'short' })}${sameYear ? '' : ` ${d.getFullYear()}`}`
+  return { kind: 'later', label, color: DUE_COLORS.later }
+}
+
+// Deadline order: overdue first, then due day ascending, undated last; ties on
+// the same day go by priority, then time of day, then newest first.
+export function sortByDeadline(a, b) {
+  const da = dueDay(a), db = dueDay(b)
+  if (da && !db) return -1
+  if (!da && db) return 1
+  if (da && db && da !== db) return da < db ? -1 : 1
+  const pr = (PRIORITY_RANK[a.priority] ?? 1) - (PRIORITY_RANK[b.priority] ?? 1)
+  if (pr) return pr
+  if (a.due_date && b.due_date && a.due_date !== b.due_date) return a.due_date < b.due_date ? -1 : 1
+  return (b.created_at || '').localeCompare(a.created_at || '')
+}
+
+// Desk Mode summary strip — counts across every category, tasks only.
+export function deadlineCounts(items, today = localDateStr()) {
+  const week = addDays(today, 7)
+  const c = { overdue: 0, today: 0, week: 0, doneToday: 0 }
+  for (const t of items) {
+    if (t.type !== 'task') continue
+    if (doneToday(t, today)) { c.doneToday++; continue }
+    if (t.status !== 'pending') continue
+    const day = dueDay(t)
+    if (!day) continue
+    if (day < today) c.overdue++
+    else if (day === today) c.today++
+    else if (day <= week) c.week++
+  }
+  return c
+}

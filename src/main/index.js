@@ -1792,14 +1792,24 @@ function setupIpcHandlers() {
   const TASK_TYPES      = ['task', 'idea']
   const TASK_STATUSES   = ['pending', 'done', 'archived']
   const TASK_PRIORITIES = ['high', 'medium', 'low']
+  const TASK_CATEGORIES = ['job', 'personal', 'project']
+  const checkTaskCategory = (c) => {
+    if (!TASK_CATEGORIES.includes(c)) throw new Error(`category must be one of ${TASK_CATEGORIES.join(', ')}`)
+  }
+  const cleanProjectName = (v) => {
+    const s = v == null ? '' : String(v).trim()
+    return s ? s.slice(0, 60) : null
+  }
 
   ipcMain.handle('tasks:getAll', (_, filters = {}) => {
-    const { type, status, date } = filters || {}
+    const { type, status, date, category } = filters || {}
+    if (category) checkTaskCategory(category)
     let query = 'SELECT * FROM tasks WHERE user_id = ? AND deleted_at IS NULL'
     const params = [currentUserSession?.id]
     if (type)   { query += ' AND type = ?';        params.push(type) }
     if (status) { query += ' AND status = ?';      params.push(status) }
     if (date)   { query += ' AND due_date LIKE ?'; params.push(`${date}%`) }
+    if (category) { query += ' AND category = ?';  params.push(category) }
     query += ' ORDER BY created_at DESC'
     return db.prepare(query).all(...params)
   })
@@ -1808,21 +1818,25 @@ function setupIpcHandlers() {
     const title = (d.title || '').trim()
     if (!title) throw new Error('title is required')
     const status = TASK_STATUSES.includes(d.status) ? d.status : 'pending'
+    if (d.category != null) checkTaskCategory(d.category)
+    const category = d.category || 'personal'
     const now = new Date().toISOString()
     const info = db.prepare(`
       INSERT INTO tasks (sync_id, user_id, title, description, type, status, priority,
-        due_date, done_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        category, project_name, due_date, done_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       randomUUID(), currentUserSession?.id, title, d.description ?? null,
       TASK_TYPES.includes(d.type) ? d.type : 'task', status,
       TASK_PRIORITIES.includes(d.priority) ? d.priority : 'medium',
+      category, category === 'project' ? cleanProjectName(d.project_name) : null,
       d.due_date || null, status === 'done' ? now : null, now, now
     )
     return { id: info.lastInsertRowid }
   })
 
   ipcMain.handle('tasks:update', (_, d = {}) => {
+    if (d.category !== undefined) checkTaskCategory(d.category)
     const cur = db.prepare('SELECT * FROM tasks WHERE id = ? AND user_id = ? AND deleted_at IS NULL')
       .get(d.id, currentUserSession?.id)
     if (!cur) throw new Error('Task not found')
@@ -1831,9 +1845,12 @@ function setupIpcHandlers() {
     if (!title) throw new Error('title is required')
     const status = TASK_STATUSES.includes(d.status) ? d.status : cur.status
     const done_at = status === 'done' ? (cur.status === 'done' ? cur.done_at : now) : null
+    const category = d.category !== undefined ? d.category : (cur.category || 'personal')
+    const project_name = category !== 'project' ? null
+      : d.project_name !== undefined ? cleanProjectName(d.project_name) : cur.project_name
     db.prepare(`
       UPDATE tasks SET title = ?, description = ?, type = ?, status = ?, priority = ?,
-        due_date = ?, done_at = ?, updated_at = ?
+        category = ?, project_name = ?, due_date = ?, done_at = ?, updated_at = ?
       WHERE id = ? AND user_id = ?
     `).run(
       title,
@@ -1841,6 +1858,7 @@ function setupIpcHandlers() {
       TASK_TYPES.includes(d.type) ? d.type : cur.type,
       status,
       TASK_PRIORITIES.includes(d.priority) ? d.priority : cur.priority,
+      category, project_name,
       d.due_date !== undefined ? (d.due_date || null) : cur.due_date,
       done_at, now, d.id, currentUserSession?.id
     )

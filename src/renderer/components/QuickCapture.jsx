@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
 import bridge from '../lib/bridge'
+import CategoryChips from './CategoryChips'
+import { readLastCategory, writeLastCategory, CATEGORY_META, categoryOf } from '../lib/tasks'
 
 // Dashboard "Quick Capture" — one-line add for tasks/ideas, no modal. Below
 // the input, the 3 most recent pending tasks render as chips; tapping one
 // marks it done.
 export default function QuickCapture({ onToast }) {
   const [type, setType]       = useState('task')
+  const [category, setCategory] = useState(readLastCategory)
   const [text, setText]       = useState('')
   const [saving, setSaving]   = useState(false)
   const [pending, setPending] = useState([])
@@ -26,7 +29,8 @@ export default function QuickCapture({ onToast }) {
     if (!title || saving) return
     setSaving(true)
     try {
-      await bridge.createTask({ title, type })
+      await bridge.createTask({ title, type, category })
+      writeLastCategory(category)
       setText('')
       onToast?.(type === 'idea' ? '💡 Idea captured' : '📝 Task added')
       if (type === 'task') loadPending()
@@ -51,8 +55,10 @@ export default function QuickCapture({ onToast }) {
 
   return (
     <div className="bg-dark-card rounded-2xl border border-gray-100 shadow-sm p-4">
-      <div className="flex items-center justify-between gap-2 mb-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
         <h3 className="text-sm font-bold text-gray-900">Quick Capture</h3>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+        <CategoryChips value={category} onChange={setCategory} />
         <div className="flex p-0.5 rounded-lg bg-gray-100">
           {[['task', '📝 Task'], ['idea', '💡 Idea']].map(([id, label]) => (
             <button
@@ -67,6 +73,7 @@ export default function QuickCapture({ onToast }) {
               {label}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
@@ -101,6 +108,7 @@ export default function QuickCapture({ onToast }) {
                 className="group flex items-center gap-1.5 max-w-full px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200 text-xs font-medium text-gray-700 hover:border-[#2ECC71] hover:bg-emerald-50 transition-all min-h-[32px]"
                 style={{ opacity: done ? 0.5 : 1 }}
               >
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: CATEGORY_META[categoryOf(t)].color }} />
                 <span
                   className="w-3.5 h-3.5 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors"
                   style={{ borderColor: done ? '#2ECC71' : '#3A3A3A', backgroundColor: done ? '#2ECC71' : 'transparent' }}

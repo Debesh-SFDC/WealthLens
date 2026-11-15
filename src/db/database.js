@@ -1010,6 +1010,19 @@ function createTasksTable() {
     );
   `)
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_user ON tasks(user_id)') } catch {}
+  migrateTaskCategories()
+}
+
+// Task/idea categories — 'job' | 'personal' | 'project', plus an optional
+// free-text project_name tag for 'project'. Idempotent: ADD COLUMN is a no-op
+// once the column exists, and the backfill only touches rows still NULL, so a
+// category the user picked is never overwritten. SQLite accepts the CHECK on
+// ADD COLUMN; the API validates too. Mirrors scripts/setup-postgres.sql.
+function migrateTaskCategories() {
+  try { db.exec("ALTER TABLE tasks ADD COLUMN category TEXT DEFAULT 'personal' CHECK (category IN ('job', 'personal', 'project'))") } catch {}
+  try { db.exec('ALTER TABLE tasks ADD COLUMN project_name TEXT') } catch {}
+  try { db.exec("UPDATE tasks SET category = 'personal' WHERE category IS NULL") } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_tasks_user_category ON tasks(user_id, category)') } catch {}
 }
 
 // One-time per-user migration: seed the four default collections, sort the

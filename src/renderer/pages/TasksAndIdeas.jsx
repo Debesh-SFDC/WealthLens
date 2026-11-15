@@ -3,7 +3,9 @@ import bridge from '../lib/bridge'
 import Toast from '../components/Toast'
 import {
   localDateStr, dueDay, isOverdue, formatDue, sortTasks, PRIORITY_COLORS, ideaColor,
+  CATEGORIES, CATEGORY_META, categoryOf, readLastCategory, writeLastCategory,
 } from '../lib/tasks'
+import CategoryChips from '../components/CategoryChips'
 
 const PRIORITIES = [
   { id: 'high',   label: 'High' },
@@ -12,7 +14,7 @@ const PRIORITIES = [
 ]
 
 // ── Create / edit modal (tasks and ideas share it) ──────────────────────────
-function TaskModal({ initial, defaultType, onClose, onSaved }) {
+function TaskModal({ initial, defaultType, defaultCategory, projectNames = [], onClose, onSaved }) {
   const editing = !!initial?.id
   const [form, setForm] = useState(() => {
     const [date = '', time = ''] = (initial?.due_date || '').split('T')
@@ -21,6 +23,8 @@ function TaskModal({ initial, defaultType, onClose, onSaved }) {
       description: initial?.description || '',
       type: initial?.type || defaultType,
       priority: initial?.priority || 'medium',
+      category: initial ? categoryOf(initial) : defaultCategory,
+      project_name: initial?.project_name || '',
       date, time,
     }
   })
@@ -37,6 +41,8 @@ function TaskModal({ initial, defaultType, onClose, onSaved }) {
       description: form.description.trim() || null,
       type: form.type,
       priority: form.priority,
+      category: form.category,
+      project_name: form.category === 'project' ? (form.project_name.trim() || null) : null,
       due_date: form.type === 'task' && form.date ? (form.time ? `${form.date}T${form.time}` : form.date) : null,
     }
     try {
@@ -81,6 +87,35 @@ function TaskModal({ initial, defaultType, onClose, onSaved }) {
             value={form.description} onChange={e => set('description', e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 resize-none focus:outline-none focus:border-[#D4AF37]"
           />
+          <div>
+            <p className="text-xs font-semibold text-gray-500 mb-1.5">Category</p>
+            <div className="flex gap-2">
+              {CATEGORIES.map(c => (
+                <button
+                  key={c.id} type="button" onClick={() => set('category', c.id)}
+                  className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl border text-sm font-semibold transition-colors"
+                  style={form.category === c.id
+                    ? { borderColor: c.color, backgroundColor: c.color + '15', color: c.color }
+                    : { borderColor: '#2A2A2A', color: '#8A8A8A' }}
+                >
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />
+                  {c.short}
+                </button>
+              ))}
+            </div>
+            {form.category === 'project' && (
+              <>
+                <input
+                  list="task-project-names" placeholder="Project name (optional), e.g. Lifelog"
+                  value={form.project_name} onChange={e => set('project_name', e.target.value)} maxLength={60}
+                  className="mt-2 w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 focus:outline-none focus:border-[#9B59B6]"
+                />
+                <datalist id="task-project-names">
+                  {projectNames.map(n => <option key={n} value={n} />)}
+                </datalist>
+              </>
+            )}
+          </div>
           {form.type === 'task' && (
             <>
               <div>
@@ -229,7 +264,9 @@ function TaskRow({ task, today, onToggle, onEdit, onDelete }) {
             className="text-sm font-semibold text-gray-900 break-words line-through"
             style={{ textDecorationColor: checked ? '#8A8A8A' : 'transparent', transition: 'text-decoration-color 0.3s ease' }}
           >
+            <CategoryDot task={task} />
             {task.title}
+            <ProjectTag task={task} />
           </p>
           {task.description && !done && <p className="text-xs text-gray-500 mt-0.5 line-clamp-2">{task.description}</p>}
           {(task.due_date || done) && (
@@ -254,6 +291,21 @@ function TaskRow({ task, today, onToggle, onEdit, onDelete }) {
   )
 }
 
+function CategoryDot({ task }) {
+  const c = CATEGORY_META[categoryOf(task)]
+  return <span className="inline-block w-2 h-2 rounded-full mr-2 align-middle -mt-0.5" title={c.label} style={{ backgroundColor: c.color }} />
+}
+
+// `onLight` for the pastel idea cards, where the light purple would wash out.
+function ProjectTag({ task, onLight }) {
+  if (categoryOf(task) !== 'project' || !task.project_name) return null
+  return (
+    <span className="inline-block ml-2 px-1.5 py-px rounded-md text-[10px] font-bold align-middle" style={{ backgroundColor: onLight ? '#9B59B626' : '#9B59B622', color: onLight ? '#6C3483' : '#C39BD3', textDecoration: 'none' }}>
+      {task.project_name}
+    </span>
+  )
+}
+
 function Section({ title, count, accent, children }) {
   return (
     <div>
@@ -267,7 +319,7 @@ function Section({ title, count, accent, children }) {
 }
 
 // ── Inline quick input (top of each tab) ────────────────────────────────────
-function QuickInput({ type, onAdded, onError }) {
+function QuickInput({ type, category, onAdded, onError }) {
   const [text, setText] = useState('')
   const [saving, setSaving] = useState(false)
   async function submit(e) {
@@ -276,7 +328,8 @@ function QuickInput({ type, onAdded, onError }) {
     if (!title || saving) return
     setSaving(true)
     try {
-      await bridge.createTask({ title, type })
+      await bridge.createTask({ title, type, category })
+      writeLastCategory(category)
       setText('')
       onAdded()
     } catch (err) { onError(err.message || 'Could not save') }
@@ -303,6 +356,7 @@ export default function TasksAndIdeas() {
   const [ideaSort, setIdeaSort] = useState('recent')
   const [showArchived, setShowArchived] = useState(false)
   const [expandedIdea, setExpandedIdea] = useState(null)
+  const [catFilter, setCatFilter] = useState('all')
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
   const showToast = (message, type = 'success') => setToast({ visible: true, message, type })
 
@@ -319,8 +373,21 @@ export default function TasksAndIdeas() {
 
   const today = localDateStr()
 
+  const inFilter = (t) => catFilter === 'all' || categoryOf(t) === catFilter
+  const projectNames = useMemo(() => [...new Set(items.map(t => t.project_name).filter(Boolean))].sort(), [items])
+
+  // Filter-chip counts follow the open tab: pending tasks, or live ideas.
+  const catCounts = useMemo(() => {
+    const live = items.filter(t => tab === 'tasks'
+      ? t.type === 'task' && t.status === 'pending'
+      : t.type === 'idea' && (showArchived ? t.status === 'archived' : t.status !== 'archived'))
+    const counts = { all: live.length, job: 0, personal: 0, project: 0 }
+    for (const t of live) counts[categoryOf(t)]++
+    return counts
+  }, [items, tab, showArchived])
+
   const taskGroups = useMemo(() => {
-    const tasks = items.filter(t => t.type === 'task')
+    const tasks = items.filter(t => t.type === 'task' && inFilter(t))
     const pending = tasks.filter(t => t.status === 'pending').sort(sortTasks)
     return {
       today:    pending.filter(t => t.due_date && dueDay(t) <= today),
@@ -330,14 +397,14 @@ export default function TasksAndIdeas() {
       done:     tasks.filter(t => t.status === 'done')
         .sort((a, b) => (b.done_at || '').localeCompare(a.done_at || '')),
     }
-  }, [items, today])
+  }, [items, today, catFilter])
 
   const ideas = useMemo(() => {
-    const list = items.filter(t => t.type === 'idea' && (showArchived ? t.status === 'archived' : t.status !== 'archived'))
+    const list = items.filter(t => t.type === 'idea' && inFilter(t) && (showArchived ? t.status === 'archived' : t.status !== 'archived'))
     return list.sort((a, b) => ideaSort === 'recent'
       ? (b.created_at || '').localeCompare(a.created_at || '')
       : (a.created_at || '').localeCompare(b.created_at || ''))
-  }, [items, ideaSort, showArchived])
+  }, [items, ideaSort, showArchived, catFilter])
 
   async function toggleTask(task) {
     const status = task.status === 'done' ? 'pending' : 'done'
@@ -390,7 +457,31 @@ export default function TasksAndIdeas() {
         </button>
       </div>
 
-      <QuickInput type={tab === 'ideas' ? 'idea' : 'task'} onAdded={load} onError={(m) => showToast(m, 'error')} />
+      {/* Category filter */}
+      <div className="flex flex-wrap gap-1.5">
+        {[{ id: 'all', short: 'All', color: '#D4AF37' }, ...CATEGORIES].map(c => {
+          const on = catFilter === c.id
+          return (
+            <button
+              key={c.id} onClick={() => setCatFilter(c.id)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors"
+              style={on
+                ? { backgroundColor: c.color + '22', borderColor: c.color, color: c.id === 'all' ? '#D4AF37' : c.color }
+                : { backgroundColor: '#1A1A1A', borderColor: '#2A2A2A', color: '#8A8A8A' }}
+            >
+              {c.id !== 'all' && <span className="w-2 h-2 rounded-full" style={{ backgroundColor: c.color }} />}
+              {c.short}
+              <span className="tabular-nums opacity-80">{catCounts[c.id]}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      <QuickInput
+        type={tab === 'ideas' ? 'idea' : 'task'}
+        category={catFilter === 'all' ? readLastCategory() : catFilter}
+        onAdded={load} onError={(m) => showToast(m, 'error')}
+      />
 
       {loading ? (
         <div className="space-y-2">
@@ -469,7 +560,7 @@ export default function TasksAndIdeas() {
                     style={{ backgroundColor: c.bg, borderColor: c.border }}
                   >
                     <div className="flex items-start gap-2">
-                      <p className="flex-1 min-w-0 text-sm font-bold text-gray-900 break-words">{idea.title}</p>
+                      <p className="flex-1 min-w-0 text-sm font-bold text-gray-900 break-words"><CategoryDot task={idea} />{idea.title}<ProjectTag task={idea} onLight /></p>
                       <RowMenu items={[
                         { label: 'Edit', onClick: () => setModal({ initial: idea, type: 'idea' }) },
                         idea.status === 'archived'
@@ -496,6 +587,8 @@ export default function TasksAndIdeas() {
         <TaskModal
           initial={modal.initial}
           defaultType={modal.type}
+          defaultCategory={catFilter === 'all' ? readLastCategory() : catFilter}
+          projectNames={projectNames}
           onClose={() => setModal(null)}
           onSaved={(msg) => { setModal(null); showToast(msg); load() }}
         />

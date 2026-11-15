@@ -31,7 +31,7 @@
 .desk-input::placeholder { color: rgba(255, 255, 255, 0.55); }
 .desk-input:focus { outline: none; border-color: rgba(212, 175, 55, 0.7); box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.15); }
 
-/* ── Layout: landscape = three columns, portrait/narrow = stacked ──────── */
+/* ── Shared layout shell ─────────────────────────────────────────────────── */
 .desk-layout {
   position: relative;
   z-index: 2;
@@ -39,43 +39,228 @@
   display: flex;
   flex-direction: column;
   padding: clamp(16px, 3vw, 40px);
-  gap: clamp(14px, 2vw, 24px);
+  gap: clamp(12px, 1.6vw, 22px);
+  /* Burn-in guard: DeskMode nudges this a few px every 10 min */
+  transition: transform 4s ease-in-out;
 }
-.desk-grid {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 380px) minmax(0, 1fr);
-  grid-template-areas: "tasks time ideas";
-  gap: clamp(14px, 2vw, 24px);
-}
-.desk-area-tasks { grid-area: tasks; min-height: 0; }
-.desk-area-time  { grid-area: time;  min-height: 0; }
-.desk-area-ideas { grid-area: ideas; min-height: 0; }
 .desk-clock {
   font-size: clamp(4rem, 7vw, 6rem);
   color: #D4AF37;
   text-shadow: 0 0 28px rgba(212, 175, 55, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
 }
+.desk-clock-color {
+  color: #D4AF37;
+  text-shadow: 0 0 28px rgba(212, 175, 55, 0.35), 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* Type scale — overridden per layout below */
+.desk-root {
+  --row-h: 52px;
+  --title: 18px;
+  --due: 14px;
+  --head: 13px;
+  --chip-h: 40px;
+  --idea-h: 48px;
+}
+.desk-portrait {
+  /* 1080×1920 → titles ≈26px, due ≈19px, rows ≈69px */
+  --row-h: clamp(46px, 3.6vh, 74px);
+  --title: clamp(18px, 2.4vw, 28px);
+  --due: clamp(14px, 1.8vw, 21px);
+  --head: clamp(13px, 1.65vw, 19px);
+  --chip-h: clamp(40px, 2.7vh, 54px);
+  --idea-h: clamp(40px, 2.9vh, 58px);
+}
+.desk-landscape {
+  --row-h: clamp(42px, 5.2vh, 60px);
+  --title: clamp(15px, 1.05vw, 20px);
+  --due: clamp(12px, 0.8vw, 15px);
+  --head: clamp(11px, 0.72vw, 14px);
+  --chip-h: 40px;
+  --idea-h: clamp(38px, 4.4vh, 48px);
+}
+
+/* ── Category sections ───────────────────────────────────────────────────── */
+.desk-section {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding: calc(var(--row-h) * 0.22) calc(var(--row-h) * 0.32) calc(var(--row-h) * 0.18) calc(var(--row-h) * 0.42);
+}
+.desk-section::before { /* colored left bar */
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 6px;
+  background: var(--cat);
+  box-shadow: 0 0 18px var(--cat);
+}
+.desk-section-head {
+  display: flex; align-items: baseline; gap: 0.5em;
+  font-size: var(--head);
+  padding: 0.35em 0 0.55em;
+  text-align: left; flex-shrink: 0;
+  cursor: pointer;
+}
+.desk-section-title { font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; font-size: var(--head); }
+.desk-section-count { font-weight: 600; opacity: 0.8; letter-spacing: 0.04em; }
+.desk-list {
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column; gap: 2px;
+  overflow: hidden;
+}
+.desk-list.desk-scroll { overflow-y: auto; }
+.desk-empty { font-size: var(--due); opacity: 0.6; padding: 0.3em 0 0.5em; }
+
+.desk-row {
+  height: var(--row-h); flex-shrink: 0;
+  display: flex; align-items: center; gap: calc(var(--row-h) * 0.28);
+  padding: 0 calc(var(--row-h) * 0.14);
+  border-radius: 14px;
+  transition: height 0.32s ease, opacity 0.32s ease, transform 0.32s ease;
+}
+.desk-row:hover { background: rgba(255, 255, 255, 0.06); }
+.desk-row + .desk-row { box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.07); }
+.desk-row-leaving { height: 0 !important; opacity: 0; transform: translateX(24px); overflow: hidden; }
+.desk-row-title { font-size: var(--title); font-weight: 500; line-height: 1.25; min-width: 0; }
+.desk-due { font-size: var(--due); white-space: nowrap; }
+.desk-check {
+  width: calc(var(--row-h) * 0.58); height: calc(var(--row-h) * 0.58);
+  border-radius: calc(var(--row-h) * 0.16);
+}
+.desk-more {
+  justify-content: space-between;
+  font-size: var(--due); font-weight: 700; color: #F0D060;
+  background: rgba(212, 175, 55, 0.08);
+}
+.desk-more:hover { background: rgba(212, 175, 55, 0.16); }
+.desk-tag {
+  display: inline-block;
+  padding: 0.12em 0.55em; border-radius: 8px;
+  font-size: calc(var(--due) * 0.78); font-weight: 700; letter-spacing: 0.02em;
+  background: rgba(155, 89, 182, 0.3); color: #E3C8F0;
+  border: 1px solid rgba(155, 89, 182, 0.6);
+  text-shadow: none; white-space: nowrap;
+}
+
+/* ── Summary pills ───────────────────────────────────────────────────────── */
+.desk-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(8px, 1vw, 14px); flex-shrink: 0; }
+.desk-pill {
+  display: flex; align-items: center; gap: 0.5em;
+  padding: 0.55em 0.9em; border-radius: 18px;
+  font-size: var(--due);
+}
+.desk-pill-icon { font-size: 0.85em; }
+.desk-pill-label { font-weight: 600; opacity: 0.9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desk-pill-count { margin-left: auto; font-weight: 800; font-size: 1.35em; line-height: 1; }
+
+/* ── Ideas ───────────────────────────────────────────────────────────────── */
+.desk-ideas { display: flex; flex-direction: column; min-height: 0; padding: calc(var(--row-h) * 0.2) calc(var(--row-h) * 0.32) calc(var(--row-h) * 0.3); }
+.desk-ideas-grid {
+  flex: 1; min-height: 0; overflow: hidden;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-auto-rows: var(--idea-h); gap: 10px; align-content: start;
+}
+.desk-idea {
+  display: flex; align-items: center; min-width: 0; height: var(--idea-h);
+  padding: 0 0.9em;
+  border-radius: 14px;
+  font-size: calc(var(--due) * 0.95); font-weight: 600;
+  background: color-mix(in srgb, var(--cat) 22%, rgba(0, 0, 0, 0.35));
+  border: 1px solid color-mix(in srgb, var(--cat) 55%, transparent);
+  border-left: 5px solid var(--cat);
+  text-align: left;
+  transition: filter 0.2s ease;
+}
+.desk-idea:hover { filter: brightness(1.2); }
+.desk-idea-more { --cat: #D4AF37; justify-content: center; color: #F0D060; }
+
+.desk-overlay {
+  position: absolute; inset: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center;
+  padding: clamp(16px, 4vw, 60px);
+  background: rgba(0, 0, 0, 0.55);
+}
+.desk-overlay-card {
+  width: min(900px, 100%); max-height: 80vh;
+  display: flex; flex-direction: column;
+  padding: clamp(16px, 2vw, 28px);
+  font-size: var(--title);
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* ── Quick add ───────────────────────────────────────────────────────────── */
+.desk-quickadd { display: flex; flex-direction: column; gap: 10px; padding: clamp(10px, 1vw, 14px); }
+.desk-input { height: calc(var(--chip-h) + 14px); font-size: var(--title); }
+.desk-add { height: calc(var(--chip-h) + 14px); font-size: calc(var(--title) * 0.9); }
+.desk-chip { height: var(--chip-h); font-size: calc(var(--due) * 0.95); }
+.desk-undo-wrap {
+  position: absolute; left: 0; right: 0; bottom: calc(100% + 12px); z-index: 5;
+  display: flex; justify-content: center; pointer-events: none;
+}
+.desk-undo {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 1.2em; max-width: 90%; min-width: 0;
+  padding: 0.7em 1.3em; font-size: var(--due);
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* ── Portrait ────────────────────────────────────────────────────────────── */
+.dp-header {
+  flex-shrink: 0;
+  height: clamp(110px, 11vh, 240px);
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center; gap: 1.5vw;
+  padding: 0 clamp(18px, 2.4vw, 36px);
+}
+.dp-greeting { font-size: clamp(20px, 2.7vw, 34px); line-height: 1.2; }
+.dp-date { font-size: clamp(14px, 1.85vw, 22px); margin-top: 0.2em; }
+.dp-clock { font-size: clamp(56px, 6.2vh, 124px); }
+.dp-ampm { font-size: clamp(16px, 1.4vh, 28px); margin-top: 0.4em; }
+.dp-temp { font-size: clamp(24px, 3.4vw, 44px); line-height: 1.1; }
+.dp-sections {
+  position: relative;
+  flex: 1; min-height: 0;
+  display: flex; flex-direction: column;
+  gap: clamp(10px, 1.2vw, 18px);
+}
+/* Heights come from PortraitSections (whole row slots); until measured,
+   share evenly. */
+.dp-sections > .desk-section { flex: 1 1 0px; min-height: 0; }
+.desk-probe {
+  position: absolute !important; left: 0; right: 0; top: 0;
+  visibility: hidden; pointer-events: none;
+  flex: none !important;
+}
+.desk-probe .desk-list { flex: none; }
+.dp-ideas { flex: 0 0 auto; height: clamp(110px, 13vh, 280px); }
+
+/* ── Landscape ───────────────────────────────────────────────────────────── */
+.dl-grid {
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) repeat(3, minmax(0, 1fr));
+  gap: clamp(12px, 1.4vw, 22px);
+}
+.dl-side { display: flex; flex-direction: column; gap: clamp(10px, 1.2vw, 16px); min-height: 0; }
+.desk-landscape .desk-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.desk-landscape .desk-ideas-grid { grid-template-columns: minmax(0, 1fr); }
 
 /* Below lg the corner controls sit under the quick-add bar; at lg+ they sit
    beside it (the bar reserves room with lg:mr-[200px]). */
 @media (max-width: 1023px) {
-  .desk-layout { padding-bottom: 76px; }
+  .desk-landscape .desk-layout { padding-bottom: 76px; }
 }
 
-@media (orientation: portrait), (max-width: 900px) {
-  .desk-main { overflow-y: auto; scrollbar-width: none; }
-  .desk-main::-webkit-scrollbar { display: none; }
-  .desk-grid {
-    flex: none;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas: "time" "tasks" "ideas";
-  }
-  .desk-area-tasks .desk-scroll { max-height: 46vh; }
-  .desk-area-ideas .desk-scroll { max-height: 40vh; }
-  .desk-clock { font-size: 4rem; }
-  .desk-header-date { display: none; }
+/* Narrow landscape (or Landscape forced on a small portrait screen): stack
+   everything and let the page scroll. */
+@media (max-width: 900px) {
+  .desk-landscape .desk-main { overflow-y: auto; scrollbar-width: none; }
+  .desk-landscape .desk-main::-webkit-scrollbar { display: none; }
+  .desk-landscape .dl-grid { height: auto; grid-template-columns: minmax(0, 1fr); }
+  .desk-landscape .desk-section { height: 44vh; }
+  .desk-landscape .dl-side .desk-ideas { height: 32vh; flex: none; }
+  .desk-landscape .desk-clock { font-size: 4rem; }
+  .desk-landscape .desk-header-date { display: none; }
 }
 
 /* Colon softly pulses once per second */

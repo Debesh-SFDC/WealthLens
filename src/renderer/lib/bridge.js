@@ -333,10 +333,14 @@ const bridge = {
     : webCall('DELETE', `/goal-wishlist-links/${id}`),
 
   // Tasks & Ideas — always the caller's own rows. updateTask is a partial
-  // update: pass { id, ...onlyChangedFields }.
-  getTasks: (filters) => IS_ELECTRON
-    ? window.electronAPI.getTasks(filters)
-    : webCall('GET', `/tasks?${new URLSearchParams(filters || {})}`),
+  // update: pass { id, ...onlyChangedFields }. Filters: type, status, date,
+  // category ('job' | 'personal' | 'project'); empty values are dropped.
+  getTasks: (filters) => {
+    const f = Object.fromEntries(Object.entries(filters || {}).filter(([, v]) => v != null && v !== ''))
+    return IS_ELECTRON
+      ? window.electronAPI.getTasks(f)
+      : webCall('GET', `/tasks?${new URLSearchParams(f)}`)
+  },
   createTask: (data) => IS_ELECTRON
     ? window.electronAPI.createTask(data)
     : webCall('POST', '/tasks', data),
