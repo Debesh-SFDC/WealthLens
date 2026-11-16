@@ -142,6 +142,73 @@
   text-shadow: none; white-space: nowrap;
 }
 
+/* ── Drag between category boxes ─────────────────────────────────────────── */
+.desk-row-drag { cursor: grab; touch-action: manipulation; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.desk-row-drag:focus { outline: none; }
+.desk-row-drag:focus-visible { box-shadow: inset 0 0 0 2px #D4AF37 !important; }
+.desk-row-menu {
+  width: calc(var(--row-h) * 0.62); height: calc(var(--row-h) * 0.62);
+  margin-right: calc(var(--row-h) * -0.08);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 10px;
+  font-size: calc(var(--title) * 1.05); font-weight: 800; line-height: 1;
+  color: rgba(255, 255, 255, 0.55);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.desk-row-menu:hover, .desk-row-menu:focus-visible { background: rgba(255, 255, 255, 0.12); color: #fff; outline: none; }
+.desk-row-menu:focus-visible { box-shadow: 0 0 0 2px #D4AF37; }
+/* The picked-up row stays in place as a gold-outlined placeholder… */
+.desk-row-source {
+  opacity: 0.4;
+  background: rgba(212, 175, 55, 0.08);
+  box-shadow: inset 0 0 0 2px rgba(212, 175, 55, 0.75) !important;
+}
+/* …while a lifted copy follows the cursor */
+.desk-row.desk-row-ghost, .desk-row.desk-row-ghost:hover {
+  background: rgba(12, 12, 12, 0.98);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6), 0 0 0 2px #D4AF37 !important;
+  transform: scale(1.03) rotate(-0.8deg);
+  cursor: grabbing;
+}
+.desk-root.desk-dragging, .desk-root.desk-dragging * { cursor: grabbing !important; }
+.desk-root.desk-dragging .desk-row:not(.desk-row-ghost):hover { background: transparent; }
+.desk-section { transition: box-shadow 0.18s ease, border-color 0.18s ease, background-color 0.18s ease; }
+.desk-section-over {
+  border-color: var(--cat);
+  background-color: color-mix(in srgb, var(--cat) 20%, rgba(0, 0, 0, 0.6));
+  box-shadow: 0 0 0 3px var(--cat), 0 0 36px color-mix(in srgb, var(--cat) 50%, transparent);
+}
+@keyframes desk-row-flash {
+  0%, 100% { background-color: transparent; box-shadow: inset 0 0 0 0 rgba(212, 175, 55, 0) }
+  15%, 55% { background-color: rgba(212, 175, 55, 0.24); box-shadow: inset 0 0 0 2px rgba(212, 175, 55, 0.85) }
+}
+.desk-row-flash { animation: desk-row-flash 1.8s ease-out; }
+
+/* Date popup / Move to… */
+.desk-move-card {
+  width: min(560px, 100%);
+  padding: clamp(18px, 2vw, 28px);
+  font-size: var(--due);
+  background: rgba(8, 8, 8, 0.9);
+  border-top: 4px solid var(--cat, #D4AF37);
+}
+.desk-move-kicker { font-size: calc(var(--head) * 0.95); font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; }
+.desk-move-title { font-size: calc(var(--title) * 1.1); font-weight: 700; margin-top: 0.25em; }
+.desk-move-task { opacity: 0.75; margin: 0.25em 0 1em; }
+.desk-move-label { font-size: calc(var(--due) * 0.9); font-weight: 700; }
+.desk-move-option {
+  display: flex; align-items: center; gap: 0.6em;
+  height: calc(var(--chip-h) + 8px); padding: 0 1em;
+  border-radius: 14px; text-align: left; font-size: var(--title);
+  background: color-mix(in srgb, var(--cat) 14%, rgba(255, 255, 255, 0.04));
+  border: 1px solid color-mix(in srgb, var(--cat) 45%, transparent);
+  border-left: 5px solid var(--cat);
+}
+.desk-move-option:hover:not(:disabled), .desk-move-option:focus-visible { filter: brightness(1.25); outline: none; box-shadow: 0 0 0 2px #D4AF37; }
+.desk-move-option:disabled { opacity: 0.45; cursor: default; }
+.desk-tag-btn { cursor: pointer; }
+.desk-tag-btn[aria-pressed='true'] { background: rgba(155, 89, 182, 0.65); color: #fff; }
+
 /* ── Summary pills ───────────────────────────────────────────────────────── */
 .desk-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: clamp(8px, 1vw, 14px); flex-shrink: 0; }
 .desk-pill {

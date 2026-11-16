@@ -4,7 +4,12 @@ import {
   localDateStr, addDays, relativeDue, sortByDeadline, deadlineCounts,
   CATEGORIES, CATEGORY_META, categoryOf, readLastCategory, writeLastCategory,
 } from '../lib/tasks'
+import {
+  DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor,
+  pointerWithin, rectIntersection, useDraggable, useDroppable, useSensor, useSensors,
+} from '@dnd-kit/core'
 import CategoryChips from '../components/CategoryChips'
+import Toast from '../components/Toast'
 import '../desk.css'
 
 // Desk Mode — full-screen ambient display for a spare monitor or tablet: live
@@ -22,6 +27,9 @@ const DATA_REFRESH_MS    = 60 * 1000          // keeps due labels / overdue coun
 const WEATHER_REFRESH_MS = 30 * 60 * 1000
 const SHIFT_MS           = 10 * 60 * 1000     // burn-in guard
 const EXPAND_IDLE_MS     = 90 * 1000          // an expanded section folds back after this
+const REFRESH_HOLD_MS    = 2000               // no data refresh this long after a drop
+const FLASH_MS           = 1800               // highlight on a just-moved row
+const UNDO_MS            = 6000
 const OVERRIDE_KEY = 'desk_weather_override'
 const LAYOUT_KEY   = 'desk_layout'
 
@@ -250,37 +258,11 @@ function SummaryStrip({ counts }) {
 }
 
 // ── Task row ────────────────────────────────────────────────────────────────
-function DeskTaskRow({ task, today, onComplete }) {
-  const [phase, setPhase] = useState(null) // null → 'checking' → 'leaving'
+// Title, project tag and due label — shared by the live row and the drag ghost.
+function RowText({ task, today, checked = false }) {
   const due = relativeDue(task, today)
-
-  function handleTap() {
-    if (phase) return
-    setPhase('checking')
-    // Gold fill + strike-through, then the row folds away, then it's done.
-    setTimeout(() => setPhase('leaving'), 480)
-    setTimeout(() => onComplete(task), 820)
-  }
-
-  const checked = !!phase
   return (
-    <div className={`desk-row ${phase === 'leaving' ? 'desk-row-leaving' : ''}`}>
-      <button
-        onClick={handleTap}
-        aria-label={`Mark "${task.title}" done`}
-        className="desk-check shrink-0 border-2 flex items-center justify-center transition-all duration-300"
-        style={{
-          borderColor: checked ? '#D4AF37' : 'rgba(212,175,55,0.75)',
-          background: checked ? 'linear-gradient(135deg, #D4AF37, #B8960C)' : 'rgba(255,255,255,0.06)',
-          boxShadow: checked ? '0 0 16px rgba(212,175,55,0.5)' : 'none',
-          transform: phase === 'checking' ? 'scale(1.12)' : 'scale(1)',
-        }}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round"
-          className="w-1/2 h-1/2 transition-opacity duration-200" style={{ opacity: checked ? 1 : 0 }}>
-          <polyline points="20 6 9 17 4 12" />
-        </svg>
-      </button>
+    <>
       <span className="flex-1 min-w-0 flex items-center gap-2.5">
         <span
           className="desk-row-title truncate line-through"
@@ -294,6 +276,86 @@ function DeskTaskRow({ task, today, onComplete }) {
         )}
       </span>
       <span className="desk-due shrink-0 tabular-nums font-semibold" style={{ color: due.color }}>{due.label}</span>
+    </>
+  )
+}
+
+const CheckSvg = ({ on }) => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round"
+    className="w-1/2 h-1/2 transition-opacity duration-200" style={{ opacity: on ? 1 : 0 }}>
+    <polyline points="20 6 9 17 4 12" />
+  </svg>
+)
+
+// The whole row is the drag activator (mouse: after 8px of movement, touch:
+// after a 250ms hold, keyboard: focus + Space), so a plain tap on the checkbox
+// still completes the task. The checkbox and ⋯ buttons aren't the activator
+// node, so Space/Enter on them never starts a drag.
+function DeskTaskRow({ task, today, onComplete, onMoveMenu, flash }) {
+  const [phase, setPhase] = useState(null) // null → 'checking' → 'leaving'
+  const rowRef = useRef(null)
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
+    id: task.id, data: { task }, disabled: !!phase,
+  })
+  const setRef = useCallback((el) => { rowRef.current = el; setNodeRef(el); setActivatorNodeRef(el) }, [setNodeRef, setActivatorNodeRef])
+
+  // A freshly dropped row may land below the fold of an expanded list.
+  useEffect(() => {
+    if (flash) rowRef.current?.scrollIntoView?.({ block: 'nearest' })
+  }, [flash])
+
+  function handleTap(e) {
+    e.stopPropagation()
+    if (phase) return
+    setPhase('checking')
+    // Gold fill + strike-through, then the row folds away, then it's done.
+    setTimeout(() => setPhase('leaving'), 480)
+    setTimeout(() => onComplete(task), 820)
+  }
+
+  const checked = !!phase
+  return (
+    <div
+      ref={setRef}
+      {...attributes}
+      {...listeners}
+      aria-label={`${task.title}. Press Space to move to another category.`}
+      data-task-id={task.id}
+      className={`desk-row desk-row-drag ${phase === 'leaving' ? 'desk-row-leaving' : ''} ${isDragging ? 'desk-row-source' : ''} ${flash ? 'desk-row-flash' : ''}`}
+    >
+      <button
+        type="button"
+        onClick={handleTap}
+        aria-label={`Mark "${task.title}" done`}
+        className="desk-check shrink-0 border-2 flex items-center justify-center transition-all duration-300"
+        style={{
+          borderColor: checked ? '#D4AF37' : 'rgba(212,175,55,0.75)',
+          background: checked ? 'linear-gradient(135deg, #D4AF37, #B8960C)' : 'rgba(255,255,255,0.06)',
+          boxShadow: checked ? '0 0 16px rgba(212,175,55,0.5)' : 'none',
+          transform: phase === 'checking' ? 'scale(1.12)' : 'scale(1)',
+        }}
+      >
+        <CheckSvg on={checked} />
+      </button>
+      <RowText task={task} today={today} checked={checked} />
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onMoveMenu(task) }}
+        aria-label={`Move "${task.title}" to…`}
+        title="Move to…"
+        className="desk-row-menu shrink-0"
+      >⋯</button>
+    </div>
+  )
+}
+
+// What follows the cursor while dragging (rendered in <DragOverlay>).
+function DeskRowGhost({ task, today }) {
+  return (
+    <div className="desk-row desk-row-ghost">
+      <span className="desk-check shrink-0 border-2 flex items-center justify-center" style={{ borderColor: 'rgba(212,175,55,0.75)', background: 'rgba(255,255,255,0.06)' }} />
+      <RowText task={task} today={today} />
+      <span className="desk-row-menu shrink-0" aria-hidden="true">⋯</span>
     </div>
   )
 }
@@ -303,9 +365,13 @@ function DeskTaskRow({ task, today, onComplete }) {
 // becomes "+N more", which expands the section (scrollable, no scrollbar).
 // Portrait passes `slots` (rows allotted by PortraitSections); landscape
 // columns measure their own height instead.
-function CategorySection({ cat, tasks, today, onComplete, slots, style, expanded, onExpand, measureKey }) {
+// The whole section (header, rows, "+N more", collapsed or not) is one drop
+// target for tasks dragged in from another category.
+function CategorySection({ cat, tasks, today, onComplete, onMoveMenu, flashId, dragFrom, slots, style, expanded, onExpand, measureKey }) {
   const meta = CATEGORY_META[cat]
   const listRef = useRef(null)
+  const { setNodeRef: setDropRef, isOver } = useDroppable({ id: `cat:${cat}`, data: { cat } })
+  const dropHere = isOver && dragFrom && dragFrom !== cat
   const [measured, setMeasured] = useState(Infinity)
   const cap = slots ?? measured
 
@@ -328,10 +394,13 @@ function CategorySection({ cat, tasks, today, onComplete, slots, style, expanded
   const overflow = !expanded && tasks.length > cap
   const visible = overflow ? tasks.slice(0, Math.max(0, cap - 1)) : tasks
   const hidden = tasks.length - visible.length
+  const flashHidden = flashId != null && !visible.some(t => t.id === flashId) && tasks.some(t => t.id === flashId)
 
   return (
     <section
-      className={`desk-glass desk-section ${expanded ? 'desk-section-expanded' : ''}`}
+      ref={setDropRef}
+      data-cat={cat}
+      className={`desk-glass desk-section ${expanded ? 'desk-section-expanded' : ''} ${dropHere ? 'desk-section-over' : ''}`}
       style={{ '--cat': meta.color, ...style }}
     >
       <button className="desk-section-head" onClick={() => tasks.length > cap || expanded ? onExpand(expanded ? null : cat) : null}>
@@ -341,9 +410,11 @@ function CategorySection({ cat, tasks, today, onComplete, slots, style, expanded
       </button>
       <div ref={listRef} className={`desk-list ${expanded ? 'desk-scroll' : ''}`}>
         {tasks.length === 0 && <p className="desk-empty">All clear ✨</p>}
-        {visible.map(t => <DeskTaskRow key={t.id} task={t} today={today} onComplete={onComplete} />)}
+        {visible.map(t => (
+          <DeskTaskRow key={t.id} task={t} today={today} onComplete={onComplete} onMoveMenu={onMoveMenu} flash={t.id === flashId} />
+        ))}
         {overflow && hidden > 0 && (
-          <button className="desk-row desk-more" onClick={() => onExpand(cat)}>
+          <button className={`desk-row desk-more ${flashHidden ? 'desk-row-flash' : ''}`} onClick={() => onExpand(cat)}>
             <span>+{hidden} more</span><span className="opacity-60">tap to expand ▼</span>
           </button>
         )}
@@ -641,6 +712,191 @@ function QuickAdd({ inputRef, today, onAdd, children }) {
   )
 }
 
+// ── Drag between category boxes ─────────────────────────────────────────────
+const CAT_IDS = CATEGORIES.map(c => c.id)
+const dropCat = (id) => (typeof id === 'string' && id.startsWith('cat:') ? id.slice(4) : null)
+
+// Mouse/touch: the box under the pointer. Keyboard (no pointer): whichever box
+// the moved row overlaps most.
+function deskCollision(args) {
+  if (args.pointerCoordinates) return pointerWithin(args)
+  return rectIntersection(args)
+}
+
+// Keyboard drag: each arrow jumps the row to the centre of the previous/next
+// box (Job → Personal → Personal Project). Down/Right = next, Up/Left = previous.
+function boxKeyboardCoordinates(event, { context }) {
+  const dir = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }[event.code]
+  if (!dir) return undefined
+  event.preventDefault()
+  const { droppableRects, collisionRect, over, active } = context
+  const from = dropCat(over?.id) || categoryOf(active?.data.current?.task)
+  const i = CAT_IDS.indexOf(from)
+  const next = CAT_IDS[Math.min(CAT_IDS.length - 1, Math.max(0, i + dir))]
+  const rect = droppableRects.get(`cat:${next}`)
+  if (!rect || !collisionRect) return undefined
+  return {
+    x: rect.left + rect.width / 2 - collisionRect.width / 2,
+    y: rect.top + rect.height / 2 - collisionRect.height / 2,
+  }
+}
+
+const catLabel = (id) => CATEGORY_META[id]?.label || id
+const dragTitle = (active) => active?.data.current?.task?.title || 'task'
+const ANNOUNCEMENTS = {
+  onDragStart: ({ active }) => `Picked up "${dragTitle(active)}" from ${catLabel(categoryOf(active.data.current?.task))}. Arrow keys move between Job, Personal and Personal Project. Space drops, Escape cancels.`,
+  onDragOver: ({ active, over }) => over ? `"${dragTitle(active)}" is over ${catLabel(dropCat(over.id))}.` : `"${dragTitle(active)}" is not over a category.`,
+  onDragEnd: ({ active, over }) => over ? `"${dragTitle(active)}" dropped on ${catLabel(dropCat(over.id))}.` : `"${dragTitle(active)}" dropped. Not moved.`,
+  onDragCancel: ({ active }) => `Move cancelled. "${dragTitle(active)}" stays where it was.`,
+}
+const SCREEN_READER = {
+  draggable: 'To move this task to another category, press Space, use the arrow keys to choose a category, then press Space again. Escape cancels.',
+}
+
+// ── After-move date popup ───────────────────────────────────────────────────
+// Shown when an undated task is moved. Into Personal Project it also offers an
+// optional project name. Esc / tapping outside = Skip (the move itself is
+// already saved; this is a second, optional update).
+const MOVE_DATE_CHIPS = [['today', 'Today'], ['tomorrow', 'Tomorrow'], ['week', 'Next week'], ['pick', '📅 Pick date']]
+
+function MoveDetailsPopup({ prompt, today, projectNames, onSave, onSkip }) {
+  const toProject = prompt.toCat === 'project'
+  const meta = CATEGORY_META[prompt.toCat]
+  const [dateMode, setDateMode] = useState(null)
+  const [pickDate, setPickDate] = useState('')
+  const [name, setName] = useState('')
+  const pickRef = useRef(null)
+  const firstRef = useRef(null)
+  useEffect(() => { firstRef.current?.focus() }, [])
+
+  const dateFor = (mode) => mode === 'today' ? today
+    : mode === 'tomorrow' ? addDays(today, 1)
+    : mode === 'week' ? addDays(today, 7)
+    : mode === 'pick' ? (pickDate || null)
+    : null
+
+  function chooseChip(mode) {
+    if (mode === 'pick') {
+      setDateMode('pick')
+      setTimeout(() => { try { pickRef.current?.showPicker() } catch { pickRef.current?.focus() } }, 0)
+      return
+    }
+    // Without a name field a chip is the whole answer — save straight away.
+    if (!toProject) return onSave({ due_date: dateFor(mode) })
+    setDateMode(m => (m === mode ? null : mode))
+  }
+
+  function onPick(value) {
+    setPickDate(value)
+    if (value && !toProject) onSave({ due_date: value })
+  }
+
+  function save(e) {
+    e?.preventDefault()
+    const fields = {}
+    const d = dateMode === 'pick' ? pickDate : dateFor(dateMode)
+    if (d) fields.due_date = d
+    if (name.trim()) fields.project_name = name.trim()
+    onSave(fields)
+  }
+
+  const suggestions = projectNames.filter(n => !name || n.toLowerCase().includes(name.trim().toLowerCase())).slice(0, 6)
+  const chipStyle = (on) => on
+    ? { backgroundColor: 'rgba(212,175,55,0.22)', boxShadow: 'inset 0 0 0 2px rgba(212,175,55,0.85)', color: '#fff' }
+    : { backgroundColor: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.85)' }
+
+  return (
+    <div className="desk-overlay" onClick={onSkip}>
+      <form
+        role="dialog" aria-modal="true" aria-labelledby="desk-move-title"
+        className="desk-glass desk-pop desk-move-card" style={{ '--cat': meta.color }}
+        onClick={e => e.stopPropagation()} onSubmit={save}
+      >
+        <p className="desk-move-kicker" style={{ color: meta.color }}>Moved to {meta.label}</p>
+        <h2 id="desk-move-title" className="desk-move-title">Add a due date for this task?</h2>
+        <p className="desk-move-task truncate" title={prompt.title}>{prompt.title}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          {MOVE_DATE_CHIPS.map(([id, label], i) => (
+            <button
+              key={id} type="button" ref={i === 0 ? firstRef : null} onClick={() => chooseChip(id)}
+              className="desk-chip px-4 rounded-xl font-semibold transition-colors" style={chipStyle(dateMode === id)}
+            >{id === 'pick' && pickDate ? `📅 ${pickDate.slice(8)}/${pickDate.slice(5, 7)}` : label}</button>
+          ))}
+          {dateMode === 'pick' && (
+            <input
+              ref={pickRef} type="date" value={pickDate} min={today} aria-label="Due date"
+              onChange={e => onPick(e.target.value)}
+              className="desk-chip px-3 rounded-xl bg-white/10 border border-white/20 text-white [color-scheme:dark]"
+              style={{ textShadow: 'none' }}
+            />
+          )}
+        </div>
+        {toProject && (
+          <div className="mt-4">
+            <label htmlFor="desk-move-project" className="desk-move-label">Project name <span className="opacity-60">(optional)</span></label>
+            <input
+              id="desk-move-project" value={name} onChange={e => setName(e.target.value)} maxLength={60}
+              placeholder="e.g. Lifelog" autoComplete="off" enterKeyHint="done"
+              className="desk-input w-full mt-1.5 px-4 rounded-2xl bg-white/10 border border-white/20 text-white" style={{ textShadow: 'none' }}
+            />
+            {suggestions.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {suggestions.map(n => (
+                  <button key={n} type="button" onClick={() => setName(n)} className="desk-tag desk-tag-btn" aria-pressed={name.trim() === n}>{n}</button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2 mt-5">
+          <button type="button" onClick={onSkip} className="desk-chip px-5 rounded-xl font-semibold bg-white/10 hover:bg-white/20">Skip</button>
+          {toProject && (
+            <button
+              type="submit" disabled={!dateMode && !name.trim() || (dateMode === 'pick' && !pickDate && !name.trim())}
+              className="desk-chip btn-gold px-6 rounded-xl font-bold disabled:opacity-40" style={{ textShadow: 'none' }}
+            >Save</button>
+          )}
+        </div>
+      </form>
+    </div>
+  )
+}
+
+// "Move to…" fallback for people who don't drag — same move, same popup.
+function MoveMenu({ task, onPick, onClose }) {
+  const from = categoryOf(task)
+  const firstId = CAT_IDS.find(id => id !== from)
+  const firstRef = useRef(null)
+  useEffect(() => { firstRef.current?.focus() }, [])
+  return (
+    <div className="desk-overlay" onClick={onClose}>
+      <div role="dialog" aria-modal="true" aria-labelledby="desk-moveto-title" className="desk-glass desk-pop desk-move-card" onClick={e => e.stopPropagation()}>
+        <h2 id="desk-moveto-title" className="desk-move-title">Move to…</h2>
+        <p className="desk-move-task truncate" title={task.title}>{task.title}</p>
+        <div className="flex flex-col gap-2">
+          {CATEGORIES.map(c => {
+            const current = c.id === from
+            return (
+              <button
+                key={c.id} type="button" disabled={current}
+                ref={c.id === firstId ? firstRef : null}
+                onClick={() => onPick(task, c.id)}
+                className="desk-move-option" style={{ '--cat': c.color }}
+              >
+                <span className="font-bold" style={{ color: c.color }}>{c.label}</span>
+                {current && <span className="ml-auto text-[0.8em] opacity-70">current</span>}
+              </button>
+            )
+          })}
+        </div>
+        <div className="flex justify-end mt-4">
+          <button type="button" onClick={onClose} className="desk-chip px-5 rounded-xl font-semibold bg-white/10 hover:bg-white/20">Cancel</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Settings popover (⚙️) ───────────────────────────────────────────────────
 const SCENE_OPTIONS = [
   ['auto', 'Auto (live weather)'], ['clear', '☀️ Clear'], ['cloudy', '🌤️ Cloudy'], ['rain', '🌧️ Rain'],
@@ -710,11 +966,23 @@ export default function DeskMode({ profileName, onExit }) {
   const [cursorVisible, setCursorVisible] = useState(true)
   const [expanded, setExpanded] = useState(null)      // category id or null
   const [ideasOverlay, setIdeasOverlay] = useState(undefined) // undefined = closed; null/id = open
-  const [undo, setUndo] = useState(null)              // last completed task
+  // { kind: 'done', task } | { kind: 'move', id, title, toCat, prev }
+  const [undo, setUndo] = useState(null)
   const [shift, setShift] = useState(0)
+  const [dragTask, setDragTask] = useState(null)      // task being dragged
+  const [flashId, setFlashId] = useState(null)        // just-moved row
+  const [movePrompt, setMovePrompt] = useState(null)  // date popup after a move
+  const [moveMenu, setMoveMenu] = useState(null)      // "Move to…" for this task
+  const [toast, setToast] = useState(null)            // error message
   const inputRef = useRef(null)
   const cursorTimer = useRef(null)
   const undoTimer = useRef(null)
+  const flashTimer = useRef(null)
+  const dragActive = useRef(false)
+  const refreshHoldUntil = useRef(0)
+  // Bumped on every optimistic move; a refresh that started before the bump
+  // is stale and must not overwrite the moved task.
+  const mutationSeq = useRef(0)
   const portraitMQ = usePortraitQuery()
   const portrait = layoutPref === 'auto' ? portraitMQ : layoutPref === 'portrait'
 
@@ -724,13 +992,21 @@ export default function DeskMode({ profileName, onExit }) {
     return () => clearInterval(id)
   }, [])
 
-  // Data — every 60 seconds
+  // Data — every 60 seconds, skipped while a drag is in progress and for 2s
+  // after a drop so a refresh can't snap a moved task back.
   const loadData = useCallback(async () => {
-    try { setItems(await bridge.getTasks() || []) } catch (e) { console.error(e) }
+    const seq = mutationSeq.current
+    try {
+      const rows = await bridge.getTasks() || []
+      if (seq === mutationSeq.current) setItems(rows)
+    } catch (e) { console.error(e) }
   }, [])
   useEffect(() => {
     loadData()
-    const id = setInterval(loadData, DATA_REFRESH_MS)
+    const id = setInterval(() => {
+      if (dragActive.current || Date.now() < refreshHoldUntil.current) return
+      loadData()
+    }, DATA_REFRESH_MS)
     return () => clearInterval(id)
   }, [loadData])
 
@@ -751,21 +1027,26 @@ export default function DeskMode({ profileName, onExit }) {
 
   // Burn-in guard — nudge the whole layout a few px every 10 minutes
   useEffect(() => {
-    const id = setInterval(() => setShift(s => (s + 1) % SHIFTS.length), SHIFT_MS)
+    // Never mid-drag: shifting the layout would move the drop targets under the cursor.
+    const id = setInterval(() => { if (!dragActive.current) setShift(s => (s + 1) % SHIFTS.length) }, SHIFT_MS)
     return () => clearInterval(id)
   }, [])
 
   // An expanded section folds back on its own so the ambient view returns
   useEffect(() => {
-    if (!expanded) return
+    if (!expanded || dragTask) return
     const id = setTimeout(() => setExpanded(null), EXPAND_IDLE_MS)
     return () => clearTimeout(id)
-  }, [expanded])
+  }, [expanded, dragTask])
 
-  // ESC: close overlays/menus first, then clear a half-typed entry, then exit
+  // ESC: cancel a keyboard drag (dnd-kit handles it and marks the event),
+  // close popups/overlays/menus, then clear a half-typed entry, then exit
   useEffect(() => {
     function onKey(e) {
       if (e.key !== 'Escape') return
+      if (e.defaultPrevented || dragActive.current) return
+      if (movePrompt) return skipMoveDetails()
+      if (moveMenu) return setMoveMenu(null)
       if (showSettings) return setShowSettings(false)
       if (ideasOverlay !== undefined) return setIdeasOverlay(undefined)
       if (expanded) return setExpanded(null)
@@ -775,7 +1056,7 @@ export default function DeskMode({ profileName, onExit }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onExit, showSettings, ideasOverlay, expanded])
+  }, [onExit, showSettings, ideasOverlay, expanded, movePrompt, moveMenu])
 
   // Cursor hidden while idle; shown on mouse move/touch for 3s
   useEffect(() => {
@@ -824,21 +1105,128 @@ export default function DeskMode({ profileName, onExit }) {
     .sort((a, b) => (CAT_ORDER[categoryOf(a)] - CAT_ORDER[categoryOf(b)])
       || (b.created_at || '').localeCompare(a.created_at || '')), [items])
 
+  const projectNames = useMemo(() => [...new Set(items
+    .map(t => (t.project_name || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b)), [items])
+
+  function showUndo(u) {
+    setUndo(u)
+    clearTimeout(undoTimer.current)
+    undoTimer.current = setTimeout(() => setUndo(null), UNDO_MS)
+  }
+  function flash(id) {
+    setFlashId(id)
+    clearTimeout(flashTimer.current)
+    flashTimer.current = setTimeout(() => setFlashId(null), FLASH_MS)
+  }
+  const patchItem = (id, fields) => setItems(list => list.map(t => t.id === id ? { ...t, ...fields } : t))
+  function markMutation() {
+    mutationSeq.current++
+    refreshHoldUntil.current = Math.max(refreshHoldUntil.current, Date.now() + REFRESH_HOLD_MS)
+  }
+
   async function completeTask(task) {
     const done_at = new Date().toISOString()
-    setItems(list => list.map(t => t.id === task.id ? { ...t, status: 'done', done_at } : t))
-    setUndo(task)
-    clearTimeout(undoTimer.current)
-    undoTimer.current = setTimeout(() => setUndo(null), 6000)
+    patchItem(task.id, { status: 'done', done_at })
+    showUndo({ kind: 'done', task })
     try { await bridge.updateTask({ id: task.id, status: 'done' }) } catch { loadData() }
   }
 
-  async function undoComplete() {
-    const task = undo
-    if (!task) return
+  async function undoComplete(task) {
     setUndo(null)
-    setItems(list => list.map(t => t.id === task.id ? { ...t, status: 'pending', done_at: null } : t))
+    patchItem(task.id, { status: 'pending', done_at: null })
     try { await bridge.updateTask({ id: task.id, status: 'pending' }) } catch { loadData() }
+  }
+
+  // Move a task to another category: UI first, then PUT { category } only.
+  // Leaving Project drops project_name (same rule as the server). An undated
+  // task then gets the optional date popup; the undo toast follows it.
+  async function moveTask(task, toCat) {
+    setMoveMenu(null)
+    const fromCat = categoryOf(task)
+    if (!CATEGORY_META[toCat] || toCat === fromCat) return
+    const prev = { category: fromCat, due_date: task.due_date ?? null, project_name: task.project_name ?? null }
+    const move = { kind: 'move', id: task.id, title: task.title, toCat, prev }
+    markMutation()
+    patchItem(task.id, { category: toCat, project_name: toCat === 'project' ? (task.project_name ?? null) : null })
+    flash(task.id)
+    clearTimeout(undoTimer.current)
+    setUndo(null)
+    if (task.due_date) showUndo(move)
+    else setMovePrompt(move)
+    try {
+      await bridge.updateTask({ id: task.id, category: toCat })
+    } catch (e) {
+      console.error(e)
+      mutationSeq.current++
+      patchItem(task.id, prev)
+      setMovePrompt(p => (p?.id === task.id ? null : p))
+      setUndo(u => (u?.kind === 'move' && u.id === task.id ? null : u))
+      setToast(`Couldn't move "${task.title}" — it's back in ${catLabel(fromCat)}`)
+    }
+  }
+
+  // Second, optional update from the date popup: only the fields that were set.
+  async function saveMoveDetails(fields) {
+    const move = movePrompt
+    if (!move) return
+    setMovePrompt(null)
+    showUndo(move)
+    if (!Object.keys(fields).length) return
+    const before = items.find(t => t.id === move.id)
+    markMutation()
+    patchItem(move.id, fields)
+    flash(move.id)
+    try {
+      await bridge.updateTask({ id: move.id, ...fields })
+    } catch (e) {
+      console.error(e)
+      mutationSeq.current++
+      if (before) patchItem(move.id, { due_date: before.due_date ?? null, project_name: before.project_name ?? null })
+      setToast(`Couldn't save the ${fields.due_date ? 'due date' : 'project name'} for "${move.title}"`)
+    }
+  }
+  function skipMoveDetails() { saveMoveDetails({}) }
+
+  // Puts the task back exactly as it was before the move.
+  async function undoMove(u) {
+    setUndo(null)
+    setMovePrompt(null)
+    markMutation()
+    patchItem(u.id, u.prev)
+    flash(u.id)
+    try {
+      await bridge.updateTask({ id: u.id, ...u.prev })
+    } catch (e) {
+      console.error(e)
+      setToast(`Couldn't undo the move of "${u.title}"`)
+      mutationSeq.current++
+      loadData()
+    }
+  }
+
+  // ── Drag handlers ──
+  const sensors = useSensors(
+    // Mouse: 8px of travel first, so a click (or the checkbox tap) stays a click.
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    // Touch: a 250ms press-and-hold, so a swipe still scrolls.
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: boxKeyboardCoordinates }),
+  )
+  function endDrag() {
+    dragActive.current = false
+    refreshHoldUntil.current = Date.now() + REFRESH_HOLD_MS
+    setDragTask(null)
+  }
+  function onDragStart({ active }) {
+    dragActive.current = true
+    setShowSettings(false)
+    setDragTask(active.data.current?.task || null)
+  }
+  function onDragEnd({ active, over }) {
+    const task = active.data.current?.task
+    endDrag()
+    const toCat = dropCat(over?.id)
+    if (task && toCat && toCat !== categoryOf(task)) moveTask(task, toCat)
   }
 
   async function addItem(payload) {
@@ -873,7 +1261,8 @@ export default function DeskMode({ profileName, onExit }) {
   const renderSection = (cat, extra) => (
     <CategorySection
       key={cat} cat={cat} tasks={byCategory[cat]} today={today}
-      onComplete={completeTask} {...extra}
+      onComplete={completeTask} onMoveMenu={setMoveMenu} flashId={flashId}
+      dragFrom={dragTask ? categoryOf(dragTask) : null} {...extra}
       expanded={expanded === cat} onExpand={setExpanded} measureKey={measureKey}
     />
   )
@@ -881,8 +1270,16 @@ export default function DeskMode({ profileName, onExit }) {
   const [dx, dy] = SHIFTS[shift]
 
   return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={deskCollision}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragCancel={endDrag}
+      accessibility={{ announcements: ANNOUNCEMENTS, screenReaderInstructions: SCREEN_READER, container: document.body }}
+    >
     <div
-      className={`desk-root ${portrait ? 'desk-portrait' : 'desk-landscape'} ${cursorVisible ? '' : 'desk-hide-cursor'}`}
+      className={`desk-root ${portrait ? 'desk-portrait' : 'desk-landscape'} ${cursorVisible || dragTask ? '' : 'desk-hide-cursor'} ${dragTask ? 'desk-dragging' : ''}`}
       onClick={() => setShowSettings(false)}
     >
       <WeatherBackground scene={sceneForBg} night={nightForBg} />
@@ -922,9 +1319,20 @@ export default function DeskMode({ profileName, onExit }) {
         <div className="relative shrink-0">
           {undo && (
             <div className="desk-undo-wrap">
-              <div className="desk-glass desk-pop desk-undo">
-                <span className="truncate">✓ Done: {undo.title}</span>
-                <button type="button" onClick={undoComplete} className="font-bold shrink-0" style={{ color: '#D4AF37' }}>Undo</button>
+              <div key={`${undo.kind}-${undo.id ?? undo.task?.id}`} className="desk-glass desk-pop desk-undo" role="status">
+                {undo.kind === 'move' ? (
+                  <span className="truncate">
+                    Moved to <b style={{ color: CATEGORY_META[undo.toCat].color }}>{catLabel(undo.toCat)}</b>
+                  </span>
+                ) : (
+                  <span className="truncate">✓ Done: {undo.task.title}</span>
+                )}
+                <span className="opacity-50 shrink-0" aria-hidden="true">—</span>
+                <button
+                  type="button"
+                  onClick={() => (undo.kind === 'move' ? undoMove(undo) : undoComplete(undo.task))}
+                  className="font-bold shrink-0" style={{ color: '#D4AF37' }}
+                >Undo</button>
               </div>
             </div>
           )}
@@ -949,6 +1357,21 @@ export default function DeskMode({ profileName, onExit }) {
       {ideasOverlay !== undefined && (
         <IdeasOverlay ideas={ideas} focusId={ideasOverlay} onClose={() => setIdeasOverlay(undefined)} />
       )}
+
+      {/* Outside .desk-layout: its burn-in transform would offset a fixed overlay */}
+      <DragOverlay dropAnimation={null}>
+        {dragTask && <DeskRowGhost task={dragTask} today={today} />}
+      </DragOverlay>
+
+      {moveMenu && <MoveMenu task={moveMenu} onPick={moveTask} onClose={() => setMoveMenu(null)} />}
+      {movePrompt && (
+        <MoveDetailsPopup
+          key={movePrompt.id} prompt={movePrompt} today={today} projectNames={projectNames}
+          onSave={saveMoveDetails} onSkip={skipMoveDetails}
+        />
+      )}
+      <Toast message={toast || ''} type="error" visible={!!toast} onHide={() => setToast(null)} />
     </div>
+    </DndContext>
   )
 }
