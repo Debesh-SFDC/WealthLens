@@ -44,6 +44,16 @@ const TOKEN_KEY = 'wealthlens_token'
 // Electron renderer is loaded from a file/dev URL, so there it's state only.
 const DESK_PATH = '/desk'
 const isDeskPath = () => !IS_ELECTRON && window.location.pathname === DESK_PATH
+const SIDEBAR_KEY = 'lifelog.sidebarCollapsed'
+const isTyping = (el) => el && (el.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName))
+
+// localStorage can throw (private mode, blocked storage); never let it break the layout.
+function readCollapsed() {
+  try { return localStorage.getItem(SIDEBAR_KEY) === '1' } catch { return false }
+}
+function writeCollapsed(v) {
+  try { localStorage.setItem(SIDEBAR_KEY, v ? '1' : '0') } catch { /* storage unavailable */ }
+}
 
 function decodeWebSession() {
   const token = localStorage.getItem(TOKEN_KEY)
@@ -74,6 +84,31 @@ export default function App() {
   const [appReady, setAppReady]             = useState(false)
   const [syncStatus, setSyncStatus]         = useState(null)
   const [deskMode, setDeskMode]             = useState(isDeskPath)
+  // Sidebar collapsed to an icon rail (remembered); wide view hides the
+  // sidebar and TopBar for the Life Timeline (never remembered).
+  const [collapsed, setCollapsed]           = useState(readCollapsed)
+  const [wideView, setWideView]             = useState(false)
+
+  const toggleSidebar = useCallback(() => {
+    setCollapsed(c => { writeCollapsed(!c); return !c })
+  }, [])
+
+  // Cmd/Ctrl + B toggles the sidebar (not while typing, not in wide view).
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'admin' || deskMode || wideView) return
+    const onKey = (e) => {
+      if (!(e.metaKey || e.ctrlKey) || e.altKey || e.shiftKey || e.key.toLowerCase() !== 'b') return
+      if (isTyping(e.target) || e.repeat) return
+      if (!window.matchMedia('(min-width: 1024px)').matches) return // phone layout has no sidebar
+      e.preventDefault()
+      toggleSidebar()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [currentUser, deskMode, wideView, toggleSidebar])
+
+  // Wide view belongs to the Life Timeline only.
+  useEffect(() => { if (activePage !== 'timeline') setWideView(false) }, [activePage])
 
   // Browser back/forward in and out of /desk
   useEffect(() => {
@@ -213,23 +248,32 @@ export default function App() {
   }
 
   const PageComponent = adminPages[activePage]
+  const wide = wideView && activePage === 'timeline'
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#0A0A0A]">
       {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
-      <Sidebar activePage={activePage} onNavigate={navigate} />
+      <Sidebar activePage={activePage} onNavigate={navigate} collapsed={collapsed} hidden={wide} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
-        <TopBar
-          activePage={activePage}
-          profileName={profileName || currentUser.name}
-          syncStatus={syncStatus}
-          onSignOut={handleSignOut}
-          onDeskMode={enterDeskMode}
-        />
+        {/* grid 1fr → 0fr animates the TopBar's height away in wide view */}
+        <div className={`app-topbar${wide ? ' gone' : ''}`} inert={wide ? '' : undefined}>
+          <div className="min-h-0 overflow-hidden">
+            <TopBar
+              activePage={activePage}
+              profileName={profileName || currentUser.name}
+              syncStatus={syncStatus}
+              onSignOut={handleSignOut}
+              onDeskMode={enterDeskMode}
+              sidebarCollapsed={collapsed}
+              onToggleSidebar={toggleSidebar}
+            />
+          </div>
+        </div>
         <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           {activePage === 'dashboard'
             ? <Dashboard onNavigate={navigate} currentUser={currentUser} />
-            : <PageComponent onSyncRefresh={loadSyncStatus} currentUser={currentUser} onNavigate={navigate} navParams={navParams} />
+            : <PageComponent onSyncRefresh={loadSyncStatus} currentUser={currentUser} onNavigate={navigate} navParams={navParams}
+                {...(activePage === 'timeline' ? { wideView: wide, onWideView: setWideView } : {})} />
           }
         </main>
       </div>

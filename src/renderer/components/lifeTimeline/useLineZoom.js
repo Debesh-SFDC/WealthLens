@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import { clampPpy, xOf, yearAt, trackWidth } from '../../lib/lifeTimelineZoom'
 
 const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)
@@ -19,15 +20,6 @@ export default function useLineZoom({ range, scrollerRef, initialPpy, reducedMot
 
   const start = range?.start ?? 0
 
-  useEffect(() => {
-    const el = scrollerRef.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setVw(el.clientWidth || 800))
-    ro.observe(el)
-    setVw(el.clientWidth || 800)
-    return () => ro.disconnect()
-  }, [scrollerRef, range])
-
   const clampLeft = useCallback((left, ppy) => {
     if (!range) return 0
     return Math.min(Math.max(0, trackWidth(range, ppy, vwRef.current) - vwRef.current), Math.max(0, left))
@@ -37,6 +29,38 @@ export default function useLineZoom({ range, scrollerRef, initialPpy, reducedMot
     apply.current = true
     setZ({ ppy, left: clampLeft(left, ppy) })
   }, [clampLeft])
+
+  // Width changes (sidebar collapse, wide view, window resize): keep the year
+  // at the centre of the screen at the centre. The first measurement only
+  // records the width, so the initial view (today at the left) is untouched.
+  // flushSync renders in the same frame as the resize, so the line never
+  // lags a frame behind the sidebar animation.
+  const measured = useRef(false)
+  useEffect(() => {
+    const el = scrollerRef.current
+    if (!el || !range) return
+    const measure = (fromObserver) => {
+      const nw = el.clientWidth || 800
+      const ow = vwRef.current
+      if (!measured.current) {
+        measured.current = true
+        vwRef.current = nw
+        setVw(nw)
+        return
+      }
+      if (nw === ow) return
+      const { ppy, left } = zRef.current
+      const yc = yearAt(ow / 2, left, ppy, range.start)
+      vwRef.current = nw
+      const update = () => { setVw(nw); set(ppy, xOf(yc, ppy, range.start) - nw / 2) }
+      if (fromObserver) flushSync(update) // not allowed inside the effect itself
+      else update()
+    }
+    const ro = new ResizeObserver(() => measure(true))
+    ro.observe(el)
+    measure(false)
+    return () => ro.disconnect()
+  }, [scrollerRef, range, set])
 
   // Keep the fractional year `anchorYear` under screen x `px` at the new ppy.
   const zoomAt = useCallback((ppy, anchorYear, px) => {

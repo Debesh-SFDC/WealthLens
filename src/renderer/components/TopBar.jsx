@@ -30,13 +30,29 @@ function getInitials(name) {
   return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase()
 }
 
-export default function TopBar({ activePage, profileName, syncStatus, onSignOut, onDeskMode }) {
+export default function TopBar({ activePage, profileName, syncStatus, onSignOut, onDeskMode, sidebarCollapsed, onToggleSidebar }) {
   const syncMeta = syncStatus ? SYNC_META[syncStatus.status] : null
 
   return (
     <header className="flex items-center justify-between px-4 sm:px-8 py-3 sm:py-4 shrink-0" style={{ backgroundColor: '#0A0A0A', borderBottom: '1px solid #2A2A2A' }}>
-      <div>
-        <h1 className="text-lg sm:text-xl font-bold text-gray-900">{PAGE_TITLES[activePage]}</h1>
+      <div className="flex items-center gap-3 min-w-0">
+        {/* Sidebar toggle: desktop/tablet only (phones use the BottomNav) */}
+        {onToggleSidebar && (
+          <button
+            type="button"
+            onClick={onToggleSidebar}
+            title={`${sidebarCollapsed ? 'Expand' : 'Collapse'} sidebar (${navigator.platform?.startsWith('Mac') ? '⌘' : 'Ctrl+'}B)`}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+            className="hidden lg:flex items-center justify-center w-8 h-8 -ml-2 rounded-lg text-gray-500 hover:text-[#D4AF37] hover:bg-[#D4AF37]/10 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#D4AF37]"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-[18px] h-[18px]" aria-hidden="true">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <line x1="9" y1="3" x2="9" y2="21" />
+            </svg>
+          </button>
+        )}
+        <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{PAGE_TITLES[activePage]}</h1>
       </div>
 
       <div className="flex items-center gap-2 sm:gap-4">

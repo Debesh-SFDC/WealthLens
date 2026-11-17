@@ -45,9 +45,22 @@ function writeView(v) {
   try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage unavailable */ }
 }
 
+const MaximizeIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M16 4h4v4M14 10l6-6M8 20H4v-4M4 20l6-6M16 20h4v-4M14 14l6 6M8 4H4v4M4 4l6 6" />
+  </svg>
+)
+const MinimizeIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M5 9h4V5M3 3l6 6M5 15h4v4M3 21l6-6M19 9h-4V5M15 9l6-6M19 15h-4v4M15 15l6 6" />
+  </svg>
+)
+
 const isTyping = (el) => el && (el.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName))
 
-export default function LifeTimeline({ onNavigate }) {
+// wideView / onWideView come from App: wide view hides the sidebar and TopBar
+// (a layout mode, not the Fullscreen API, which fails in the Capacitor APK).
+export default function LifeTimeline({ onNavigate, wideView = false, onWideView }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
@@ -65,6 +78,8 @@ export default function LifeTimeline({ onNavigate }) {
   const backRef = useRef(null)
   const networkRef = useRef(null)
   const timer = useRef(null)
+  const wideBtnRef = useRef(null)
+  const exitWideRef = useRef(null)
 
   const initialView = useRef(readView())
   const range = data?.range
@@ -97,6 +112,16 @@ export default function LifeTimeline({ onNavigate }) {
 
   useEffect(() => { load() }, [load])
   useEffect(() => () => clearTimeout(timer.current), [])
+  // Leaving the page always ends wide view.
+  useEffect(() => () => onWideView?.(false), [onWideView])
+
+  // Move focus with the mode so keyboard users aren't left on a hidden button.
+  const wideMounted = useRef(false)
+  useEffect(() => {
+    if (!wideMounted.current) { wideMounted.current = true; return }
+    if (wideView) exitWideRef.current?.focus({ preventScroll: true })
+    else wideBtnRef.current?.focus({ preventScroll: true })
+  }, [wideView])
 
   const byYear = useMemo(() => groupByYear(buildItems(data)), [data])
   const phases = data?.phases || []
@@ -177,13 +202,14 @@ export default function LifeTimeline({ onNavigate }) {
         return
       }
       if (zoomed) return
+      if (e.key === 'Escape' && wideView) { e.preventDefault(); onWideView?.(false); return }
       if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn() }
       else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut() }
       else if (e.key === '0') { e.preventDefault(); zoomReset() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [modal, data, yearShown, zoomed, closeYear, goYear, zoomIn, zoomOut, zoomReset])
+  }, [modal, data, yearShown, zoomed, wideView, onWideView, closeYear, goYear, zoomIn, zoomOut, zoomReset])
 
   function onPhaseChip(p) {
     if (!range) return
@@ -234,7 +260,7 @@ export default function LifeTimeline({ onNavigate }) {
   const onNetScale = useCallback((k) => setNetK(k), [])
 
   return (
-    <div className="lt">
+    <div className={`lt${wideView ? ' wide' : ''}`}>
       <GoldDust reducedMotion={reducedMotion} />
 
       <header className="lt-head">
@@ -249,6 +275,17 @@ export default function LifeTimeline({ onNavigate }) {
             <div><b>{ageNow ?? '—'}</b>Age now</div>
             <div><b>{data.retirement.year}</b>Retirement</div>
             <div><b>{range.end}</b>{data.birthYear != null ? 'Age 80' : 'Plan end'}</div>
+            {onWideView && !wideView && (
+              <button
+                ref={wideBtnRef}
+                type="button"
+                className="lt-widebtn"
+                onClick={() => onWideView(true)}
+                title="Hide the sidebar and top bar"
+              >
+                <MaximizeIcon />Wide view
+              </button>
+            )}
           </div>
         )}
         {data && <div className="lt-segrow"><ViewSwitcher active={activeView} onChange={changeView} /></div>}
@@ -274,6 +311,17 @@ export default function LifeTimeline({ onNavigate }) {
       )}
 
       <div className="lt-stage">
+        {wideView && (
+          <button
+            ref={exitWideRef}
+            type="button"
+            className="lt-exitwide"
+            onClick={() => onWideView?.(false)}
+            title="Exit wide view (Esc)"
+          >
+            <MinimizeIcon />Exit wide view
+          </button>
+        )}
         {loading && <div className="lt-center" role="status">Loading your timeline…</div>}
         {!loading && loadError && !data && (
           <div className="lt-center" role="alert">

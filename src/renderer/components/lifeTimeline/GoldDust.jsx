@@ -33,23 +33,40 @@ export default function GoldDust({ reducedMotion }) {
       cx.globalAlpha = 1
     }
 
+    const spawn = (x0, x1, y0, y1) => ({
+      x: x0 + Math.random() * (x1 - x0),
+      y: y0 + Math.random() * (y1 - y0),
+      r: Math.random() * 1.4 + 0.3,
+      v: Math.random() * 0.25 + 0.05,
+      a: Math.random() * 0.5 + 0.1,
+    })
+
+    // Resizes (window, sidebar collapse, wide view) keep the existing dust in
+    // place and only add or drop particles, so an animated width change
+    // doesn't re-scatter the whole field every frame.
     const size = () => {
       const rect = cv.parentElement.getBoundingClientRect()
       const dpr = Math.min(window.devicePixelRatio || 1, 2)
-      w = Math.max(1, rect.width)
-      h = Math.max(1, rect.height)
-      cv.width = Math.round(w * dpr)
-      cv.height = Math.round(h * dpr)
+      const nw = Math.max(1, rect.width)
+      const nh = Math.max(1, rect.height)
+      if (nw === w && nh === h) return
+      cv.width = Math.round(nw * dpr)
+      cv.height = Math.round(nh * dpr)
       cx.setTransform(dpr, 0, 0, dpr, 0, 0)
       // ~90 particles on a desktop-sized stage, fewer on a phone
-      const count = Math.round(Math.min(110, Math.max(30, (w * h) / 11000)))
-      particles = Array.from({ length: count }, () => ({
-        x: Math.random() * w,
-        y: Math.random() * h,
-        r: Math.random() * 1.4 + 0.3,
-        v: Math.random() * 0.25 + 0.05,
-        a: Math.random() * 0.5 + 0.1,
-      }))
+      const count = Math.round(Math.min(110, Math.max(30, (nw * nh) / 11000)))
+      if (!particles.length) {
+        particles = Array.from({ length: count }, () => spawn(0, nw, 0, nh))
+      } else {
+        particles = particles.filter(p => p.x <= nw + 2 && p.y <= nh)
+        // fill newly revealed space first, then anywhere
+        while (particles.length < count) {
+          particles.push(nw > w ? spawn(w, nw, 0, nh) : nh > h ? spawn(0, nw, h, nh) : spawn(0, nw, 0, nh))
+        }
+        if (particles.length > count) particles.length = count
+      }
+      w = nw
+      h = nh
       draw()
     }
 

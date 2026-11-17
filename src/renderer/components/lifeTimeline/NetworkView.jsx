@@ -1,4 +1,5 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { forceSimulation, forceLink, forceManyBody, forceCollide, forceX, forceY } from 'd3-force'
 import { zoom as d3zoom, zoomIdentity } from 'd3-zoom'
 import { select } from 'd3-selection'
@@ -86,6 +87,10 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
   const zoomRef = useRef(null)
   const tRef = useRef(zoomIdentity)
   const fitted = useRef(false)
+  // Has the user panned/zoomed since opening the view? Decides whether a
+  // resize re-fits the graph or keeps their position.
+  const moved = useRef(false)
+  const sizeRef = useRef(null)
   const lastPointer = useRef('mouse')
   const [size, setSize] = useState({ w: 800, h: 500 })
   const [t, setT] = useState(zoomIdentity)
@@ -100,7 +105,16 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
   useEffect(() => {
     const el = wrapRef.current
     if (!el) return
-    const ro = new ResizeObserver(() => setSize({ w: el.clientWidth || 800, h: el.clientHeight || 500 }))
+    // flushSync: re-render in the resize frame so the graph keeps pace with
+    // the sidebar animation instead of trailing it by a frame.
+    const ro = new ResizeObserver(() => {
+      const w = el.clientWidth || 800
+      const h = el.clientHeight || 500
+      const prev = sizeRef.current
+      if (prev && prev.w === w && prev.h === h) return
+      if (prev) flushSync(() => setSize({ w, h }))
+      else setSize({ w, h })
+    })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
@@ -123,6 +137,7 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
     const y1 = Math.max(...ys) + pad
     const k = Math.max(NET_MIN_K, Math.min(2, Math.min(size.w / (x1 - x0), size.h / (y1 - y0))))
     const tr = zoomIdentity.translate(size.w / 2, size.h / 2).scale(k).translate(-(x0 + x1) / 2, -(y0 + y1) / 2)
+    moved.current = false
     if (animate) run(sel => sel.call(zoomRef.current.transform, tr))
     else select(svgRef.current).call(zoomRef.current.transform, tr)
   }, [layout, size, run])
@@ -139,6 +154,7 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
       .filter(e => (e.type === 'wheel' ? e.ctrlKey || e.metaKey : !e.button))
       .wheelDelta(e => -e.deltaY * (e.deltaMode === 1 ? 0.05 : e.deltaMode ? 1 : 0.0025))
       .on('zoom', e => {
+        if (e.sourceEvent) moved.current = true // drag, pinch, ctrl+wheel
         tRef.current = e.transform
         gRef.current?.setAttribute('transform', e.transform.toString())
         setT(e.transform)
@@ -148,6 +164,7 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
     sel.on('wheel.pan', e => {
       if (e.ctrlKey || e.metaKey) return
       e.preventDefault()
+      moved.current = true
       z.translateBy(sel, -e.deltaX / tRef.current.k, -e.deltaY / tRef.current.k)
     }, { passive: false })
     zoomRef.current = z
@@ -159,15 +176,30 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
     if (!hidden && layout && size.w > 0 && !fitted.current) { fitted.current = true; fit(false) }
   }, [hidden, layout, size, fit])
   useEffect(() => { fitted.current = false }, [narrow])
+  // Opening the view starts a fresh "untouched" session.
+  useEffect(() => { if (!hidden) moved.current = false }, [hidden])
+
+  // The stage changed size (sidebar, wide view, window): re-fit if the user
+  // hasn't moved the graph, otherwise keep the point at the centre centred.
+  useLayoutEffect(() => {
+    const prev = sizeRef.current
+    sizeRef.current = size
+    if (!prev || (prev.w === size.w && prev.h === size.h) || !fitted.current || !zoomRef.current) return
+    if (!moved.current) fit(false)
+    else {
+      const k = tRef.current.k
+      select(svgRef.current).call(zoomRef.current.translateBy, (size.w - prev.w) / 2 / k, (size.h - prev.h) / 2 / k)
+    }
+  }, [size, fit])
 
   useImperativeHandle(ref, () => ({
-    zoomIn: () => run(sel => zoomRef.current.scaleBy(sel, 1.4)),
-    zoomOut: () => run(sel => zoomRef.current.scaleBy(sel, 1 / 1.4)),
-    setScale: (k) => zoomRef.current && zoomRef.current.scaleTo(select(svgRef.current), k),
+    zoomIn: () => { moved.current = true; run(sel => zoomRef.current.scaleBy(sel, 1.4)) },
+    zoomOut: () => { moved.current = true; run(sel => zoomRef.current.scaleBy(sel, 1 / 1.4)) },
+    setScale: (k) => { moved.current = true; if (zoomRef.current) zoomRef.current.scaleTo(select(svgRef.current), k) },
     fit: () => fit(true),
     focusPhase: (phaseId) => {
       const n = layout?.byId.get(`p${phaseId}`)
-      if (n) run(sel => zoomRef.current.translateTo(sel, n.x, n.y))
+      if (n) { moved.current = true; run(sel => zoomRef.current.translateTo(sel, n.x, n.y)) }
     },
   }), [run, fit, layout])
 
@@ -186,7 +218,10 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
   }
   const ensureVisible = (n) => {
     const [sx, sy] = tRef.current.apply([n.x, n.y])
-    if (sx < 40 || sy < 40 || sx > size.w - 40 || sy > size.h - 40) run(sel => zoomRef.current.translateTo(sel, n.x, n.y))
+    if (sx < 40 || sy < 40 || sx > size.w - 40 || sy > size.h - 40) {
+      moved.current = true
+      run(sel => zoomRef.current.translateTo(sel, n.x, n.y))
+    }
   }
 
   const active = activeId ? layout?.byId.get(activeId) : null

@@ -297,3 +297,11 @@ option {
 :where(table td, table th) {
   border-color: var(--border-primary);
 }
+
+/* ── Admin shell: TopBar collapses away in Life Timeline wide view ── */
+.app-topbar { display: grid; grid-template-rows: 1fr; flex-shrink: 0; transition: grid-template-rows 250ms ease; }
+.app-topbar.gone { grid-template-rows: 0fr; }
+.app-sidebar { transition: width 250ms ease, border-color 250ms ease; overflow: hidden; overflow: clip; }
+.app-sidebar .fade { transition: opacity 180ms ease; white-space: nowrap; }
+.app-sidebar.rail .fade { opacity: 0; pointer-events: none; }
+.app-sidebar .nav-btn { transition: padding-left 250ms ease, background-color 150ms, color 150ms; }
