@@ -77,7 +77,27 @@ export function getSyncSnapshot(db) {
     FROM profile WHERE sync_id IS NOT NULL LIMIT 1
   `).get() || null
 
-  return { expenses, goals, goal_contributions, goal_investments, investments, salary_plans, salary_plan_items, profile }
+  // Life Timeline — user_id travels as the owner's name (like expenses) and
+  // goal_id as the goal's sync_id; both are resolved back on merge.
+  const life_events = db.prepare(`
+    SELECT e.sync_id as id, u.name as user_name, e.title, e.notes, e.year, e.month, e.day,
+           e.amount, e.amount_note, e.category, e.is_assumed, e.is_major, e.status,
+           g.sync_id as goal_id, e.created_at, e.updated_at, e.deleted_at, e.device_id
+    FROM life_events e
+    LEFT JOIN users u ON u.id = e.user_id
+    LEFT JOIN goals g ON g.id = e.goal_id
+    WHERE e.sync_id IS NOT NULL
+  `).all()
+
+  const life_phases = db.prepare(`
+    SELECT p.sync_id as id, u.name as user_name, p.numeral, p.name, p.start_year, p.sort_order,
+           p.created_at, p.updated_at, p.deleted_at, p.device_id
+    FROM life_phases p LEFT JOIN users u ON u.id = p.user_id
+    WHERE p.sync_id IS NOT NULL
+  `).all()
+
+  return { expenses, goals, goal_contributions, goal_investments, investments, salary_plans, salary_plan_items, profile,
+    life_events, life_phases }
 }
 
 export function buildSyncFile(db, deviceId) {
@@ -297,6 +317,63 @@ export function applySyncMerge(db, remoteData, deviceId) {
         const local = findLocal.get(r.id)
         if (!local) { insert.run(r); downloaded++ }
         else if (newer(r.updated_at, local.updated_at)) { update.run(r); downloaded++ }
+      }
+    }
+
+    // ── life_phases / life_events (owner by user name, goal by sync_id) ────
+    // Owner falls back to the local admin when the name doesn't match (the
+    // timeline is admin-only). A goal link whose goal isn't here yet is kept
+    // NULL and filled on a later sync once the goal row arrives.
+    {
+      const localAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+      const ownerId = (name) => (name ? findUser.get(name)?.id : null) ?? localAdmin?.id ?? null
+
+      const findPhase = db.prepare('SELECT id, updated_at FROM life_phases WHERE sync_id = ?')
+      const insertPhase = db.prepare(`
+        INSERT INTO life_phases (sync_id, user_id, numeral, name, start_year, sort_order,
+          created_at, updated_at, deleted_at, device_id)
+        VALUES (@id, @user_id_local, @numeral, @name, @start_year, @sort_order,
+          @created_at, @updated_at, @deleted_at, @device_id)
+      `)
+      const updatePhase = db.prepare(`
+        UPDATE life_phases SET user_id=@user_id_local, numeral=@numeral, name=@name, start_year=@start_year,
+          sort_order=@sort_order, updated_at=@updated_at, deleted_at=@deleted_at, device_id=@device_id
+        WHERE sync_id=@id
+      `)
+      for (const raw of remoteData.life_phases || []) {
+        const r = fillDefaults(raw, { numeral: null, sort_order: 0, deleted_at: null, device_id: null,
+          created_at: raw.updated_at, updated_at: raw.updated_at || raw.created_at })
+        r.user_id_local = ownerId(r.user_name)
+        if (r.user_id_local == null) continue
+        const local = findPhase.get(r.id)
+        if (!local) { insertPhase.run(r); downloaded++ }
+        else if (newer(r.updated_at, local.updated_at)) { updatePhase.run(r); downloaded++ }
+      }
+
+      const findEvent = db.prepare('SELECT id, updated_at FROM life_events WHERE sync_id = ?')
+      const insertEvent = db.prepare(`
+        INSERT INTO life_events (sync_id, user_id, title, notes, year, month, day, amount, amount_note,
+          category, is_assumed, is_major, status, goal_id, created_at, updated_at, deleted_at, device_id)
+        VALUES (@id, @user_id_local, @title, @notes, @year, @month, @day, @amount, @amount_note,
+          @category, @is_assumed, @is_major, @status, @goal_id_local, @created_at, @updated_at, @deleted_at, @device_id)
+      `)
+      const updateEvent = db.prepare(`
+        UPDATE life_events SET user_id=@user_id_local, title=@title, notes=@notes, year=@year, month=@month,
+          day=@day, amount=@amount, amount_note=@amount_note, category=@category, is_assumed=@is_assumed,
+          is_major=@is_major, status=@status, goal_id=@goal_id_local, updated_at=@updated_at,
+          deleted_at=@deleted_at, device_id=@device_id
+        WHERE sync_id=@id
+      `)
+      for (const raw of remoteData.life_events || []) {
+        const r = fillDefaults(raw, { notes: null, month: null, day: null, amount: null, amount_note: null,
+          category: 'other', is_assumed: 0, is_major: 0, status: 'planned', goal_id: null, deleted_at: null,
+          device_id: null, created_at: raw.updated_at, updated_at: raw.updated_at || raw.created_at })
+        r.user_id_local = ownerId(r.user_name)
+        if (r.user_id_local == null) continue
+        r.goal_id_local = r.goal_id ? (findGoal.get(r.goal_id)?.id ?? null) : null
+        const local = findEvent.get(r.id)
+        if (!local) { insertEvent.run(r); downloaded++ }
+        else if (newer(r.updated_at, local.updated_at)) { updateEvent.run(r); downloaded++ }
       }
     }
 

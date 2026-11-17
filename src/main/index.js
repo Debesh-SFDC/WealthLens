@@ -11,6 +11,7 @@ import {
   logSyncEvent, getSyncLog,
 } from '../db/database.js'
 import { buildSyncFile, applySyncMerge } from '../db/sync.js'
+import lifeTimeline from '../shared/lifeTimeline.js'
 import {
   initiateAuth, disconnect as driveDisconnect, backupDatabase, listBackups,
   restoreFromDrive, getDriveStatus, getSyncStatus, getDbLastModified,
@@ -1871,6 +1872,97 @@ function setupIpcHandlers() {
       .run(now, now, id, currentUserSession?.id)
     if (!info.changes) throw new Error('Task not found')
     return { success: true }
+  })
+
+  // ── Life Timeline ─────────────────────────────────────────────────────────
+  // Admin only, scoped to the session user. Same validation and derivation as
+  // the web router (src/server/routes/lifeTimeline.js) via src/shared/lifeTimeline.js.
+  const LIFE_EVENT_COLS = ['title', 'notes', 'year', 'month', 'day', 'amount', 'amount_note',
+    'category', 'is_assumed', 'is_major', 'status', 'goal_id']
+  const requireAdminSession = () => {
+    if (currentUserSession?.role !== 'admin') throw new Error('Access denied. Admin only.')
+    return currentUserSession.id
+  }
+  const checkLifeGoal = (goalId) => {
+    if (goalId == null) return
+    if (!db.prepare('SELECT id FROM goals WHERE id = ? AND deleted_at IS NULL').get(goalId)) {
+      throw new Error('goal_id does not match a goal')
+    }
+  }
+
+  ipcMain.handle('lifeTimeline:get', () => {
+    const uid = requireAdminSession()
+    const { SQL } = lifeTimeline
+    return lifeTimeline.buildTimeline({
+      profile: db.prepare(SQL.profile).get(),
+      fire: db.prepare(SQL.fire).get(),
+      phases: db.prepare(SQL.phases).all(uid),
+      events: db.prepare(SQL.events).all(uid),
+      goals: db.prepare(SQL.goals).all(),
+    })
+  })
+
+  ipcMain.handle('lifeTimeline:createEvent', (_, d = {}) => {
+    const uid = requireAdminSession()
+    const ev = lifeTimeline.cleanEvent(d)
+    checkLifeGoal(ev.goal_id)
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      INSERT INTO life_events (sync_id, user_id, ${LIFE_EVENT_COLS.join(', ')}, created_at, updated_at, device_id)
+      VALUES (?, ?, ${LIFE_EVENT_COLS.map(() => '?').join(', ')}, ?, ?, ?)
+    `).run(randomUUID(), uid, ...LIFE_EVENT_COLS.map(c => ev[c]), now, now, getOrCreateDeviceId())
+    return { id: info.lastInsertRowid }
+  })
+
+  ipcMain.handle('lifeTimeline:updateEvent', (_, d = {}) => {
+    const uid = requireAdminSession()
+    const ev = lifeTimeline.cleanEvent(d)
+    checkLifeGoal(ev.goal_id)
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      UPDATE life_events SET ${LIFE_EVENT_COLS.map(c => `${c} = ?`).join(', ')}, updated_at = ?, device_id = ?
+      WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+    `).run(...LIFE_EVENT_COLS.map(c => ev[c]), now, getOrCreateDeviceId(), d.id, uid)
+    if (!info.changes) throw new Error('Event not found')
+    return { success: true }
+  })
+
+  ipcMain.handle('lifeTimeline:deleteEvent', (_, id) => {
+    const uid = requireAdminSession()
+    const now = new Date().toISOString()
+    const info = db.prepare(`
+      UPDATE life_events SET deleted_at = ?, updated_at = ?, device_id = ?
+      WHERE id = ? AND user_id = ? AND deleted_at IS NULL
+    `).run(now, now, getOrCreateDeviceId(), id, uid)
+    if (!info.changes) throw new Error('Event not found')
+    return { success: true }
+  })
+
+  // Replaces the full phase list: rows with an id are updated (keeping their
+  // sync_id), rows without one are inserted, missing live rows are soft-deleted.
+  ipcMain.handle('lifeTimeline:replacePhases', (_, phases) => {
+    const uid = requireAdminSession()
+    const list = lifeTimeline.cleanPhases(phases)
+    const now = new Date().toISOString()
+    const deviceId = getOrCreateDeviceId()
+    const liveIds = new Set(db.prepare('SELECT id FROM life_phases WHERE user_id = ? AND deleted_at IS NULL')
+      .all(uid).map(r => r.id))
+    const unknown = list.find(p => p.id != null && !liveIds.has(p.id))
+    if (unknown) throw new Error(`phase ${unknown.id} not found`)
+    const keep = new Set(list.filter(p => p.id != null).map(p => p.id))
+    const softDelete = db.prepare('UPDATE life_phases SET deleted_at = ?, updated_at = ?, device_id = ? WHERE id = ? AND user_id = ?')
+    const update = db.prepare(`UPDATE life_phases SET numeral = ?, name = ?, start_year = ?, sort_order = ?,
+      updated_at = ?, device_id = ? WHERE id = ? AND user_id = ?`)
+    const insert = db.prepare(`INSERT INTO life_phases (sync_id, user_id, numeral, name, start_year, sort_order,
+      created_at, updated_at, device_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    db.transaction(() => {
+      for (const id of liveIds) if (!keep.has(id)) softDelete.run(now, now, deviceId, id, uid)
+      for (const p of list) {
+        if (p.id != null) update.run(p.numeral, p.name, p.start_year, p.sort_order, now, deviceId, p.id, uid)
+        else insert.run(randomUUID(), uid, p.numeral, p.name, p.start_year, p.sort_order, now, now, deviceId)
+      }
+    })()
+    return { success: true, phases: db.prepare(lifeTimeline.SQL.phases).all(uid) }
   })
 
   // Rebalancing actions

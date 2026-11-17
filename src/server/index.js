@@ -23,6 +23,7 @@ const wishlistCollectionsRouter = require('./routes/wishlistCollections')
 const goalWishlistLinksRouter = require('./routes/goalWishlistLinks')
 const tasksRouter = require('./routes/tasks')
 const fireSettingsRouter = require('./routes/fireSettings')
+const lifeTimelineRouter = require('./routes/lifeTimeline')
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -76,6 +77,9 @@ app.use('/api/weight', requireAuth, weightRouter)
 
 // Travel — admin only
 app.use('/api/travel', requireAuth, requireAdmin, travelRouter)
+
+// Life Timeline — admin only; every row is also scoped to req.user.id inside the router
+app.use('/api/life-timeline', requireAuth, requireAdmin, lifeTimelineRouter)
 
 // Wishlist — both roles, always scoped to the caller's own items. The
 // collections router is mounted first so /api/wishlist/collections* never

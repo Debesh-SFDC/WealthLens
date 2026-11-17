@@ -350,6 +350,26 @@ const bridge = {
   deleteTask: (id) => IS_ELECTRON
     ? window.electronAPI.deleteTask(id)
     : webCall('DELETE', `/tasks/${id}`),
+
+  // Life Timeline — admin only. getLifeTimeline resolves
+  // { range, birthYear, childBirthYear, retirement, phases, events, goals };
+  // range, retirement and goals are derived, never stored.
+  getLifeTimeline: () => IS_ELECTRON
+    ? window.electronAPI.getLifeTimeline()
+    : webCall('GET', '/life-timeline'),
+  createLifeEvent: (data) => IS_ELECTRON
+    ? window.electronAPI.createLifeEvent(data)
+    : webCall('POST', '/life-timeline/events', data),
+  updateLifeEvent: (data) => IS_ELECTRON
+    ? window.electronAPI.updateLifeEvent(data)
+    : webCall('PUT', `/life-timeline/events/${data.id}`, data),
+  deleteLifeEvent: (id) => IS_ELECTRON
+    ? window.electronAPI.deleteLifeEvent(id)
+    : webCall('DELETE', `/life-timeline/events/${id}`),
+  // phases = the complete new list; omitted rows are soft-deleted
+  replaceLifePhases: (phases) => IS_ELECTRON
+    ? window.electronAPI.replaceLifePhases(phases)
+    : webCall('PUT', '/life-timeline/phases', { phases }),
 }
 
 export default bridge

@@ -982,3 +982,124 @@ CREATE TABLE IF NOT EXISTS fire_planner_settings (
 );
 ALTER TABLE fire_planner_settings ADD COLUMN IF NOT EXISTS additional_instruments_json TEXT;
 ALTER TABLE fire_planner_settings ADD COLUMN IF NOT EXISTS instrument_overrides_json TEXT;
+
+-- ═══ Life Timeline ═══════════════════════════════════════════════════════
+-- Admin-only timeline from the current year to age 80 (mirrors
+-- createLifeTimelineTables() in src/db/database.js). Only user-entered rows
+-- live here: the range (current year .. birth year + 80), the retirement node
+-- (same rule as the Retirement Countdown) and the goal nodes (goals with a
+-- target_date) are derived on every read and never copied into these tables.
+-- Soft delete only (deleted_at). user_id / goal_id deliberately have no FK, so
+-- nothing cascades and a hard user delete is never blocked; the API checks
+-- goal_id against live goals. Flags are INTEGER 0/1 and timestamps TEXT, per
+-- the portability note at the top of this file. Safe to re-run.
+CREATE TABLE IF NOT EXISTS life_events (
+  id           SERIAL PRIMARY KEY,
+  sync_id      TEXT UNIQUE,
+  user_id      INTEGER NOT NULL,
+  title        TEXT NOT NULL,
+  notes        TEXT,
+  year         INTEGER NOT NULL,
+  month        INTEGER CHECK (month BETWEEN 1 AND 12),
+  day          INTEGER CHECK (day BETWEEN 1 AND 31),
+  amount       REAL,
+  amount_note  TEXT,
+  category     TEXT NOT NULL DEFAULT 'other'
+                 CHECK (category IN ('career','family','home','vehicle','money','travel','health','other')),
+  is_assumed   INTEGER NOT NULL DEFAULT 0,
+  is_major     INTEGER NOT NULL DEFAULT 0,
+  status       TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','done','dropped')),
+  goal_id      INTEGER,
+  created_at   TEXT DEFAULT (now()::text),
+  updated_at   TEXT DEFAULT (now()::text),
+  deleted_at   TEXT,
+  device_id    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_life_events_user_year ON life_events(user_id, year);
+
+CREATE TABLE IF NOT EXISTS life_phases (
+  id           SERIAL PRIMARY KEY,
+  sync_id      TEXT UNIQUE,
+  user_id      INTEGER NOT NULL,
+  numeral      TEXT,
+  name         TEXT NOT NULL,
+  start_year   INTEGER NOT NULL,
+  sort_order   INTEGER DEFAULT 0,
+  created_at   TEXT DEFAULT (now()::text),
+  updated_at   TEXT DEFAULT (now()::text),
+  deleted_at   TEXT,
+  device_id    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_life_phases_user ON life_phases(user_id);
+
+-- Seed phases for admin (id=1) only while they have none at all (deleted rows
+-- included), so an edited or emptied list is never re-seeded. Seed rows use
+-- deterministic sync_ids, identical to src/db/database.js.
+INSERT INTO life_phases (sync_id, user_id, numeral, name, start_year, sort_order, created_at, updated_at)
+SELECT 'lt-seed-phase-' || lower(v.numeral), 1, v.numeral, v.name, v.start_year, v.sort_order, now()::text, now()::text
+FROM (VALUES
+  ('I',   'Foundation',    2026, 0),
+  ('II',  'Move and build', 2028, 1),
+  ('III', 'Freedom',       2041, 2),
+  ('IV',  'Second act',    2047, 3),
+  ('V',   'Legacy',        2061, 4)
+) AS v(numeral, name, start_year, sort_order)
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
+  AND NOT EXISTS (SELECT 1 FROM life_phases WHERE user_id = 1)
+  AND NOT EXISTS (SELECT 1 FROM life_phases WHERE sync_id LIKE 'lt-seed-phase-%');
+
+-- Seed events for admin (id=1). An event whose title matches a live goal is
+-- not inserted (the goal already shows on the timeline); instead that goal's
+-- target_date is filled in when it has none (last day of the event's month,
+-- or 31 Dec when there is no month). Each event is guarded by title and by its
+-- deterministic sync_id (same as src/db/database.js), deleted rows included,
+-- so it is added at most once and never resurrected.
+WITH v(title, year, month, category, is_assumed, is_major, amount_note) AS (VALUES
+  ('Close the IDBI account',                         2026, 12,   'money',   0, 0, NULL),
+  ('5 years at MotiveMinds, gratuity earned',        2027, 11,   'career',  0, 0, NULL),
+  ('New job at 45 LPA or more',                      2028, NULL, 'career',  0, 0, NULL),
+  ('Move to Bhubaneswar',                            2028, NULL, 'home',    1, 0, 'Moving Fund ₹2L'),
+  ('Child starts school',                            2028, NULL, 'family',  1, 0, NULL),
+  ('Decide on a second child',                       2029, NULL, 'family',  1, 0, 'Changes corpus target by about ₹2 Cr'),
+  ('Replace the EcoSport',                           2031, NULL, 'vehicle', 1, 0, NULL),
+  ('Own house built',                                2034, NULL, 'home',    1, 1, 'Largest outflow before retirement'),
+  ('Child starts college',                           2042, NULL, 'family',  1, 0, NULL),
+  ('Child finishes college',                         2046, NULL, 'family',  1, 0, NULL),
+  ('Child''s wedding',                               2052, NULL, 'family',  1, 0, NULL),
+  ('Age 60, NPS becomes withdrawable',               2056, NULL, 'money',   1, 0, NULL),
+  ('Age 70, simplify accounts and settle the will',  2066, NULL, 'money',   1, 0, NULL),
+  ('Age 80, end of this plan',                       2076, NULL, 'other',   0, 1, NULL)
+)
+UPDATE goals g
+SET target_date = (make_date(v.year, COALESCE(v.month, 12), 1) + INTERVAL '1 month' - INTERVAL '1 day')::date::text,
+    updated_at = now()::text
+FROM v
+WHERE lower(g.title) = lower(v.title) AND g.deleted_at IS NULL
+  AND (g.target_date IS NULL OR g.target_date = '');
+
+INSERT INTO life_events
+  (sync_id, user_id, title, year, month, category, is_assumed, is_major, status, amount_note, created_at, updated_at)
+SELECT 'lt-seed-event-' || trim(both '-' from regexp_replace(lower(v.title), '[^a-z0-9]+', '-', 'g')),
+       1, v.title, v.year, v.month, v.category, v.is_assumed, v.is_major,
+       'planned', v.amount_note, now()::text, now()::text
+FROM (VALUES
+  ('Close the IDBI account',                         2026, 12,   'money',   0, 0, NULL),
+  ('5 years at MotiveMinds, gratuity earned',        2027, 11,   'career',  0, 0, NULL),
+  ('New job at 45 LPA or more',                      2028, NULL, 'career',  0, 0, NULL),
+  ('Move to Bhubaneswar',                            2028, NULL, 'home',    1, 0, 'Moving Fund ₹2L'),
+  ('Child starts school',                            2028, NULL, 'family',  1, 0, NULL),
+  ('Decide on a second child',                       2029, NULL, 'family',  1, 0, 'Changes corpus target by about ₹2 Cr'),
+  ('Replace the EcoSport',                           2031, NULL, 'vehicle', 1, 0, NULL),
+  ('Own house built',                                2034, NULL, 'home',    1, 1, 'Largest outflow before retirement'),
+  ('Child starts college',                           2042, NULL, 'family',  1, 0, NULL),
+  ('Child finishes college',                         2046, NULL, 'family',  1, 0, NULL),
+  ('Child''s wedding',                               2052, NULL, 'family',  1, 0, NULL),
+  ('Age 60, NPS becomes withdrawable',               2056, NULL, 'money',   1, 0, NULL),
+  ('Age 70, simplify accounts and settle the will',  2066, NULL, 'money',   1, 0, NULL),
+  ('Age 80, end of this plan',                       2076, NULL, 'other',   0, 1, NULL)
+) AS v(title, year, month, category, is_assumed, is_major, amount_note)
+WHERE EXISTS (SELECT 1 FROM users WHERE id = 1)
+  AND NOT EXISTS (SELECT 1 FROM life_events e WHERE e.user_id = 1 AND e.title = v.title)
+  AND NOT EXISTS (SELECT 1 FROM life_events e WHERE e.sync_id =
+        'lt-seed-event-' || trim(both '-' from regexp_replace(lower(v.title), '[^a-z0-9]+', '-', 'g')))
+  AND NOT EXISTS (SELECT 1 FROM goals g WHERE lower(g.title) = lower(v.title) AND g.deleted_at IS NULL);

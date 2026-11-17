@@ -50,6 +50,8 @@ export function initDatabase() {
   migrateWishlistToGoals()
   migrateSortOrder()
   seedEcoSportRestoration()
+  createLifeTimelineTables()
+  seedLifeTimeline()
   return db
 }
 
@@ -1604,6 +1606,129 @@ function seedEcoSportRestoration() {
       ph.items.forEach(([name, price], i) => {
         if (!itemExists.get(goal.id, name)) insertItem.run(randomUUID(), goal.id, name, price, i, now, now)
       })
+    }
+  })()
+}
+
+// Life Timeline — admin-only timeline from the current year to age 80. Only
+// user-entered rows live here: the range, the retirement node (same rule as the
+// Retirement Countdown) and the goal nodes (goals with a target_date) are
+// derived on every read (src/shared/lifeTimeline.js), never copied in. Soft
+// delete only; user_id / goal_id have no FK so nothing cascades. Mirrors
+// scripts/setup-postgres.sql.
+function createLifeTimelineTables() {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS life_events (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id      TEXT UNIQUE,
+      user_id      INTEGER NOT NULL,
+      title        TEXT NOT NULL,
+      notes        TEXT,
+      year         INTEGER NOT NULL,
+      month        INTEGER CHECK (month BETWEEN 1 AND 12),
+      day          INTEGER CHECK (day BETWEEN 1 AND 31),
+      amount       REAL,
+      amount_note  TEXT,
+      category     TEXT NOT NULL DEFAULT 'other'
+                     CHECK (category IN ('career','family','home','vehicle','money','travel','health','other')),
+      is_assumed   INTEGER NOT NULL DEFAULT 0,
+      is_major     INTEGER NOT NULL DEFAULT 0,
+      status       TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','done','dropped')),
+      goal_id      INTEGER,
+      created_at   TEXT DEFAULT (datetime('now')),
+      updated_at   TEXT DEFAULT (datetime('now')),
+      deleted_at   TEXT,
+      device_id    TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS life_phases (
+      id           INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id      TEXT UNIQUE,
+      user_id      INTEGER NOT NULL,
+      numeral      TEXT,
+      name         TEXT NOT NULL,
+      start_year   INTEGER NOT NULL,
+      sort_order   INTEGER DEFAULT 0,
+      created_at   TEXT DEFAULT (datetime('now')),
+      updated_at   TEXT DEFAULT (datetime('now')),
+      deleted_at   TEXT,
+      device_id    TEXT
+    );
+  `)
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_life_events_user_year ON life_events(user_id, year)') } catch {}
+  try { db.exec('CREATE INDEX IF NOT EXISTS idx_life_phases_user ON life_phases(user_id)') } catch {}
+}
+
+// Seeds the admin's phases (only while they have none, deleted rows included)
+// and events (each guarded by title and by sync_id, deleted rows included, so
+// nothing is resurrected). An event whose title matches a live goal is skipped
+// and that goal's target_date is filled in if empty. Seed rows get
+// deterministic sync_ids (same as scripts/setup-postgres.sql), so devices that
+// each seeded locally merge them on Drive sync instead of duplicating them.
+function seedLifeTimeline() {
+  const admin = db.prepare("SELECT id FROM users WHERE role = 'admin' ORDER BY id ASC LIMIT 1").get()
+  if (!admin) return
+  const uid = admin.id
+  const now = new Date().toISOString()
+
+  const PHASES = [
+    ['I', 'Foundation', 2026], ['II', 'Move and build', 2028], ['III', 'Freedom', 2041],
+    ['IV', 'Second act', 2047], ['V', 'Legacy', 2061],
+  ]
+  // [title, year, month, category, is_assumed, is_major, amount_note]
+  const EVENTS = [
+    ['Close the IDBI account', 2026, 12, 'money', 0, 0, null],
+    ['5 years at MotiveMinds, gratuity earned', 2027, 11, 'career', 0, 0, null],
+    ['New job at 45 LPA or more', 2028, null, 'career', 0, 0, null],
+    ['Move to Bhubaneswar', 2028, null, 'home', 1, 0, 'Moving Fund ₹2L'],
+    ['Child starts school', 2028, null, 'family', 1, 0, null],
+    ['Decide on a second child', 2029, null, 'family', 1, 0, 'Changes corpus target by about ₹2 Cr'],
+    ['Replace the EcoSport', 2031, null, 'vehicle', 1, 0, null],
+    ['Own house built', 2034, null, 'home', 1, 1, 'Largest outflow before retirement'],
+    ['Child starts college', 2042, null, 'family', 1, 0, null],
+    ['Child finishes college', 2046, null, 'family', 1, 0, null],
+    ["Child's wedding", 2052, null, 'family', 1, 0, null],
+    ['Age 60, NPS becomes withdrawable', 2056, null, 'money', 1, 0, null],
+    ['Age 70, simplify accounts and settle the will', 2066, null, 'money', 1, 0, null],
+    ['Age 80, end of this plan', 2076, null, 'other', 0, 1, null],
+  ]
+
+  const hasPhases = db.prepare('SELECT 1 FROM life_phases WHERE user_id = ? LIMIT 1')
+  const insertPhase = db.prepare(`
+    INSERT INTO life_phases (sync_id, user_id, numeral, name, start_year, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `)
+  const eventExists = db.prepare('SELECT 1 FROM life_events WHERE (user_id = ? AND title = ?) OR sync_id = ?')
+  const slug = (t) => t.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')
+  const liveGoal = db.prepare('SELECT id, target_date FROM goals WHERE lower(title) = lower(?) AND deleted_at IS NULL ORDER BY id LIMIT 1')
+  const setGoalDate = db.prepare('UPDATE goals SET target_date = ?, updated_at = ? WHERE id = ?')
+  const insertEvent = db.prepare(`
+    INSERT INTO life_events (sync_id, user_id, title, year, month, category, is_assumed, is_major,
+      status, amount_note, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'planned', ?, ?, ?)
+  `)
+  const lastDay = (year, month) => {
+    const m = month || 12
+    return `${year}-${String(m).padStart(2, '0')}-${String(new Date(year, m, 0).getDate()).padStart(2, '0')}`
+  }
+
+  db.transaction(() => {
+    if (!hasPhases.get(uid)) {
+      const taken = db.prepare('SELECT 1 FROM life_phases WHERE sync_id = ?')
+      PHASES.forEach(([numeral, name, start], i) => {
+        const syncId = `lt-seed-phase-${numeral.toLowerCase()}`
+        insertPhase.run(taken.get(syncId) ? randomUUID() : syncId, uid, numeral, name, start, i, now, now)
+      })
+    }
+    for (const [title, year, month, category, assumed, major, note] of EVENTS) {
+      const goal = liveGoal.get(title)
+      if (goal) {
+        if (!goal.target_date) setGoalDate.run(lastDay(year, month), now, goal.id)
+        continue
+      }
+      const syncId = `lt-seed-event-${slug(title)}`
+      if (eventExists.get(uid, title, syncId)) continue
+      insertEvent.run(syncId, uid, title, year, month, category, assumed, major, note, now, now)
     }
   })()
 }

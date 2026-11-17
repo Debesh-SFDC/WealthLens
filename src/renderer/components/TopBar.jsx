@@ -8,6 +8,7 @@ const PAGE_TITLES = {
   salary:      'Salary Allocator',
   travel:      'Travel',
   tasks:       'Tasks & Ideas',
+  timeline:    'Life Timeline',
   networth:    'Net Worth',
   settings:    'Settings',
 }

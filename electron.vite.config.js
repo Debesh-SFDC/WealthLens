@@ -8,6 +8,11 @@ module.exports = defineConfig({
     build: {
       rollupOptions: {
         input: resolve(__dirname, 'src/main/index.js')
+      },
+      // src/shared holds CommonJS helpers that the Express server also
+      // require()s; let Rollup convert them for the ESM main bundle.
+      commonjsOptions: {
+        include: [/node_modules/, /src[\\/]shared[\\/]/]
       }
     }
   },

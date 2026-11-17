@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useId } from 'react'
+import { useState, useEffect, useCallback, useMemo, useId, useRef } from 'react'
 import bridge from '../lib/bridge'
 import { SortableList, SortableItem, DragHandle, OrderBadge, ReorderHint } from '../components/Sortable'
 
@@ -1616,7 +1616,7 @@ const SORT_OPTIONS = [
 
 const bySortOrder = (a, b) => (Number(a.sort_order) || 0) - (Number(b.sort_order) || 0) || a.id - b.id
 
-export function GoalsContent() {
+export function GoalsContent({ initialGoalId = null } = {}) {
   const [goals, setGoals] = useState([])
   const [investments, setInvestments] = useState([])
   const [goalInvestmentsMap, setGoalInvestmentsMap] = useState({})
@@ -1693,6 +1693,15 @@ export function GoalsContent() {
       setDetailInvestments(inv || [])
     } catch (e) { console.error(e) }
   }, [])
+
+  // Deep link (Life Timeline → goal): open that goal once the list has loaded.
+  const deepLinked = useRef(false)
+  useEffect(() => {
+    if (!initialGoalId || deepLinked.current || loading) return
+    deepLinked.current = true
+    const goal = goals.find(g => g.id === Number(initialGoalId))
+    if (goal) openDetail(goal)
+  }, [initialGoalId, loading, goals, openDetail])
 
   const closeDetail = () => { setSelectedGoal(null); setContributions([]); setDetailInvestments([]); setItems([]) }
   const openWizard = (goal = null) => { setEditGoal(goal); setShowWizard(true) }
@@ -2049,6 +2058,7 @@ export function GoalsContent() {
   )
 }
 
-export default function Goals() {
-  return <GoalsContent />
+export default function Goals({ navParams }) {
+  // key: a new deep link (e.g. from the Life Timeline) remounts and opens that goal
+  return <GoalsContent key={navParams?.goalId ?? 'all'} initialGoalId={navParams?.goalId ?? null} />
 }

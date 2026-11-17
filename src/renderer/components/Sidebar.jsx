@@ -57,6 +57,19 @@ const navItems = [
     ),
   },
   {
+    id: 'timeline',
+    label: 'Life Timeline',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" className="w-5 h-5">
+        <line x1="2" y1="12" x2="22" y2="12" />
+        <circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none" />
+        <circle cx="13" cy="12" r="2.6" />
+        <circle cx="19" cy="12" r="1.6" fill="currentColor" stroke="none" />
+        <line x1="13" y1="5" x2="13" y2="9.4" />
+      </svg>
+    ),
+  },
+  {
     id: 'networth',
     label: 'Net Worth',
     icon: (

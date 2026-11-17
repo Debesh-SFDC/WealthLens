@@ -34,6 +34,11 @@
   --danger: #E74C3C;
   --info: #3498DB;
 
+  /* Life Timeline — the only tokens the black-and-gold set lacked */
+  --timeline-glow: rgba(212, 175, 55, 0.38);
+  --timeline-assumed: #7DB4D6;
+  --timeline-assumed-border: rgba(125, 180, 214, 0.5);
+
   /* Sidebar */
   --sidebar-bg: #050505;
   --sidebar-active-bg: linear-gradient(135deg, #D4AF3720, #B8960C20);

@@ -164,4 +164,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   createTask: (data)    => ipcRenderer.invoke('tasks:create', data),
   updateTask: (data)    => ipcRenderer.invoke('tasks:update', data),
   deleteTask: (id)      => ipcRenderer.invoke('tasks:delete', id),
+
+  // Life Timeline — admin only, scoped to the session user in main
+  getLifeTimeline:   ()       => ipcRenderer.invoke('lifeTimeline:get'),
+  createLifeEvent:   (data)   => ipcRenderer.invoke('lifeTimeline:createEvent', data),
+  updateLifeEvent:   (data)   => ipcRenderer.invoke('lifeTimeline:updateEvent', data),
+  deleteLifeEvent:   (id)     => ipcRenderer.invoke('lifeTimeline:deleteEvent', id),
+  replaceLifePhases: (phases) => ipcRenderer.invoke('lifeTimeline:replacePhases', phases),
 })

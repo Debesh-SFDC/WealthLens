@@ -19,6 +19,7 @@ import TrackerApp from './components/TrackerApp'
 import AdminWeight from './pages/AdminWeight'
 import TasksAndIdeas from './pages/TasksAndIdeas'
 import DeskMode from './pages/DeskMode'
+import LifeTimeline from './pages/LifeTimeline'
 
 const adminPages = {
   dashboard:   Dashboard,
@@ -34,6 +35,7 @@ const adminPages = {
   settings:    Settings,
   health:      AdminWeight,
   tasks:       TasksAndIdeas,
+  timeline:    LifeTimeline,
 }
 
 const IS_ELECTRON = typeof window !== 'undefined' && window.electronAPI !== undefined
@@ -64,6 +66,9 @@ export default function App() {
   const [authChecked, setAuthChecked]       = useState(false) // waiting for session check
   const [hasUsers, setHasUsers]             = useState(null)  // null = still checking, false = first launch
   const [activePage, setActivePage]         = useState('dashboard')
+  // Optional context for the page being opened, e.g. { goalId } when the
+  // Life Timeline sends you to a goal. Cleared by every plain navigation.
+  const [navParams, setNavParams]           = useState(null)
   const [profileName, setProfileName]       = useState(null)
   const [showOnboarding, setShowOnboarding] = useState(false)
   const [appReady, setAppReady]             = useState(false)
@@ -152,6 +157,11 @@ export default function App() {
     return () => clearInterval(id)
   }, [currentUser])
 
+  const navigate = useCallback((page, params = null) => {
+    setNavParams(params)
+    setActivePage(page)
+  }, [])
+
   function handleSignIn(user) {
     setHasUsers(true)
     setCurrentUser(user)
@@ -207,7 +217,7 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-[#0A0A0A]">
       {showOnboarding && <Onboarding onComplete={handleOnboardingComplete} />}
-      <Sidebar activePage={activePage} onNavigate={setActivePage} />
+      <Sidebar activePage={activePage} onNavigate={navigate} />
       <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
         <TopBar
           activePage={activePage}
@@ -218,12 +228,12 @@ export default function App() {
         />
         <main className="flex-1 overflow-y-auto pb-16 lg:pb-0">
           {activePage === 'dashboard'
-            ? <Dashboard onNavigate={setActivePage} currentUser={currentUser} />
-            : <PageComponent onSyncRefresh={loadSyncStatus} currentUser={currentUser} onNavigate={setActivePage} />
+            ? <Dashboard onNavigate={navigate} currentUser={currentUser} />
+            : <PageComponent onSyncRefresh={loadSyncStatus} currentUser={currentUser} onNavigate={navigate} navParams={navParams} />
           }
         </main>
       </div>
-      <BottomNav activePage={activePage} onNavigate={setActivePage} />
+      <BottomNav activePage={activePage} onNavigate={navigate} />
     </div>
   )
 }
