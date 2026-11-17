@@ -82,10 +82,12 @@ export function getSyncSnapshot(db) {
   const life_events = db.prepare(`
     SELECT e.sync_id as id, u.name as user_name, e.title, e.notes, e.year, e.month, e.day,
            e.amount, e.amount_note, e.category, e.is_assumed, e.is_major, e.status,
-           g.sync_id as goal_id, e.created_at, e.updated_at, e.deleted_at, e.device_id
+           g.sync_id as goal_id, d.sync_id as depends_on_id,
+           e.created_at, e.updated_at, e.deleted_at, e.device_id
     FROM life_events e
     LEFT JOIN users u ON u.id = e.user_id
     LEFT JOIN goals g ON g.id = e.goal_id
+    LEFT JOIN life_events d ON d.id = e.depends_on_id
     WHERE e.sync_id IS NOT NULL
   `).all()
 
@@ -364,6 +366,7 @@ export function applySyncMerge(db, remoteData, deviceId) {
           deleted_at=@deleted_at, device_id=@device_id
         WHERE sync_id=@id
       `)
+      const applied = []
       for (const raw of remoteData.life_events || []) {
         const r = fillDefaults(raw, { notes: null, month: null, day: null, amount: null, amount_note: null,
           category: 'other', is_assumed: 0, is_major: 0, status: 'planned', goal_id: null, deleted_at: null,
@@ -372,8 +375,15 @@ export function applySyncMerge(db, remoteData, deviceId) {
         if (r.user_id_local == null) continue
         r.goal_id_local = r.goal_id ? (findGoal.get(r.goal_id)?.id ?? null) : null
         const local = findEvent.get(r.id)
-        if (!local) { insertEvent.run(r); downloaded++ }
-        else if (newer(r.updated_at, local.updated_at)) { updateEvent.run(r); downloaded++ }
+        if (!local) { insertEvent.run(r); downloaded++; applied.push(r) }
+        else if (newer(r.updated_at, local.updated_at)) { updateEvent.run(r); downloaded++; applied.push(r) }
+      }
+      // depends_on_id travels as the target's sync_id; resolve it once every
+      // row in this batch exists locally (the target may come later in the list).
+      const setDepends = db.prepare('UPDATE life_events SET depends_on_id = ? WHERE sync_id = ?')
+      for (const r of applied) {
+        const target = r.depends_on_id ? findEvent.get(r.depends_on_id) : null
+        setDepends.run(target ? target.id : null, r.id)
       }
     }
 

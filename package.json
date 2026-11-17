@@ -29,6 +29,8 @@
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
+    "d3-force": "^3.0.1",
+    "d3-zoom": "^3.0.1",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "googleapis": "^173.0.0",

@@ -79,6 +79,21 @@ function cleanEvent(d = {}) {
     is_major: flag(d.is_major),
     status,
     goal_id: intOrNull(d.goal_id, 'goal_id', 1, Number.MAX_SAFE_INTEGER),
+    depends_on_id: intOrNull(d.depends_on_id, 'depends_on_id', 1, Number.MAX_SAFE_INTEGER),
+  }
+}
+
+// "Happens after" link check. `links` maps each of the user's live event ids
+// to its depends_on_id. Rejects a missing target, a self-link and any cycle.
+function checkDependsOn(eventId, dependsOnId, links) {
+  if (dependsOnId == null) return
+  const self = eventId == null ? null : Number(eventId)
+  if (!links.has(dependsOnId)) throw new ValidationError('"Happens after" must be another of your events')
+  if (dependsOnId === self) throw new ValidationError('An event cannot happen after itself')
+  let cur = dependsOnId
+  for (let i = 0; i <= links.size && cur != null; i++) {
+    cur = links.get(cur) ?? null
+    if (cur != null && cur === self) throw new ValidationError('That "Happens after" link would make a loop')
   }
 }
 
@@ -163,6 +178,7 @@ function buildTimeline({ profile, fire, phases, events, goals, today = new Date(
   const childBirthYear = Number.isInteger(kid) && kid > 1900 ? kid : null
 
   const num = (v) => (v == null || v === '' ? null : Number(v))
+  const liveIds = new Set((events || []).map(e => Number(e.id)))
   return {
     range: { start, end },
     birthYear,
@@ -173,6 +189,8 @@ function buildTimeline({ profile, fire, phases, events, goals, today = new Date(
     })),
     events: (events || []).map(e => ({
       ...e,
+      // a link to a deleted event is dropped rather than left dangling
+      depends_on_id: e.depends_on_id != null && liveIds.has(Number(e.depends_on_id)) ? Number(e.depends_on_id) : null,
       year: Number(e.year),
       month: num(e.month),
       day: num(e.day),
@@ -215,6 +233,7 @@ module.exports = {
   PLAN_END_AGE,
   ValidationError,
   cleanEvent,
+  checkDependsOn,
   cleanPhases,
   resolveRetirement,
   buildTimeline,

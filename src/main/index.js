@@ -1878,7 +1878,12 @@ function setupIpcHandlers() {
   // Admin only, scoped to the session user. Same validation and derivation as
   // the web router (src/server/routes/lifeTimeline.js) via src/shared/lifeTimeline.js.
   const LIFE_EVENT_COLS = ['title', 'notes', 'year', 'month', 'day', 'amount', 'amount_note',
-    'category', 'is_assumed', 'is_major', 'status', 'goal_id']
+    'category', 'is_assumed', 'is_major', 'status', 'goal_id', 'depends_on_id']
+  const checkLifeDepends = (uid, eventId, dependsOnId) => {
+    if (dependsOnId == null) return
+    const rows = db.prepare('SELECT id, depends_on_id FROM life_events WHERE user_id = ? AND deleted_at IS NULL').all(uid)
+    lifeTimeline.checkDependsOn(eventId, dependsOnId, new Map(rows.map(r => [r.id, r.depends_on_id ?? null])))
+  }
   const requireAdminSession = () => {
     if (currentUserSession?.role !== 'admin') throw new Error('Access denied. Admin only.')
     return currentUserSession.id
@@ -1906,6 +1911,7 @@ function setupIpcHandlers() {
     const uid = requireAdminSession()
     const ev = lifeTimeline.cleanEvent(d)
     checkLifeGoal(ev.goal_id)
+    checkLifeDepends(uid, null, ev.depends_on_id)
     const now = new Date().toISOString()
     const info = db.prepare(`
       INSERT INTO life_events (sync_id, user_id, ${LIFE_EVENT_COLS.join(', ')}, created_at, updated_at, device_id)
@@ -1918,6 +1924,7 @@ function setupIpcHandlers() {
     const uid = requireAdminSession()
     const ev = lifeTimeline.cleanEvent(d)
     checkLifeGoal(ev.goal_id)
+    checkLifeDepends(uid, d.id, ev.depends_on_id)
     const now = new Date().toISOString()
     const info = db.prepare(`
       UPDATE life_events SET ${LIFE_EVENT_COLS.map(c => `${c} = ?`).join(', ')}, updated_at = ?, device_id = ?

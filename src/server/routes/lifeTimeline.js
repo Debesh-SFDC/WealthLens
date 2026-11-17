@@ -1,7 +1,7 @@
 const express = require('express')
 const { randomUUID } = require('crypto')
 const { getDb } = require('../db')
-const { cleanEvent, cleanPhases, buildTimeline, SQL } = require('../../shared/lifeTimeline')
+const { cleanEvent, cleanPhases, buildTimeline, checkDependsOn, SQL } = require('../../shared/lifeTimeline')
 
 const router = express.Router()
 
@@ -12,7 +12,16 @@ const router = express.Router()
 // soft (deleted_at); nothing relies on ON DELETE CASCADE.
 
 const EVENT_COLS = ['title', 'notes', 'year', 'month', 'day', 'amount', 'amount_note',
-  'category', 'is_assumed', 'is_major', 'status', 'goal_id']
+  'category', 'is_assumed', 'is_major', 'status', 'goal_id', 'depends_on_id']
+
+// depends_on_id must point at another live event of the same user, no loops.
+async function checkDepends(db, uid, eventId, dependsOnId) {
+  if (dependsOnId == null) return
+  const { rows } = await db.query(
+    'SELECT id, depends_on_id FROM life_events WHERE user_id = ? AND deleted_at IS NULL', [uid])
+  checkDependsOn(eventId, dependsOnId,
+    new Map(rows.map(r => [Number(r.id), r.depends_on_id == null ? null : Number(r.depends_on_id)])))
+}
 
 // goal_id has no FK (see setup-postgres.sql), so check it against live goals here.
 async function checkGoal(db, goalId) {
@@ -61,6 +70,7 @@ router.post('/events', async (req, res) => {
     const ev = cleanEvent(req.body)
     const db = getDb()
     await checkGoal(db, ev.goal_id)
+    await checkDepends(db, req.user.id, null, ev.depends_on_id)
     const now = new Date().toISOString()
     const { rows } = await db.query(
       `INSERT INTO life_events (sync_id, user_id, ${EVENT_COLS.join(', ')}, created_at, updated_at)
@@ -80,6 +90,7 @@ router.put('/events/:id', async (req, res) => {
     const ev = cleanEvent(req.body)
     const db = getDb()
     await checkGoal(db, ev.goal_id)
+    await checkDepends(db, req.user.id, req.params.id, ev.depends_on_id)
     const now = new Date().toISOString()
     const { rows } = await db.query(
       `UPDATE life_events SET ${EVENT_COLS.map(c => `${c} = ?`).join(', ')}, updated_at = ?

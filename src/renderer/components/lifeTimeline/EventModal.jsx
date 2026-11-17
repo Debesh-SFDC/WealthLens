@@ -19,7 +19,7 @@ function Toggle({ checked, onChange, label, hint }) {
 // Add/edit one life event. Same shell as the app's other form modals
 // (see TravelPage TripFormModal). Delete is two-step inside the modal rather
 // than a browser confirm(), which would block Electron/automation.
-export default function EventModal({ event, defaultYear, range, onSave, onDelete, onClose }) {
+export default function EventModal({ event, defaultYear, range, events = [], onSave, onDelete, onClose }) {
   const editing = !!event?.id
   const [form, setForm] = useState(() => ({
     title: event?.title ?? '',
@@ -32,6 +32,7 @@ export default function EventModal({ event, defaultYear, range, onSave, onDelete
     is_major: !!event?.is_major,
     status: event?.status ?? 'planned',
     notes: event?.notes ?? '',
+    depends_on_id: event?.depends_on_id != null ? String(event.depends_on_id) : '',
   }))
   const [saving, setSaving] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
@@ -46,6 +47,22 @@ export default function EventModal({ event, defaultYear, range, onSave, onDelete
 
   const years = []
   for (let y = range.start; y <= range.end; y++) years.push(y)
+
+  // Other events this one can follow. Events that already (directly or
+  // indirectly) happen after this one are left out, so no loop can be picked.
+  const afterOptions = (() => {
+    const after = new Map(events.map(e => [e.id, e.depends_on_id ?? null]))
+    const followsThis = (id) => {
+      for (let cur = id, i = 0; cur != null && i <= after.size; i++) {
+        if (cur === event?.id) return true
+        cur = after.get(cur) ?? null
+      }
+      return false
+    }
+    return events
+      .filter(e => e.id !== event?.id && !(editing && followsThis(e.id)))
+      .sort((a, b) => a.year - b.year || (a.month ?? 13) - (b.month ?? 13) || a.title.localeCompare(b.title))
+  })()
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -68,6 +85,7 @@ export default function EventModal({ event, defaultYear, range, onSave, onDelete
         status: form.status,
         notes: form.notes.trim() || null,
         goal_id: event?.goal_id ?? null,
+        depends_on_id: form.depends_on_id ? Number(form.depends_on_id) : null,
       })
     } catch (err) {
       setError(readError(err))
@@ -146,6 +164,17 @@ export default function EventModal({ event, defaultYear, range, onSave, onDelete
             <label htmlFor="lt-f-amount-note" className={LABEL}>Amount note <span className="font-normal normal-case text-gray-400">optional</span></label>
             <input id="lt-f-amount-note" type="text" maxLength={200} placeholder="e.g. Moving Fund ₹2L"
               value={form.amount_note} onChange={e => set('amount_note', e.target.value)} className={INPUT} />
+          </div>
+
+          <div>
+            <label htmlFor="lt-f-after" className={LABEL}>Happens after <span className="font-normal normal-case text-gray-400">optional</span></label>
+            <select id="lt-f-after" value={form.depends_on_id} onChange={e => set('depends_on_id', e.target.value)} className={INPUT}>
+              <option value="">Nothing in particular</option>
+              {afterOptions.map(o => (
+                <option key={o.id} value={o.id}>{o.year}{o.month ? ` ${MONTHS[o.month - 1]}` : ''} · {o.title}</option>
+              ))}
+            </select>
+            <p className="text-xs text-gray-500 mt-1">Shown as an arrow in the Network view.</p>
           </div>
 
           <fieldset>

@@ -1017,6 +1017,10 @@ CREATE TABLE IF NOT EXISTS life_events (
 );
 CREATE INDEX IF NOT EXISTS idx_life_events_user_year ON life_events(user_id, year);
 
+-- "Happens after" link: another life_events.id (no FK, like goal_id). Also
+-- shipped standalone as scripts/migrate-life-timeline-depends-on.sql.
+ALTER TABLE life_events ADD COLUMN IF NOT EXISTS depends_on_id INTEGER;
+
 CREATE TABLE IF NOT EXISTS life_phases (
   id           SERIAL PRIMARY KEY,
   sync_id      TEXT UNIQUE,

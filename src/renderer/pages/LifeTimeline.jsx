@@ -4,8 +4,12 @@ import '@fontsource/cinzel/latin-700.css'
 import '../lifeTimeline.css'
 import bridge from '../lib/bridge'
 import { buildItems, groupByYear } from '../lib/lifeTimeline'
+import { PRESETS, MIN_PPY, MAX_PPY, levelFor, xOf, ppyToSlider, sliderToPpy } from '../lib/lifeTimelineZoom'
 import GoldDust from '../components/lifeTimeline/GoldDust'
-import YearTrack from '../components/lifeTimeline/YearTrack'
+import ZoomTrack from '../components/lifeTimeline/ZoomTrack'
+import useLineZoom from '../components/lifeTimeline/useLineZoom'
+import NetworkView, { NET_MIN_K, NET_MAX_K, kToSlider, sliderToK } from '../components/lifeTimeline/NetworkView'
+import { ViewSwitcher, ZoomControls } from '../components/lifeTimeline/ViewControls'
 import YearView from '../components/lifeTimeline/YearView'
 import EventModal, { readError } from '../components/lifeTimeline/EventModal'
 import PhasesModal from '../components/lifeTimeline/PhasesModal'
@@ -14,6 +18,8 @@ import Toast from '../components/Toast'
 // Timings match the prototype (resources/index.html); all zero under reduced motion.
 const OPEN_DELAY = 260
 const CLOSE_DELAY = 120
+const VIEW_KEY = 'lifelog.lifeTimeline.view'
+const LEVEL_LABEL = { decades: 'Decades', years: 'Years', months: 'Months', network: 'Network' }
 
 function usePrefersReducedMotion() {
   const query = '(prefers-reduced-motion: reduce)'
@@ -28,23 +34,51 @@ function usePrefersReducedMotion() {
   return !!reduced
 }
 
+// localStorage can throw (private mode, blocked storage) — never let it break the page.
+function readView() {
+  try {
+    const v = localStorage.getItem(VIEW_KEY)
+    return LEVEL_LABEL[v] ? v : 'years'
+  } catch { return 'years' }
+}
+function writeView(v) {
+  try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage unavailable */ }
+}
+
 const isTyping = (el) => el && (el.isContentEditable || /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName))
 
 export default function LifeTimeline({ onNavigate }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
+  const [mode, setMode] = useState(() => (readView() === 'network' ? 'network' : 'line'))
   const [zoomed, setZoomed] = useState(false)
   const [year, setYear] = useState(null)
   const [yearShown, setYearShown] = useState(false)
   const [modal, setModal] = useState(null) // null | { type: 'event', event } | { type: 'phases' }
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
+  const [netK, setNetK] = useState(1)
   const reducedMotion = usePrefersReducedMotion()
 
   const scrollerRef = useRef(null)
   const trackRef = useRef(null)
   const backRef = useRef(null)
+  const networkRef = useRef(null)
   const timer = useRef(null)
+
+  const initialView = useRef(readView())
+  const range = data?.range
+  const zoom = useLineZoom({
+    range,
+    scrollerRef,
+    initialPpy: PRESETS[initialView.current] ?? PRESETS.years,
+    reducedMotion,
+  })
+  const level = levelFor(zoom.ppy)
+  const activeView = mode === 'network' ? 'network' : level
+
+  // Remember the last view: the network, or the level the line settles on.
+  useEffect(() => { if (data) writeView(activeView) }, [activeView, data])
 
   const showToast = (message, type = 'success') => setToast({ visible: true, message, type })
 
@@ -65,39 +99,48 @@ export default function LifeTimeline({ onNavigate }) {
   useEffect(() => () => clearTimeout(timer.current), [])
 
   const byYear = useMemo(() => groupByYear(buildItems(data)), [data])
-  const range = data?.range
   const phases = data?.phases || []
 
-  const nodeFor = (y) => trackRef.current?.querySelector(`[data-y="${y}"]`)
-  const setOrigin = (el) => {
-    if (el && trackRef.current) trackRef.current.style.transformOrigin = `${el.offsetLeft + el.offsetWidth / 2}px 50%`
+  // ── View switching ─────────────────────────────────────────────────────
+  function changeView(v) {
+    if (v === 'network') { setMode('network'); return }
+    const wasNetwork = mode === 'network'
+    setMode('line')
+    // stretch / compress the line to the preset, anchored at the centre
+    zoom.animateTo(PRESETS[v], { duration: wasNetwork ? 0 : 450 })
   }
 
-  // Zoom the track into the chosen node, then fade the year view in.
-  const openYear = useCallback((y, el) => {
+  // ── Year view (shared by every view) ───────────────────────────────────
+  // x: the node's position on the track (line), used as the zoom origin.
+  const openYear = useCallback((y, _el, x) => {
+    if (!range) return
     clearTimeout(timer.current)
-    setOrigin(el)
+    if (trackRef.current && mode === 'line') {
+      trackRef.current.style.transformOrigin = `${x ?? xOf(y, zoom.ppy, range.start)}px 50%`
+    }
     setYear(y)
     setZoomed(true)
     timer.current = setTimeout(() => setYearShown(true), reducedMotion ? 0 : OPEN_DELAY)
-  }, [reducedMotion])
+  }, [range, mode, zoom.ppy, reducedMotion])
 
-  // Reverse: fade the year view out, park the line on the year being viewed
-  // (it may have changed via Previous/Next) and zoom back out from that node.
+  // "All years": fade the year view out and return to the view you came from.
+  // On the line, park it on the year being viewed (may have changed via
+  // Previous/Next) and zoom back out from that node.
   const closeYear = useCallback(() => {
     clearTimeout(timer.current)
     setYearShown(false)
-    const el = nodeFor(year)
-    const scroller = scrollerRef.current
-    if (el && scroller) {
-      setOrigin(el)
-      scroller.scrollLeft = el.offsetLeft - scroller.clientWidth / 2 + el.offsetWidth / 2
+    if (mode === 'line' && range) {
+      const x = xOf(year, zoom.ppy, range.start)
+      if (trackRef.current) trackRef.current.style.transformOrigin = `${x}px 50%`
+      zoom.centerOnYear(year)
     }
     timer.current = setTimeout(() => {
       setZoomed(false)
-      el?.focus({ preventScroll: true })
+      if (mode === 'line') {
+        requestAnimationFrame(() => trackRef.current?.querySelector(`[data-y="${year}"]`)?.focus({ preventScroll: true }))
+      }
     }, reducedMotion ? 0 : CLOSE_DELAY)
-  }, [year, reducedMotion])
+  }, [year, mode, range, zoom, reducedMotion])
 
   useEffect(() => {
     if (yearShown) backRef.current?.focus({ preventScroll: true })
@@ -108,30 +151,60 @@ export default function LifeTimeline({ onNavigate }) {
     setYear(y => Math.min(range.end, Math.max(range.start, y + delta)))
   }, [range])
 
-  // Year view keys: ←/→ change year, Esc goes back. Modals handle their own Esc.
+  // ── Zoom controls (line or network) ────────────────────────────────────
+  const zoomIn = useCallback(() => {
+    if (mode === 'network') networkRef.current?.zoomIn()
+    else zoom.animateTo(zoom.ppy * 1.6, { duration: 200 })
+  }, [mode, zoom])
+  const zoomOut = useCallback(() => {
+    if (mode === 'network') networkRef.current?.zoomOut()
+    else zoom.animateTo(zoom.ppy / 1.6, { duration: 200 })
+  }, [mode, zoom])
+  const zoomReset = useCallback(() => {
+    if (mode === 'network') networkRef.current?.fit()
+    else zoom.animateTo(PRESETS.years, { duration: 450 })
+  }, [mode, zoom])
+
+  // Keys: ←/→/Esc in the year view; + − 0 zoom everywhere else.
   useEffect(() => {
-    if (!yearShown || modal) return
+    if (modal || !data) return
     const onKey = (e) => {
       if (isTyping(e.target) || e.altKey || e.ctrlKey || e.metaKey) return
-      if (e.key === 'Escape') { e.preventDefault(); closeYear() }
-      else if (e.key === 'ArrowLeft') { e.preventDefault(); goYear(-1) }
-      else if (e.key === 'ArrowRight') { e.preventDefault(); goYear(1) }
+      if (yearShown) {
+        if (e.key === 'Escape') { e.preventDefault(); closeYear() }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); goYear(-1) }
+        else if (e.key === 'ArrowRight') { e.preventDefault(); goYear(1) }
+        return
+      }
+      if (zoomed) return
+      if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn() }
+      else if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut() }
+      else if (e.key === '0') { e.preventDefault(); zoomReset() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [yearShown, modal, closeYear, goYear])
+  }, [modal, data, yearShown, zoomed, closeYear, goYear, zoomIn, zoomOut, zoomReset])
 
-  function scrollToPhase(p) {
+  function onPhaseChip(p) {
     if (!range) return
     if (zoomed) closeYear()
-    const el = nodeFor(Math.min(range.end, Math.max(range.start, p.start_year)))
-    if (el) scrollerRef.current?.scrollTo({ left: el.offsetLeft - 40, behavior: reducedMotion ? 'auto' : 'smooth' })
+    if (mode === 'network') { networkRef.current?.focusPhase(p.id); return }
+    const yr = Math.min(range.end, Math.max(range.start, p.start_year))
+    const scroller = scrollerRef.current
+    const left = xOf(yr, zoom.ppy, range.start) - 40
+    if (scroller && !reducedMotion) scroller.scrollTo({ left, behavior: 'smooth' })
+    else zoom.panTo(left)
   }
 
   function selectItem(item) {
     if (item.kind === 'goal') onNavigate?.('goals-wishlist', { goalId: item.id })
     else if (item.kind === 'retirement') onNavigate?.('settings')
     else setModal({ type: 'event', event: item.raw })
+  }
+
+  function openNetworkNode(n) {
+    if (n.kind === 'goal') { onNavigate?.('goals-wishlist', { goalId: n.item.id }); return }
+    openYear(Math.min(range.end, Math.max(range.start, n.year)))
   }
 
   async function saveEvent(payload) {
@@ -157,6 +230,8 @@ export default function LifeTimeline({ onNavigate }) {
   }
 
   const ageNow = data?.birthYear != null ? range.start - data.birthYear : null
+  const isNet = mode === 'network'
+  const onNetScale = useCallback((k) => setNetK(k), [])
 
   return (
     <div className="lt">
@@ -165,7 +240,9 @@ export default function LifeTimeline({ onNavigate }) {
       <header className="lt-head">
         <div>
           <h1 className="lt-h1">LIFE TIMELINE</h1>
-          <p className="lt-sub">Drag or scroll along the line, select a year to go inside it.</p>
+          <p className="lt-sub">
+            Drag to pan, pinch or Ctrl + scroll to zoom, select {isNet ? 'a node' : 'a year'} to go inside it.
+          </p>
         </div>
         {data && (
           <div className="lt-stats">
@@ -174,13 +251,14 @@ export default function LifeTimeline({ onNavigate }) {
             <div><b>{range.end}</b>{data.birthYear != null ? 'Age 80' : 'Plan end'}</div>
           </div>
         )}
+        {data && <div className="lt-segrow"><ViewSwitcher active={activeView} onChange={changeView} /></div>}
       </header>
 
       {data && (
         <div className="lt-bar">
           <div className="lt-chips">
             {phases.map(p => (
-              <button key={p.id} type="button" className="lt-chip" onClick={() => scrollToPhase(p)}>
+              <button key={p.id} type="button" className="lt-chip" onClick={() => onPhaseChip(p)}>
                 {p.numeral && <span>{p.numeral}</span>}{p.name}
               </button>
             ))}
@@ -205,17 +283,52 @@ export default function LifeTimeline({ onNavigate }) {
         )}
         {data && (
           <>
-            <YearTrack
+            <ZoomTrack
               range={range}
               byYear={byYear}
               phases={phases}
               birthYear={data.birthYear}
               childBirthYear={data.childBirthYear}
-              zoomed={zoomed}
+              zoom={zoom}
+              zoomed={zoomed && !isNet}
+              hidden={isNet}
               scrollerRef={scrollerRef}
               trackRef={trackRef}
               onOpenYear={openYear}
             />
+            <NetworkView
+              ref={networkRef}
+              data={data}
+              hidden={!isNet}
+              zoomed={zoomed && isNet}
+              reducedMotion={reducedMotion}
+              onOpenNode={openNetworkNode}
+              onScale={onNetScale}
+            />
+            {!zoomed && (
+              isNet ? (
+                <ZoomControls
+                  level={LEVEL_LABEL.network}
+                  slider={kToSlider(netK)}
+                  onSlider={(v) => networkRef.current?.setScale(sliderToK(v))}
+                  onIn={zoomIn}
+                  onOut={zoomOut}
+                  onFit={() => networkRef.current?.fit()}
+                  canIn={netK < NET_MAX_K * 0.999}
+                  canOut={netK > NET_MIN_K * 1.001}
+                />
+              ) : (
+                <ZoomControls
+                  level={LEVEL_LABEL[level]}
+                  slider={ppyToSlider(zoom.ppy)}
+                  onSlider={(v) => zoom.zoomBy(sliderToPpy(v) / zoom.ppy)}
+                  onIn={zoomIn}
+                  onOut={zoomOut}
+                  canIn={zoom.ppy < MAX_PPY * 0.999}
+                  canOut={zoom.ppy > MIN_PPY * 1.001}
+                />
+              )
+            )}
             <YearView
               year={year}
               show={yearShown}
@@ -225,6 +338,7 @@ export default function LifeTimeline({ onNavigate }) {
               birthYear={data.birthYear}
               childBirthYear={data.childBirthYear}
               backRef={backRef}
+              backLabel={isNet ? '← Network' : '← All years'}
               onBack={closeYear}
               onPrev={() => goYear(-1)}
               onNext={() => goYear(1)}
@@ -240,6 +354,7 @@ export default function LifeTimeline({ onNavigate }) {
           event={modal.event}
           defaultYear={year ?? range.start}
           range={range}
+          events={data?.events || []}
           onSave={saveEvent}
           onDelete={deleteEvent}
           onClose={() => setModal(null)}

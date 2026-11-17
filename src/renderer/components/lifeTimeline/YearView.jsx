@@ -5,7 +5,7 @@ import { MONTHS, ageIn, childAgeIn, phaseFor } from '../../lib/lifeTimeline'
 // items without a month under "Sometime this year", Previous/Next year, and
 // add/edit entry points. The month line scrolls sideways on phones.
 export default function YearView({
-  year, show, items, range, phases, birthYear, childBirthYear, backRef,
+  year, show, items, range, phases, birthYear, childBirthYear, backRef, backLabel = '← All years',
   onBack, onPrev, onNext, onAdd, onSelectItem,
 }) {
   const list = items || []
@@ -24,7 +24,7 @@ export default function YearView({
       {year != null && (
         <>
           <div className="lt-yhead">
-            <button ref={backRef} type="button" className="lt-btn" onClick={onBack}>&larr; All years</button>
+            <button ref={backRef} type="button" className="lt-btn" onClick={onBack}>{backLabel}</button>
             <h2 className="lt-ytitle" aria-live="polite" style={{ margin: 0 }}>{year}</h2>
             <div className="lt-ymeta">
               {age != null && <>Your age <b>{age}</b></>}
