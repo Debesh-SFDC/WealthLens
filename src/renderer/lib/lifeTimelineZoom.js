@@ -2,7 +2,7 @@
 // number, ppy (pixels per year): node positions, which level of detail shows
 // (Decades / Years / Months) and how big each card can be. Pure functions,
 // tested in lifeTimelineZoom.test.js.
-import { pickLead, ageIn, childAgeIn, phaseLabelAt, MONTHS } from './lifeTimeline.js'
+import { pickLead, ageIn, childAgeIn, phaseLabelAt, groupState, matchesFilter, MONTHS } from './lifeTimeline.js'
 
 export const PRESETS = { decades: 22, years: 128, months: 1150 }
 export const MIN_PPY = 8
@@ -102,8 +102,12 @@ function placeLabels(labels, obstacles) {
 
 // ── Layout ─────────────────────────────────────────────────────────────────
 // byYear: Map(year -> items) from groupByYear(buildItems(data)).
-export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, ppy, left, vw, todayMonth = 1 }) {
+// filter: header filter id; nodes and cards that don't match get match: false
+// (drawn dimmed, never removed, so the line keeps its shape).
+export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, ppy, left, vw, todayMonth = 1, filter = 'all' }) {
   const { start, end } = range
+  const today = range.today ?? start
+  const anyMatch = (items) => filter === 'all' || items.some(i => matchesFilter(i, filter))
   const w = weights(ppy)
   const X = (yf) => xOf(yf, ppy, start)
   const margin = Math.max(vw, 400)
@@ -118,7 +122,7 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
   for (let y = start; y <= end; y++) {
     const items = byYear.get(y) || []
     const { lead, count } = pickLead(items)
-    if (lead) yearSlots.push({ key: `y${y}`, set: 'years', year: y, x: X(y), item: lead, extra: count > 1 ? `+ ${count - 1} more this year` : null })
+    if (lead) yearSlots.push({ key: `y${y}`, set: 'years', year: y, x: X(y), item: lead, extra: count > 1 ? `+ ${count - 1} more this year` : null, match: matchesFilter(lead, filter) })
     const groups = new Map()
     for (const it of items) {
       const k = it.month ?? 0
@@ -133,6 +137,7 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
         x: X(y + (k ? (k - 1) / 12 : 0)), item: ml,
         tag: k === 0 ? 'Sometime this year' : null,
         extra: mc > 1 ? `+ ${mc - 1} more` : null,
+        match: matchesFilter(ml, filter),
       })
     }
   }
@@ -143,14 +148,18 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
     const b = Math.min(ds + 9, end)
     const items = []
     for (let y = a; y <= b; y++) items.push(...(byYear.get(y) || []))
-    const live = items.filter(i => i.status !== 'dropped')
+    const live = items.filter(i => i.status !== 'dropped' && i.state !== 'dropped')
+    const achieved = live.filter(i => i.state === 'achieved').length
     const top = biggest(items)
     const x = X((a + b + 1) / 2)
-    decades.push({ key: `d${ds}`, decade: ds, x, count: live.length, top, openYear: top ? top.year : a })
+    const progress = live.length ? `${achieved} of ${live.length} achieved` : 'nothing planned'
+    const g = groupState(items, top)
+    decades.push({ key: `d${ds}`, decade: ds, x, count: live.length, achieved, progress, top, openYear: top ? top.year : a, state: g.state, percent: g.percent, match: anyMatch(items) })
     if (top) {
       decadeSlots.push({
         key: `d${ds}`, set: 'decades', year: top.year, x,
-        item: { ...top, amountText: `${live.length} planned`, noteText: top.amountText || null },
+        item: { ...top, amountText: progress, noteText: top.amountText || null },
+        match: anyMatch(items),
       })
     }
   }
@@ -201,12 +210,17 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
     const label = {
       key: `yl${y}`, x, side: cardSide === 'down' ? 'up' : 'down', lines, big,
       w: yearLabelW(lines, big),
-      priority: (lead ? 4 : 2) + (y % 10 === 0 ? 1 : y % 5 === 0 ? 0.5 : 0) + (y === start ? 3 : 0),
+      priority: (lead ? 4 : 2) + (y % 10 === 0 ? 1 : y % 5 === 0 ? 0.5 : 0) + (y === today ? 3 : y === start ? 1 : 0),
     }
     labels.push(label)
+    // Zoomed to months the year node is 1 January, so it carries January's items.
+    const own = monthsDominant ? items.filter(i => i.month === 1) : items
+    const g = own.length ? groupState(own, monthsDominant ? null : lead) : { state: null, percent: null }
     years.push({
       year: y, x, lead, count, age, child, label,
       ev: big, major: big && !!lead?.major, mark: monthsDominant,
+      state: g.state, percent: g.percent,
+      match: anyMatch(own), today: y === today,
     })
   }
 
@@ -216,8 +230,8 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
     for (const d of decades) {
       if (!inView(d.x)) continue
       const label = {
-        key: `dl${d.decade}`, x: d.x, side: 'down', lines: [`${d.decade}s`, `${d.count} planned`],
-        big: true, w: Math.max(textW(`${d.decade}s`, 14), textW(`${d.count} planned`, 6.4)) + 12,
+        key: `dl${d.decade}`, x: d.x, side: 'down', lines: [`${d.decade}s`, d.progress],
+        big: true, w: Math.max(textW(`${d.decade}s`, 14), textW(d.progress, 6.4)) + 12,
         priority: decadesDominant ? 9 : -1,
       }
       if (decadesDominant) labels.push(label)
@@ -230,6 +244,7 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
   const months = []
   if (w.monthTicks > 0.02) {
     const has = new Set(monthSlots.filter(s => !s.loose).map(s => `${s.year}-${s.month}`))
+    const monthItems = (y, m) => (byYear.get(y) || []).filter(i => i.month === m)
     for (let y = start; y <= end; y++) {
       if (!inView(X(y), ppy)) continue
       for (let m = 2; m <= 12; m++) {
@@ -241,7 +256,9 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
         }
         if (w.monthTicks >= 0.5) labels.push(label)
         else label.visible = false
-        months.push({ key: `m${y}-${m}`, x, year: y, month: m, has: monthsDominant && has.has(`${y}-${m}`), label, opacity: w.monthTicks })
+        const its = monthsDominant && has.has(`${y}-${m}`) ? monthItems(y, m) : null
+        const g = its ? groupState(its) : { state: null, percent: null }
+        months.push({ key: `m${y}-${m}`, x, year: y, month: m, has: !!its, label, opacity: w.monthTicks, state: g.state, percent: g.percent, match: its ? anyMatch(its) : true })
       }
     }
   }
@@ -285,6 +302,7 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
     months,
     bands: bands.filter(b => b.x1 >= left - margin && b.x0 <= left + vw + margin),
     phaseLabels: phaseLabels.filter(l => inView(l.x) || inView(l.sep)),
-    nowX: X(start + ((todayMonth - 1) / 12) * w.months),
+    nowX: X(today + ((todayMonth - 1) / 12) * w.months),
+    todayX: X(today),
   }
 }

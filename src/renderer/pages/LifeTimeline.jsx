@@ -3,8 +3,8 @@ import '@fontsource/cinzel/latin-500.css'
 import '@fontsource/cinzel/latin-700.css'
 import '../lifeTimeline.css'
 import bridge from '../lib/bridge'
-import { buildItems, groupByYear } from '../lib/lifeTimeline'
-import { PRESETS, MIN_PPY, MAX_PPY, levelFor, xOf, ppyToSlider, sliderToPpy } from '../lib/lifeTimelineZoom'
+import { buildItems, groupByYear, fmtDate, FILTERS } from '../lib/lifeTimeline'
+import { PRESETS, MIN_PPY, MAX_PPY, PAD_LEFT, levelFor, xOf, ppyToSlider, sliderToPpy } from '../lib/lifeTimelineZoom'
 import GoldDust from '../components/lifeTimeline/GoldDust'
 import ZoomTrack from '../components/lifeTimeline/ZoomTrack'
 import useLineZoom from '../components/lifeTimeline/useLineZoom'
@@ -13,12 +13,15 @@ import { ViewSwitcher, ZoomControls } from '../components/lifeTimeline/ViewContr
 import YearView from '../components/lifeTimeline/YearView'
 import EventModal, { readError } from '../components/lifeTimeline/EventModal'
 import PhasesModal from '../components/lifeTimeline/PhasesModal'
+import AchievePopover, { Burst } from '../components/lifeTimeline/AchievePopover'
 import Toast from '../components/Toast'
 
 // Timings match the prototype (resources/index.html); all zero under reduced motion.
 const OPEN_DELAY = 260
 const CLOSE_DELAY = 120
 const VIEW_KEY = 'lifelog.lifeTimeline.view'
+const FILTER_KEY = 'lifelog.lifeTimeline.filter'
+const BURST_HOLD = 450 // ms of burst before the node switches to its achieved look
 const LEVEL_LABEL = { decades: 'Decades', years: 'Years', months: 'Months', network: 'Network' }
 
 function usePrefersReducedMotion() {
@@ -44,6 +47,19 @@ function readView() {
 function writeView(v) {
   try { localStorage.setItem(VIEW_KEY, v) } catch { /* storage unavailable */ }
 }
+function readFilter() {
+  try {
+    const v = localStorage.getItem(FILTER_KEY)
+    return FILTERS.some(f => f.id === v) ? v : 'all'
+  } catch { return 'all' }
+}
+function writeFilter(v) {
+  try { localStorage.setItem(FILTER_KEY, v) } catch { /* storage unavailable */ }
+}
+
+const wait = (ms) => new Promise(r => setTimeout(r, ms))
+// "Achieved 12 Mar 2027: note" appended to the existing notes.
+const withNote = (notes, date, note) => (note ? [notes, `Achieved ${fmtDate(date)}: ${note}`].filter(Boolean).join('\n') : notes ?? null)
 
 const MaximizeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -71,6 +87,9 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
   const [modal, setModal] = useState(null) // null | { type: 'event', event } | { type: 'phases' }
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
   const [netK, setNetK] = useState(1)
+  const [filter, setFilterState] = useState(readFilter)
+  const [pop, setPop] = useState(null) // { item, anchor } — the Mark achieved popover
+  const [bursts, setBursts] = useState([]) // [{ id, x, y }]
   const reducedMotion = usePrefersReducedMotion()
 
   const scrollerRef = useRef(null)
@@ -97,9 +116,9 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
 
   const showToast = (message, type = 'success') => setToast({ visible: true, message, type })
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (holdMs = 0) => {
     try {
-      const res = await bridge.getLifeTimeline()
+      const [res] = await Promise.all([bridge.getLifeTimeline(), holdMs ? wait(holdMs) : null])
       setData(res)
       setLoadError(null)
     } catch (e) {
@@ -125,6 +144,79 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
 
   const byYear = useMemo(() => groupByYear(buildItems(data)), [data])
   const phases = data?.phases || []
+  const todayYear = range?.today ?? range?.start
+
+  // The line may start before this year (to show past items); open it with
+  // this year where the line used to begin.
+  const parked = useRef(false)
+  useEffect(() => {
+    if (!range || parked.current) return
+    parked.current = true
+    if (range.start < todayYear) zoom.panTo(xOf(todayYear, zoom.ppy, range.start) - PAD_LEFT)
+  }, [range, todayYear, zoom])
+
+  const setFilter = (f) => { setFilterState(f); writeFilter(f) }
+
+  // ── Mark achieved / undo ──────────────────────────────────────────────
+  // Where the burst goes: the item's node on the line (its month tick when
+  // zoomed to months), else the button that was pressed (year view).
+  const burstAt = useCallback((item, anchor) => {
+    let el = null
+    if (!zoomed && mode === 'line' && trackRef.current) {
+      el = (item.month && item.month > 1 && trackRef.current.querySelector(`.lt-mtick.has[data-ym="${item.year}-${item.month}"] .dot`))
+        || trackRef.current.querySelector(`.lt-node[data-y="${item.year}"] .dot`)
+        || [...trackRef.current.querySelectorAll('.lt-node.dec')].find(n => n.getAttribute('aria-label')?.startsWith(`${Math.floor(item.year / 10) * 10}s`))?.querySelector('.dot')
+    }
+    const r = (el && el.getBoundingClientRect().width ? el : anchor).getBoundingClientRect()
+    const id = Date.now() + Math.random()
+    setBursts(b => [...b, { id, x: r.left + r.width / 2, y: r.top + r.height / 2 }])
+  }, [zoomed, mode])
+
+  // Goals change through the Goals API (whole row, as the Goals page does),
+  // so the Goals page agrees; events through the Life Timeline API.
+  const setAchieved = useCallback(async (item, on, { date, note } = {}) => {
+    if (item.kind === 'goal') {
+      const goals = await bridge.getAllGoals()
+      const goal = (goals || []).find(g => Number(g.id) === Number(item.id))
+      if (!goal) throw new Error('That goal no longer exists')
+      await bridge.updateGoal({
+        ...goal,
+        is_achieved: on,
+        // stored like the Goals page's own timestamps; noon UTC keeps the date in every timezone
+        achieved_at: on ? `${date}T12:00:00.000Z` : null,
+        notes: on ? withNote(goal.notes, date, note) : goal.notes,
+      })
+    } else {
+      const ev = item.raw
+      await bridge.updateLifeEvent({
+        ...ev,
+        status: on ? 'done' : 'planned',
+        achieved_at: on ? date : null,
+        notes: on ? withNote(ev.notes, date, note) : ev.notes,
+      })
+    }
+  }, [])
+
+  const onMark = useCallback((item, anchor) => {
+    if (item.state === 'achieved') {
+      setAchieved(item, false)
+        .then(() => { showToast(`${item.raw?.title ?? item.title}: achievement undone`); return load() })
+        .catch(e => showToast(readError(e), 'error'))
+      return
+    }
+    setPop({ item, anchor })
+  }, [setAchieved, load])
+
+  const savePop = useCallback(async ({ date, note }) => {
+    const { item, anchor } = pop
+    await setAchieved(item, true, { date, note })
+    setPop(null)
+    burstAt(item, anchor)
+    showToast(`Achieved: ${item.raw?.title ?? item.title}`)
+    await load(reducedMotion ? 0 : BURST_HOLD)
+    if (anchor.isConnected) anchor.focus({ preventScroll: true }) // now the Undo button
+  }, [pop, setAchieved, burstAt, load, reducedMotion])
+  const closePop = useCallback(() => setPop(null), [])
 
   // ── View switching ─────────────────────────────────────────────────────
   function changeView(v) {
@@ -192,7 +284,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
 
   // Keys: ←/→/Esc in the year view; + − 0 zoom everywhere else.
   useEffect(() => {
-    if (modal || !data) return
+    if (modal || pop || !data) return
     const onKey = (e) => {
       if (isTyping(e.target) || e.altKey || e.ctrlKey || e.metaKey) return
       if (yearShown) {
@@ -209,7 +301,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [modal, data, yearShown, zoomed, wideView, onWideView, closeYear, goYear, zoomIn, zoomOut, zoomReset])
+  }, [modal, pop, data, yearShown, zoomed, wideView, onWideView, closeYear, goYear, zoomIn, zoomOut, zoomReset])
 
   function onPhaseChip(p) {
     if (!range) return
@@ -255,7 +347,9 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
     await load()
   }
 
-  const ageNow = data?.birthYear != null ? range.start - data.birthYear : null
+  const ageNow = data?.birthYear != null ? todayYear - data.birthYear : null
+  const summary = data?.summary
+  const pct = summary?.total ? Math.round((summary.achieved / summary.total) * 100) : 0
   const isNet = mode === 'network'
   const onNetScale = useCallback((k) => setNetK(k), [])
 
@@ -270,6 +364,12 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
             Drag to pan, pinch or Ctrl + scroll to zoom, select {isNet ? 'a node' : 'a year'} to go inside it.
           </p>
         </div>
+        {data && summary && (
+          <div className="lt-progress" role="img" aria-label={`${summary.achieved} of ${summary.total} achieved`}>
+            <span><b>{summary.achieved}</b> of {summary.total} achieved</span>
+            <span className="bar"><i style={{ width: `${pct}%` }} /></span>
+          </div>
+        )}
         {data && (
           <div className="lt-stats">
             <div><b>{ageNow ?? '—'}</b>Age now</div>
@@ -302,6 +402,20 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
             <button type="button" className="lt-chip ghost" onClick={() => setModal({ type: 'phases' })}>
               {phases.length ? 'Edit chapters' : '+ Add chapters'}
             </button>
+          </div>
+          <div className="lt-filters" role="radiogroup" aria-label="Show">
+            {FILTERS.map(f => (
+              <button
+                key={f.id}
+                type="button"
+                role="radio"
+                aria-checked={filter === f.id}
+                className={`lt-fchip ${f.id}${filter === f.id ? ' on' : ''}`}
+                onClick={() => setFilter(f.id)}
+              >
+                {f.label}
+              </button>
+            ))}
           </div>
           <div className="lt-legend">
             <span className="y"><i />Planned and goals</span>
@@ -343,6 +457,8 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
               scrollerRef={scrollerRef}
               trackRef={trackRef}
               onOpenYear={openYear}
+              onMark={onMark}
+              filter={filter}
             />
             <NetworkView
               ref={networkRef}
@@ -352,6 +468,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
               reducedMotion={reducedMotion}
               onOpenNode={openNetworkNode}
               onScale={onNetScale}
+              filter={filter}
             />
             {!zoomed && (
               isNet ? (
@@ -392,6 +509,8 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
               onNext={() => goYear(1)}
               onAdd={() => setModal({ type: 'event', event: null })}
               onSelectItem={selectItem}
+              onMark={onMark}
+              filter={filter}
             />
           </>
         )}
@@ -400,7 +519,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
       {modal?.type === 'event' && (
         <EventModal
           event={modal.event}
-          defaultYear={year ?? range.start}
+          defaultYear={year ?? todayYear}
           range={range}
           events={data?.events || []}
           onSave={saveEvent}
@@ -411,11 +530,13 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
       {modal?.type === 'phases' && (
         <PhasesModal
           phases={phases}
-          defaultYear={year ?? range.start}
+          defaultYear={year ?? todayYear}
           onSave={savePhases}
           onClose={() => setModal(null)}
         />
       )}
+      {pop && <AchievePopover item={pop.item} anchor={pop.anchor} onSave={savePop} onClose={closePop} />}
+      {bursts.map(b => <Burst key={b.id} x={b.x} y={b.y} onDone={() => setBursts(list => list.filter(x => x.id !== b.id))} />)}
       <Toast {...toast} onHide={() => setToast(t => ({ ...t, visible: false }))} />
     </div>
   )

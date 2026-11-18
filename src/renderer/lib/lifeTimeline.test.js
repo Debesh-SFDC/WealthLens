@@ -42,7 +42,7 @@ const data = shared.buildTimeline({
   goals: [{ id: 9, title: 'Dream Bike', target_amount: 5000000, target_date: '2041-12-31', is_achieved: 0 }],
   today,
 })
-assert.deepEqual(data.range, { start: 2026, end: 2076 })
+assert.deepEqual(data.range, { start: 2026, end: 2076, today: 2026 })
 assert.equal(data.birthYear, 1996)
 assert.equal(data.childBirthYear, 2024)
 assert.deepEqual([data.retirement.date, data.retirement.age, data.retirement.source], ['2041-08-12', 45, 'retirement_date'])
@@ -75,5 +75,26 @@ assert.deepEqual([ok.title, ok.year, ok.month, ok.day, ok.amount, ok.is_assumed,
 const ph = shared.cleanPhases([{ name: 'B', start_year: 2040 }, { name: 'A', start_year: 2030, id: 4 }])
 assert.deepEqual(ph.map(p => [p.name, p.sort_order, p.id]), [['A', 0, 4], ['B', 1, null]])
 assert.throws(() => shared.cleanPhases([{ name: '', start_year: 2030 }]), /name is required/)
+
+// achievement view helpers
+const it = (state, extra = {}) => ({ kind: 'event', state, ...extra })
+assert.deepEqual(m.groupState([it('achieved'), it('achieved')]), { state: 'achieved', percent: null })
+assert.deepEqual(m.groupState([it('achieved'), it('dropped')]), { state: 'achieved', percent: null })
+assert.deepEqual(m.groupState([it('upcoming'), it('overdue')]), { state: 'overdue', percent: null })
+assert.deepEqual(m.groupState([it('in_progress', { percent: 40 }), it('upcoming')]), { state: 'in_progress', percent: 40 })
+assert.deepEqual(m.groupState([it('achieved'), it('upcoming')]), { state: 'upcoming', percent: null })
+assert.deepEqual(m.groupState([it('dropped')]), { state: 'dropped', percent: null })
+assert.deepEqual(m.groupState([]), { state: null, percent: null })
+assert.equal(m.matchesFilter(it('in_progress'), 'upcoming'), true)
+assert.equal(m.matchesFilter(it('achieved'), 'upcoming'), false)
+assert.equal(m.matchesFilter(it('overdue'), 'overdue'), true)
+assert.equal(m.matchesFilter(it('dropped'), 'all'), true)
+assert.equal(m.matchesFilter({ kind: 'retirement', state: 'upcoming' }, 'upcoming'), true)
+assert.equal(m.canMark({ kind: 'retirement', state: 'upcoming' }), false)
+assert.equal(m.canMark(it('dropped')), false)
+assert.equal(m.canMark({ kind: 'goal', state: 'achieved' }), true)
+assert.equal(m.fmtDate('2027-03-12'), '12 Mar 2027')
+assert.equal(m.fmtDate('2026-11-10T12:00:00.000Z'), '10 Nov 2026')
+assert.equal(m.STATUS_LABELS.done, 'Achieved')
 
 console.log('lifeTimeline tests passed')

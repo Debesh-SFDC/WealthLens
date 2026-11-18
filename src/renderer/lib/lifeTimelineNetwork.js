@@ -1,7 +1,7 @@
 // Network view model: phase hubs, events, dated goals, retirement and "you are
 // here", plus the edges between them. Pure — the force layout runs in
 // NetworkView.jsx. Tested in lifeTimelineNetwork.test.js.
-import { buildItems, phaseFor, fmtAmount, MONTHS } from './lifeTimeline.js'
+import { buildItems, phaseFor, fmtAmount, fmtDate, MONTHS } from './lifeTimeline.js'
 
 export const CATEGORY_COLORS = {
   career: '#D4AF37',
@@ -59,7 +59,7 @@ export function buildGraph(data) {
       color: it.kind === 'event' ? (CATEGORY_COLORS[it.raw.category] || CATEGORY_COLORS.other)
         : it.kind === 'goal' ? GOAL_COLOR : '#D4AF37',
       assumed: it.assumed, major: it.major, status: it.status,
-      dim: it.status === 'done' || it.status === 'dropped',
+      state: it.state, percent: it.percent,
       amountText: fmtAmount(amount) || (it.kind === 'event' ? it.raw.amount_note : null) || (it.kind === 'retirement' ? it.amountText : null),
       r: radiusFor(it.kind, it.major, amount),
       item: it,
@@ -68,10 +68,17 @@ export function buildGraph(data) {
     attach(node)
   }
 
-  const now = { id: 'now', kind: 'now', year: data.range.start, month: null, order: 1, title: 'You are here', color: '#F0D060', r: radiusFor('now') }
+  const today = data.range.today ?? data.range.start
+  const now = { id: 'now', kind: 'now', year: today, month: null, order: 1, title: 'You are here', color: '#F0D060', r: radiusFor('now') }
   nodes.push(now)
   attach(now)
 
+  // "Reached" nodes: achieved items, plus hubs of phases that have begun and
+  // "you are here". An edge between two reached nodes is lived history (drawn
+  // bright); anything touching the future is dimmer.
+  for (const n of nodes) {
+    n.reached = n.kind === 'phase' || n.kind === 'now' ? n.year <= today : n.state === 'achieved'
+  }
   const byId = new Map(nodes.map(n => [n.id, n]))
   for (const e of data.events || []) {
     if (e.goal_id != null && byId.has(`g${e.goal_id}`)) links.push({ source: `g${e.goal_id}`, target: `e${e.id}`, kind: 'goal' })
@@ -80,6 +87,8 @@ export function buildGraph(data) {
       links.push({ source: `e${e.depends_on_id}`, target: `e${e.id}`, kind: 'dep' })
     }
   }
+
+  for (const l of links) l.past = byId.get(l.source).reached && byId.get(l.target).reached
 
   const neighbours = new Map(nodes.map(n => [n.id, new Set([n.id])]))
   for (const l of links) {
@@ -96,5 +105,11 @@ export function describeNode(n) {
   const when = n.month ? `${MONTHS[n.month - 1]} ${n.year}` : String(n.year)
   const phase = n.kind === 'phase' ? null : n.phase ? `${n.phase.numeral ? `${n.phase.numeral} · ` : ''}${n.phase.name}` : null
   const title = n.kind === 'phase' ? `${n.numeral ? `${n.numeral} · ` : ''}${n.title}` : n.title
-  return { title, when: n.kind === 'phase' ? `From ${n.year}` : when, amount: n.amountText || null, phase }
+  const it = n.item
+  const status = !it ? null
+    : n.state === 'achieved' ? (it.achievedAt ? `Achieved ${fmtDate(it.achievedAt)}` : 'Achieved')
+    : n.state === 'in_progress' ? `In progress · ${n.percent}%`
+    : n.state === 'overdue' ? 'Overdue'
+    : n.state === 'dropped' ? 'Dropped' : null
+  return { title, when: n.kind === 'phase' ? `From ${n.year}` : when, amount: n.amountText || null, phase, status }
 }

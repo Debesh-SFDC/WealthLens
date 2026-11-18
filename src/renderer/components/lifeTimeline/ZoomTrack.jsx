@@ -12,16 +12,29 @@ const NodeLabel = ({ label, className = '' }) => (
   </span>
 )
 
-const Card = memo(function Card({ c, onOpenYear }) {
+// Check badge / progress ring / overdue ring for a node's dot.
+const NodeMarks = ({ state, percent }) => (
+  <>
+    {state === 'in_progress' && percent != null && <span className="ring" style={{ '--p': percent }} />}
+    {state === 'achieved' && (
+      <span className="chk">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round"><polyline points="5 12.5 10 17.5 19 7" /></svg>
+      </span>
+    )}
+  </>
+)
+const stateCls = (state, match) => `${state ? ` st-${state}` : ''}${match === false ? ' lt-off' : ''}`
+
+const Card = memo(function Card({ c, onOpenYear, onMark }) {
   return (
-    <div className={`lt-cardpos ${c.side}`} style={{ transform: `translate3d(${c.x}px,0,0)`, opacity: c.opacity }} aria-hidden="true">
+    <div className={`lt-cardpos ${c.side}${c.match === false ? ' lt-off' : ''}`} style={{ transform: `translate3d(${c.x}px,0,0)`, opacity: c.opacity }} aria-hidden="true">
       <span className="lt-conn" />
       <div
         className="lt-cardwrap"
         style={{ '--s': c.scale, pointerEvents: c.opacity > 0.5 ? 'auto' : 'none' }}
         onClick={() => onOpenYear(c.year, null, c.x)}
       >
-        <EventCard item={c.tag ? { ...c.item, noteText: c.tag } : c.item} extra={c.extra} />
+        <EventCard item={c.tag ? { ...c.item, noteText: c.tag } : c.item} extra={c.extra} onMark={c.set === 'decades' ? undefined : onMark} />
       </div>
     </div>
   )
@@ -32,12 +45,13 @@ const Card = memo(function Card({ c, onOpenYear }) {
 // pinch, always anchored at the pointer. Only nodes near the viewport render.
 export default function ZoomTrack({
   range, byYear, phases, birthYear, childBirthYear, zoom, zoomed, hidden, scrollerRef, trackRef, onOpenYear,
+  onMark, filter = 'all',
 }) {
   const { ppy, left, vw } = zoom
   const todayMonth = new Date().getMonth() + 1
   const L = useMemo(
-    () => layoutLine({ range, byYear, phases, birthYear, childBirthYear, ppy, left, vw, todayMonth }),
-    [range, byYear, phases, birthYear, childBirthYear, ppy, left, vw, todayMonth],
+    () => layoutLine({ range, byYear, phases, birthYear, childBirthYear, ppy, left, vw, todayMonth, filter }),
+    [range, byYear, phases, birthYear, childBirthYear, ppy, left, vw, todayMonth, filter],
   )
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
@@ -200,6 +214,8 @@ export default function ZoomTrack({
         role="group"
         aria-label={`Years, ${L.level} view`}
       >
+        {/* lived part of the line: full gold up to "You are here" (the rest of the line is dimmer) */}
+        <div className="lt-past" style={{ width: Math.max(0, L.nowX) }} aria-hidden="true" />
         {L.bands.map(b => (
           <div key={b.key} className={`lt-band c${b.index % 5}`} style={{ left: b.x0, width: b.x1 - b.x0, opacity: b.opacity * 0.9 }} aria-hidden="true" />
         ))}
@@ -210,8 +226,8 @@ export default function ZoomTrack({
         ))}
 
         {L.months.map(m => (
-          <div key={m.key} className={`lt-mtick${m.has ? ' has' : ''}`} style={{ transform: `translate3d(${m.x}px,0,0)`, opacity: m.opacity }} aria-hidden="true">
-            <span className="dot" />
+          <div key={m.key} className={`lt-mtick${m.has ? ' has' : ''}${stateCls(m.state, m.match)}`} data-ym={`${m.year}-${m.month}`} style={{ transform: `translate3d(${m.x}px,0,0)`, opacity: m.opacity }} aria-hidden="true">
+            <span className="dot"><NodeMarks state={m.state} percent={m.percent} /></span>
             <NodeLabel label={m.label} className="mlbl" />
           </div>
         ))}
@@ -220,28 +236,30 @@ export default function ZoomTrack({
           <button
             key={d.key}
             type="button"
-            className="lt-node dec"
+            className={`lt-node dec${stateCls(d.state, d.match)}`}
             style={{ transform: `translate3d(${d.x}px,0,0)`, opacity: d.opacity, pointerEvents: d.opacity > 0.5 ? 'auto' : 'none' }}
             tabIndex={!inactive && d.opacity > 0.5 ? 0 : -1}
-            aria-label={`${d.decade}s, ${d.count} planned${d.top ? `, biggest: ${d.top.title}` : ''}`}
+            aria-label={`${d.decade}s, ${d.progress}${d.top ? `, biggest: ${d.top.title}` : ''}`}
             onFocus={() => onFocusNode(d.x)}
             onClick={(e) => onOpenYear(d.openYear, e.currentTarget, d.x)}
           >
-            <span className="dot" />
+            <span className="dot"><NodeMarks state={d.state} percent={d.percent} /></span>
             <NodeLabel label={d.label} />
           </button>
         ))}
 
         {L.years.map(y => {
           const meta = [y.age != null ? `age ${y.age}` : null, y.child != null ? `child ${y.child}` : null].filter(Boolean)
+          const stateText = y.state === 'achieved' ? 'all achieved' : y.state === 'overdue' ? 'overdue'
+            : y.state === 'in_progress' ? `in progress, ${y.percent}%` : null
           const label = [String(y.year), ...meta,
             y.count ? `${y.count} planned${y.lead ? `: ${y.lead.title}` : ''}` : 'nothing planned',
-            y.year === range.start ? 'you are here' : null].filter(Boolean).join(', ')
+            stateText, y.today ? 'you are here' : null].filter(Boolean).join(', ')
           return (
             <button
               key={y.year}
               type="button"
-              className={`lt-node${y.ev ? ' ev' : ''}${y.major ? ' big' : ''}${y.mark ? ' mark' : ''}`}
+              className={`lt-node${y.ev ? ' ev' : ''}${y.major ? ' big' : ''}${y.mark ? ' mark' : ''}${y.year < (range.today ?? range.start) ? ' past' : ''}${stateCls(y.state, y.match)}`}
               style={{ transform: `translate3d(${y.x}px,0,0)`, '--hit': `${Math.max(18, Math.min(56, ppy))}px` }}
               data-y={y.year}
               aria-label={label}
@@ -249,13 +267,13 @@ export default function ZoomTrack({
               onFocus={() => onFocusNode(y.x)}
               onClick={(e) => onOpenYear(y.year, e.currentTarget, y.x)}
             >
-              <span className="dot" />
+              <span className="dot"><NodeMarks state={y.state} percent={y.percent} /></span>
               <NodeLabel label={y.label} />
             </button>
           )
         })}
 
-        {L.cards.map(c => <Card key={c.key} c={c} onOpenYear={onOpenYear} />)}
+        {L.cards.map(c => <Card key={c.key} c={c} onOpenYear={onOpenYear} onMark={onMark} />)}
 
         <div className="lt-now2" style={{ transform: `translate3d(${L.nowX}px,0,0)` }} aria-hidden="true">You are here</div>
       </div>

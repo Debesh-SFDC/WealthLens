@@ -1636,6 +1636,7 @@ function createLifeTimelineTables() {
       status       TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','done','dropped')),
       goal_id      INTEGER,
       depends_on_id INTEGER,
+      achieved_at  TEXT,
       created_at   TEXT DEFAULT (datetime('now')),
       updated_at   TEXT DEFAULT (datetime('now')),
       deleted_at   TEXT,
@@ -1659,6 +1660,8 @@ function createLifeTimelineTables() {
   // "Happens after" link (another life_events.id, no FK). Added after the
   // first release, so existing tables get it here; a no-op once present.
   try { db.exec('ALTER TABLE life_events ADD COLUMN depends_on_id INTEGER') } catch {}
+  // ISO date (YYYY-MM-DD) an event was achieved; set only while status = 'done'
+  try { db.exec('ALTER TABLE life_events ADD COLUMN achieved_at TEXT') } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_life_events_user_year ON life_events(user_id, year)') } catch {}
   try { db.exec('CREATE INDEX IF NOT EXISTS idx_life_phases_user ON life_phases(user_id)') } catch {}
 }

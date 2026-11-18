@@ -1021,6 +1021,10 @@ CREATE INDEX IF NOT EXISTS idx_life_events_user_year ON life_events(user_id, yea
 -- shipped standalone as scripts/migrate-life-timeline-depends-on.sql.
 ALTER TABLE life_events ADD COLUMN IF NOT EXISTS depends_on_id INTEGER;
 
+-- ISO date (YYYY-MM-DD) an event was achieved; set only while status = 'done'.
+-- Also shipped standalone as scripts/migrate-life-timeline-achieved.sql.
+ALTER TABLE life_events ADD COLUMN IF NOT EXISTS achieved_at TEXT;
+
 CREATE TABLE IF NOT EXISTS life_phases (
   id           SERIAL PRIMARY KEY,
   sync_id      TEXT UNIQUE,

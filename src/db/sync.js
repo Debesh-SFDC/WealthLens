@@ -81,7 +81,7 @@ export function getSyncSnapshot(db) {
   // goal_id as the goal's sync_id; both are resolved back on merge.
   const life_events = db.prepare(`
     SELECT e.sync_id as id, u.name as user_name, e.title, e.notes, e.year, e.month, e.day,
-           e.amount, e.amount_note, e.category, e.is_assumed, e.is_major, e.status,
+           e.amount, e.amount_note, e.category, e.is_assumed, e.is_major, e.status, e.achieved_at,
            g.sync_id as goal_id, d.sync_id as depends_on_id,
            e.created_at, e.updated_at, e.deleted_at, e.device_id
     FROM life_events e
@@ -355,21 +355,21 @@ export function applySyncMerge(db, remoteData, deviceId) {
       const findEvent = db.prepare('SELECT id, updated_at FROM life_events WHERE sync_id = ?')
       const insertEvent = db.prepare(`
         INSERT INTO life_events (sync_id, user_id, title, notes, year, month, day, amount, amount_note,
-          category, is_assumed, is_major, status, goal_id, created_at, updated_at, deleted_at, device_id)
+          category, is_assumed, is_major, status, achieved_at, goal_id, created_at, updated_at, deleted_at, device_id)
         VALUES (@id, @user_id_local, @title, @notes, @year, @month, @day, @amount, @amount_note,
-          @category, @is_assumed, @is_major, @status, @goal_id_local, @created_at, @updated_at, @deleted_at, @device_id)
+          @category, @is_assumed, @is_major, @status, @achieved_at, @goal_id_local, @created_at, @updated_at, @deleted_at, @device_id)
       `)
       const updateEvent = db.prepare(`
         UPDATE life_events SET user_id=@user_id_local, title=@title, notes=@notes, year=@year, month=@month,
           day=@day, amount=@amount, amount_note=@amount_note, category=@category, is_assumed=@is_assumed,
-          is_major=@is_major, status=@status, goal_id=@goal_id_local, updated_at=@updated_at,
+          is_major=@is_major, status=@status, achieved_at=@achieved_at, goal_id=@goal_id_local, updated_at=@updated_at,
           deleted_at=@deleted_at, device_id=@device_id
         WHERE sync_id=@id
       `)
       const applied = []
       for (const raw of remoteData.life_events || []) {
         const r = fillDefaults(raw, { notes: null, month: null, day: null, amount: null, amount_note: null,
-          category: 'other', is_assumed: 0, is_major: 0, status: 'planned', goal_id: null, deleted_at: null,
+          category: 'other', is_assumed: 0, is_major: 0, status: 'planned', achieved_at: null, goal_id: null, deleted_at: null,
           device_id: null, created_at: raw.updated_at, updated_at: raw.updated_at || raw.created_at })
         r.user_id_local = ownerId(r.user_name)
         if (r.user_id_local == null) continue
