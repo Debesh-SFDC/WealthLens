@@ -2,11 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { todayIso } from '../../lib/lifeTimeline'
 
 const W = 280
+const W_TOUCH = 340
 
 // Compact "Mark achieved" popover anchored to the card's round check button:
 // "Achieved on" (default today) and an optional note. Escape or a click
 // outside closes it; focus starts on the date and returns to the button.
-export default function AchievePopover({ item, anchor, onSave, onClose }) {
+// touch: larger controls for Desk Mode on a tablet.
+export default function AchievePopover({ item, anchor, onSave, onClose, touch = false }) {
+  const width = touch ? W_TOUCH : W
   const ref = useRef(null)
   const dateRef = useRef(null)
   const [date, setDate] = useState(todayIso())
@@ -21,11 +24,11 @@ export default function AchievePopover({ item, anchor, onSave, onClose }) {
     const h = ref.current?.offsetHeight || 220
     const vw = window.innerWidth
     const vh = window.innerHeight
-    const left = Math.min(vw - W - 12, Math.max(12, r.left + r.width / 2 - W / 2))
+    const left = Math.min(vw - width - 12, Math.max(12, r.left + r.width / 2 - width / 2))
     const below = r.bottom + 8
     const top = below + h > vh - 12 ? Math.max(12, r.top - 8 - h) : below
     setPos({ left, top })
-  }, [anchor])
+  }, [anchor, width])
 
   useEffect(() => {
     dateRef.current?.focus({ preventScroll: true })
@@ -68,10 +71,10 @@ export default function AchievePopover({ item, anchor, onSave, onClose }) {
   return (
     <form
       ref={ref}
-      className="lt-pop"
+      className={`lt-pop${touch ? ' touch' : ''}`}
       role="dialog"
       aria-labelledby="lt-pop-h"
-      style={{ left: pos.left, top: pos.top, width: W }}
+      style={{ left: pos.left, top: pos.top, width }}
       onSubmit={submit}
     >
       <h2 id="lt-pop-h">Mark achieved</h2>

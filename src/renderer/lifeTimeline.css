@@ -1,7 +1,9 @@
 /* Life Timeline — ported from the prototype (resources/index.html). Everything
    is scoped under .lt. Colours come from the black-and-gold tokens in
    index.css; --timeline-glow and --timeline-assumed are the only new ones. */
-.lt {
+/* Tokens are shared with the popover and burst, which can also open over
+   Desk Mode (outside .lt). */
+.lt, .lt-pop, .lt-burst {
   --ink: var(--sidebar-bg);
   --panel: var(--bg-secondary);
   --line: var(--border-primary);
@@ -14,7 +16,8 @@
   --assumed-border: var(--timeline-assumed-border);
   --display: 'Cinzel', 'Trajan Pro', Georgia, serif;
   --amber: var(--warning);
-
+}
+.lt {
   position: relative;
   height: 100%;
   min-height: 540px;
@@ -380,3 +383,11 @@
 /* the month column scrolls, so leave room for the card's corner button */
 .lt-mo .stack { padding: 14px 4px 0; }
 .lt-mo .lt-mark { right: 6px; }
+
+/* Touch-sized popover (Desk Mode on a tablet): 48px controls, bigger text */
+.lt-pop.touch { gap: 8px; padding: 18px 20px; border-radius: 16px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; text-shadow: none; }
+.lt-pop.touch h2 { font-size: 15px; }
+.lt-pop.touch .lt-pop-t { font-size: 16px; }
+.lt-pop.touch label { font-size: 12px; }
+.lt-pop.touch input { font-size: 17px; min-height: 48px; padding: 10px 12px; }
+.lt-pop.touch .lt-btn { min-height: 48px; padding: 10px 20px; font-size: 15px; border-radius: 10px; }

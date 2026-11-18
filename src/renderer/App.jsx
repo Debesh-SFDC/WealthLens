@@ -244,7 +244,14 @@ export default function App() {
   if (!appReady) return null
 
   if (deskMode) {
-    return <DeskMode profileName={profileName || currentUser.name} onExit={exitDeskMode} />
+    return (
+      <DeskMode
+        profileName={profileName || currentUser.name}
+        onExit={exitDeskMode}
+        // the Life Timeline card: leave Desk Mode for the timeline at a year / filter
+        onOpenTimeline={(params) => { exitDeskMode(); navigate('timeline', params) }}
+      />
+    )
   }
 
   const PageComponent = adminPages[activePage]

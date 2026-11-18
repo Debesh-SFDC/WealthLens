@@ -3,7 +3,7 @@ import '@fontsource/cinzel/latin-500.css'
 import '@fontsource/cinzel/latin-700.css'
 import '../lifeTimeline.css'
 import bridge from '../lib/bridge'
-import { buildItems, groupByYear, fmtDate, FILTERS } from '../lib/lifeTimeline'
+import { buildItems, groupByYear, FILTERS } from '../lib/lifeTimeline'
 import { PRESETS, MIN_PPY, MAX_PPY, PAD_LEFT, levelFor, xOf, ppyToSlider, sliderToPpy } from '../lib/lifeTimelineZoom'
 import GoldDust from '../components/lifeTimeline/GoldDust'
 import ZoomTrack from '../components/lifeTimeline/ZoomTrack'
@@ -15,6 +15,7 @@ import EventModal, { readError } from '../components/lifeTimeline/EventModal'
 import PhasesModal from '../components/lifeTimeline/PhasesModal'
 import AchievePopover, { Burst } from '../components/lifeTimeline/AchievePopover'
 import Toast from '../components/Toast'
+import { setAchieved } from '../lib/lifeTimelineActions'
 
 // Timings match the prototype (resources/index.html); all zero under reduced motion.
 const OPEN_DELAY = 260
@@ -58,8 +59,7 @@ function writeFilter(v) {
 }
 
 const wait = (ms) => new Promise(r => setTimeout(r, ms))
-// "Achieved 12 Mar 2027: note" appended to the existing notes.
-const withNote = (notes, date, note) => (note ? [notes, `Achieved ${fmtDate(date)}: ${note}`].filter(Boolean).join('\n') : notes ?? null)
+
 
 const MaximizeIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -76,7 +76,9 @@ const isTyping = (el) => el && (el.isContentEditable || /^(INPUT|SELECT|TEXTAREA
 
 // wideView / onWideView come from App: wide view hides the sidebar and TopBar
 // (a layout mode, not the Fullscreen API, which fails in the Capacitor APK).
-export default function LifeTimeline({ onNavigate, wideView = false, onWideView }) {
+// navParams (from Desk Mode): { year, open, filter } — land on that year (open
+// its year view when `open`) and/or select a filter.
+export default function LifeTimeline({ onNavigate, wideView = false, onWideView, navParams }) {
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
@@ -172,30 +174,6 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
     setBursts(b => [...b, { id, x: r.left + r.width / 2, y: r.top + r.height / 2 }])
   }, [zoomed, mode])
 
-  // Goals change through the Goals API (whole row, as the Goals page does),
-  // so the Goals page agrees; events through the Life Timeline API.
-  const setAchieved = useCallback(async (item, on, { date, note } = {}) => {
-    if (item.kind === 'goal') {
-      const goals = await bridge.getAllGoals()
-      const goal = (goals || []).find(g => Number(g.id) === Number(item.id))
-      if (!goal) throw new Error('That goal no longer exists')
-      await bridge.updateGoal({
-        ...goal,
-        is_achieved: on,
-        // stored like the Goals page's own timestamps; noon UTC keeps the date in every timezone
-        achieved_at: on ? `${date}T12:00:00.000Z` : null,
-        notes: on ? withNote(goal.notes, date, note) : goal.notes,
-      })
-    } else {
-      const ev = item.raw
-      await bridge.updateLifeEvent({
-        ...ev,
-        status: on ? 'done' : 'planned',
-        achieved_at: on ? date : null,
-        notes: on ? withNote(ev.notes, date, note) : ev.notes,
-      })
-    }
-  }, [])
 
   const onMark = useCallback((item, anchor) => {
     if (item.state === 'achieved') {
@@ -205,7 +183,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
       return
     }
     setPop({ item, anchor })
-  }, [setAchieved, load])
+  }, [load])
 
   const savePop = useCallback(async ({ date, note }) => {
     const { item, anchor } = pop
@@ -215,7 +193,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
     showToast(`Achieved: ${item.raw?.title ?? item.title}`)
     await load(reducedMotion ? 0 : BURST_HOLD)
     if (anchor.isConnected) anchor.focus({ preventScroll: true }) // now the Undo button
-  }, [pop, setAchieved, burstAt, load, reducedMotion])
+  }, [pop, burstAt, load, reducedMotion])
   const closePop = useCallback(() => setPop(null), [])
 
   // ── View switching ─────────────────────────────────────────────────────
@@ -262,6 +240,18 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView 
   useEffect(() => {
     if (yearShown) backRef.current?.focus({ preventScroll: true })
   }, [yearShown])
+
+  // Arriving from Desk Mode: select the filter, then show the year.
+  const arrived = useRef(false)
+  useEffect(() => {
+    if (!range || arrived.current || (navParams?.year == null && !navParams?.filter)) return
+    arrived.current = true
+    if (navParams.filter) setFilter(navParams.filter)
+    if (navParams.year == null) return
+    const y = Math.min(range.end, Math.max(range.start, navParams.year))
+    if (navParams.open) openYear(y)
+    else if (mode === 'line') zoom.centerOnYear(y + 0.5)
+  }, [range, navParams, openYear, mode, zoom])
 
   const goYear = useCallback((delta) => {
     if (!range) return

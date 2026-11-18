@@ -11,6 +11,11 @@ import {
 import CategoryChips from '../components/CategoryChips'
 import Toast from '../components/Toast'
 import '../desk.css'
+import '@fontsource/cinzel/latin-700.css'
+import '../lifeTimeline.css' // the Mark achieved popover and burst
+import DeskTimelineCard from '../components/DeskTimelineCard'
+import AchievePopover, { Burst } from '../components/lifeTimeline/AchievePopover'
+import { setAchieved } from '../lib/lifeTimelineActions'
 
 // Desk Mode — full-screen ambient display for a spare monitor or tablet: live
 // clock, every open task grouped by category (Job / Personal / Project) and
@@ -955,7 +960,11 @@ function Controls({ onExit, onRefresh, refreshing, showSettings, setShowSettings
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
-export default function DeskMode({ profileName, onExit }) {
+const BURST_HOLD_MS = 450 // gold burst plays before the item leaves the overdue list
+const wait = (ms) => new Promise(r => setTimeout(r, ms))
+
+// onOpenTimeline({ year, open, filter }): leave Desk Mode for the Life Timeline.
+export default function DeskMode({ profileName, onExit, onOpenTimeline }) {
   const [now, setNow]           = useState(() => new Date())
   const [items, setItems]       = useState([])
   const [weather, setWeather]   = useState(null)
@@ -974,6 +983,11 @@ export default function DeskMode({ profileName, onExit }) {
   const [movePrompt, setMovePrompt] = useState(null)  // date popup after a move
   const [moveMenu, setMoveMenu] = useState(null)      // "Move to…" for this task
   const [toast, setToast] = useState(null)            // error message
+  // Life Timeline card: the payload, or null (not loaded / request failed —
+  // the card is then simply not shown).
+  const [timeline, setTimeline] = useState(null)
+  const [achievePop, setAchievePop] = useState(null)  // { item, anchor }
+  const [bursts, setBursts] = useState([])            // [{ id, x, y }]
   const inputRef = useRef(null)
   const cursorTimer = useRef(null)
   const undoTimer = useRef(null)
@@ -1001,14 +1015,39 @@ export default function DeskMode({ profileName, onExit }) {
       if (seq === mutationSeq.current) setItems(rows)
     } catch (e) { console.error(e) }
   }, [])
+  // Life Timeline card (admin only, like the page — Desk Mode is admin only).
+  // Any failure just hides the card; it must never break Desk Mode.
+  const loadTimeline = useCallback(async () => {
+    try { setTimeline(await bridge.getLifeTimeline()) } catch (e) { console.error('Desk Mode life timeline', e); setTimeline(null) }
+  }, [])
   useEffect(() => {
     loadData()
+    loadTimeline()
     const id = setInterval(() => {
+      loadTimeline()
       if (dragActive.current || Date.now() < refreshHoldUntil.current) return
       loadData()
     }, DATA_REFRESH_MS)
     return () => clearInterval(id)
-  }, [loadData])
+  }, [loadData, loadTimeline])
+
+  const saveAchieved = useCallback(async ({ date, note }) => {
+    const { item, anchor } = achievePop
+    await setAchieved(item, true, { date, note })
+    setAchievePop(null)
+    const r = anchor.getBoundingClientRect()
+    setBursts(b => [...b, { id: Date.now() + Math.random(), x: r.left + r.width / 2, y: r.top + r.height / 2 }])
+    await Promise.all([loadTimeline(), wait(BURST_HOLD_MS)])
+  }, [achievePop, loadTimeline])
+  const closeAchieve = useCallback(() => setAchievePop(null), [])
+  const openTimeline = useCallback((params) => (onOpenTimeline ? onOpenTimeline(params) : onExit()), [onOpenTimeline, onExit])
+  const timelineCard = (cls) => timeline && (
+    <DeskTimelineCard
+      data={timeline} now={now} className={cls}
+      onOpen={openTimeline}
+      onMark={(item, anchor) => setAchievePop({ item, anchor })}
+    />
+  )
 
   // Weather — every 30 minutes
   const loadWeather = useCallback(async () => {
@@ -1045,6 +1084,7 @@ export default function DeskMode({ profileName, onExit }) {
     function onKey(e) {
       if (e.key !== 'Escape') return
       if (e.defaultPrevented || dragActive.current) return
+      if (achievePop) return setAchievePop(null) // (the popover normally handles this itself)
       if (movePrompt) return skipMoveDetails()
       if (moveMenu) return setMoveMenu(null)
       if (showSettings) return setShowSettings(false)
@@ -1056,7 +1096,7 @@ export default function DeskMode({ profileName, onExit }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onExit, showSettings, ideasOverlay, expanded, movePrompt, moveMenu])
+  }, [onExit, showSettings, ideasOverlay, expanded, movePrompt, moveMenu, achievePop])
 
   // Cursor hidden while idle; shown on mouse move/touch for 3s
   useEffect(() => {
@@ -1236,7 +1276,7 @@ export default function DeskMode({ profileName, onExit }) {
 
   async function handleRefresh() {
     setRefreshing(true)
-    await Promise.all([loadData(), loadWeather()])
+    await Promise.all([loadData(), loadWeather(), loadTimeline()])
     setTimeout(() => setRefreshing(false), 600)
   }
 
@@ -1290,6 +1330,7 @@ export default function DeskMode({ profileName, onExit }) {
           <>
             <PortraitHeader now={now} greeting={greetingText} weather={weather} scene={scene} night={nightForBg} />
             <SummaryStrip counts={counts} />
+            {timelineCard('dp-lt')}
             <PortraitSections byCategory={byCategory} expanded={expanded} renderSection={renderSection} />
             <IdeasPanel ideas={ideas} onOpen={setIdeasOverlay} measureKey={measureKey} className="dp-ideas" />
           </>
@@ -1304,12 +1345,14 @@ export default function DeskMode({ profileName, onExit }) {
               </p>
             </header>
             <main className="desk-main flex-1 min-h-0">
-              <div className="dl-grid">
+              {/* With the Life Timeline card: it runs across the top of the three task columns */}
+              <div className={`dl-grid${timeline ? ' has-lt' : ''}`}>
                 <aside className="dl-side">
                   <ClockCard now={now} weather={weather} scene={scene} night={nightForBg} />
                   <SummaryStrip counts={counts} />
                   <IdeasPanel ideas={ideas} onOpen={setIdeasOverlay} measureKey={measureKey} className="flex-1 min-h-0" />
                 </aside>
+                {timelineCard('dl-lt')}
                 {CATEGORIES.map(c => renderSection(c.id))}
               </div>
             </main>
@@ -1362,6 +1405,10 @@ export default function DeskMode({ profileName, onExit }) {
       <DragOverlay dropAnimation={null}>
         {dragTask && <DeskRowGhost task={dragTask} today={today} />}
       </DragOverlay>
+
+      {/* Outside .desk-layout too (burn-in transform), like the drag overlay */}
+      {achievePop && <AchievePopover item={achievePop.item} anchor={achievePop.anchor} onSave={saveAchieved} onClose={closeAchieve} touch />}
+      {bursts.map(b => <Burst key={b.id} x={b.x} y={b.y} onDone={() => setBursts(list => list.filter(x => x.id !== b.id))} />)}
 
       {moveMenu && <MoveMenu task={moveMenu} onPick={moveTask} onClose={() => setMoveMenu(null)} />}
       {movePrompt && (
