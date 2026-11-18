@@ -3,6 +3,7 @@ import { forceSimulation, forceLink, forceManyBody, forceCollide, forceX, forceY
 import { zoom as d3zoom, zoomIdentity } from 'd3-zoom'
 import { select } from 'd3-selection'
 import { buildGraph, describeNode } from '../../lib/lifeTimelineNetwork'
+import { matchesFilter } from '../../lib/lifeTimeline'
 
 export const NET_MIN_K = 0.15
 export const NET_MAX_K = 6
@@ -48,7 +49,7 @@ function runLayout(graph, range, narrow) {
     const uy = dy / len
     const tail = l.kind === 'dep' ? 5 : 0
     return {
-      key: `${l.kind}-${s.id}-${t.id}-${i}`, kind: l.kind, s: s.id, t: t.id,
+      key: `${l.kind}-${s.id}-${t.id}-${i}`, kind: l.kind, s: s.id, t: t.id, past: !!l.past,
       d: `M${s.x + ux * s.r},${s.y + uy * s.r} L${t.x - ux * (t.r + tail)},${t.y - uy * (t.r + tail)}`,
     }
   })
@@ -64,9 +65,10 @@ function NodeShape({ n }) {
       </>
     )
   }
+  const fill = n.state === 'achieved' ? 'var(--gold)' : n.color
   if (n.kind === 'goal') {
     const s = n.r * 1.7
-    return <rect x={-s / 2} y={-s / 2} width={s} height={s} rx={3} fill={n.color} className="nw-fill" />
+    return <rect x={-s / 2} y={-s / 2} width={s} height={s} rx={3} fill={fill} className="nw-fill" />
   }
   if (n.kind === 'now') {
     return (
@@ -76,10 +78,33 @@ function NodeShape({ n }) {
       </>
     )
   }
-  return <circle r={n.r} fill={n.color} className="nw-fill" />
+  return <circle r={n.r} fill={fill} className="nw-fill" />
 }
 
-const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, reducedMotion, onOpenNode, onScale }, ref) {
+// Achievement marks on top of the shape: check badge, progress arc, overdue ring.
+function NodeState({ n }) {
+  if (n.state === 'achieved') {
+    const r = Math.max(5.5, n.r * 0.45)
+    return (
+      <g className="nw-check" transform={`translate(${n.r * 0.72},${-n.r * 0.72})`} aria-hidden="true">
+        <circle r={r} />
+        <path d={`M${-r * 0.45},0 L${-r * 0.1},${r * 0.38} L${r * 0.5},${-r * 0.35}`} />
+      </g>
+    )
+  }
+  if (n.state === 'in_progress' && n.percent != null) {
+    return (
+      <g aria-hidden="true">
+        <circle r={n.r + 4} className="nw-track" />
+        <circle r={n.r + 4} className="nw-progress" pathLength="100" strokeDasharray={`${n.percent} 100`} transform="rotate(-90)" />
+      </g>
+    )
+  }
+  if (n.state === 'overdue') return <circle r={n.r + 3.5} className="nw-overdue" aria-hidden="true" />
+  return null
+}
+
+const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, reducedMotion, onOpenNode, onScale, filter = 'all' }, ref) {
   const wrapRef = useRef(null)
   const svgRef = useRef(null)
   const gRef = useRef(null)
@@ -212,7 +237,7 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
             {layout?.edges.map(e => {
               const dim = lit && !(lit.has(e.s) && lit.has(e.t))
               return (
-                <g key={e.key} className={`nw-edge ${e.kind}${dim ? ' dim' : ''}${lit && !dim ? ' lit' : ''}`}>
+                <g key={e.key} className={`nw-edge ${e.kind}${e.past ? ' past' : ' future'}${dim ? ' dim' : ''}${lit && !dim ? ' lit' : ''}`}>
                   <path d={e.d} className="glow" />
                   <path d={e.d} className="core" markerEnd={e.kind === 'dep' ? 'url(#lt-arrow)' : undefined} />
                   {e.kind === 'dep' && <path d={e.d} className="pulse" pathLength="100" />}
@@ -224,17 +249,18 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
             {layout?.nodes.map(n => {
               const d = describeNode(n)
               const dim = lit && !lit.has(n.id)
+              const off = filter !== 'all' && (!n.item || !matchesFilter(n.item, filter))
               const showLabel = n.kind === 'phase' || n.kind === 'now' || n.kind === 'retirement' || n.major || (lit && lit.has(n.id))
               const label = n.kind === 'phase' ? n.title : truncate(n.title, 24)
               return (
                 <g
                   key={n.id}
-                  className={`nw-node ${n.kind}${n.dim ? ' done' : ''}${dim ? ' faded' : ''}${activeId === n.id ? ' active' : ''}`}
+                  className={`nw-node ${n.kind}${n.state ? ` st-${n.state}` : ''}${off ? ' off' : ''}${dim ? ' faded' : ''}${activeId === n.id ? ' active' : ''}`}
                   transform={`translate(${n.x},${n.y})`}
                   tabIndex={inactive ? -1 : 0}
                   role="button"
                   aria-label={[d.title, d.when, d.amount, d.phase ? `phase ${d.phase}` : null, n.assumed ? 'assumed date' : null,
-                    n.status === 'done' ? 'done' : n.status === 'dropped' ? 'dropped' : null].filter(Boolean).join(', ')}
+                    d.status].filter(Boolean).join(', ')}
                   onMouseEnter={() => setHoverId(n.id)}
                   onMouseLeave={() => setHoverId(null)}
                   onFocus={() => { setFocusId(n.id); ensureVisible(n) }}
@@ -248,6 +274,7 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
                   <circle r={n.r + 7} className="nw-ring" />
                   {n.assumed && <circle r={n.r + 3.5} className="nw-assumed" />}
                   <NodeShape n={n} />
+                  <NodeState n={n} />
                   {showLabel && (
                     <text className={`nw-label${n.kind === 'phase' ? ' hub' : ''}`} y={n.r + (n.kind === 'phase' ? 18 : 14)}>{label}</text>
                   )}
@@ -261,11 +288,12 @@ const NetworkView = forwardRef(function NetworkView({ data, hidden, zoomed, redu
         <div className="lt-tip" role="tooltip" style={{ left: tipPos[0], top: tipPos[1] - active.r * t.k - 12 }}>
           <strong>{tip.title}</strong>
           <span>{tip.when}{tip.amount ? ` · ${tip.amount}` : ''}</span>
+          {tip.status && <small className={`st ${active.state}`}>{tip.status}</small>}
           {tip.phase && <small>{tip.phase}</small>}
         </div>
       )}
       <div className="lt-netlegend" aria-hidden="true">
-        <span><i className="sq" />Goal</span><span><i className="ring" />Assumed</span><span><i className="arrow" />Happens after</span>
+        <span><i className="sq" />Goal</span><span><i className="ok" />Achieved</span><span><i className="ring" />Assumed</span><span><i className="arrow" />Happens after</span>
       </div>
     </div>
   )

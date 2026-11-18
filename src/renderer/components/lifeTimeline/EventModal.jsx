@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { MONTHS, CATEGORY_LABELS, STATUS_LABELS } from '../../lib/lifeTimeline'
+import { MONTHS, CATEGORY_LABELS, STATUS_LABELS, todayIso } from '../../lib/lifeTimeline'
 
 const INPUT = 'w-full px-4 py-2.5 rounded-xl border border-gray-200 text-sm text-gray-800 bg-dark-card focus:outline-none focus:border-[#D4AF37] focus:ring-2 focus:ring-[#D4AF37]/20'
 const LABEL = 'text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5 block'
@@ -31,6 +31,7 @@ export default function EventModal({ event, defaultYear, range, events = [], onS
     is_assumed: !!event?.is_assumed,
     is_major: !!event?.is_major,
     status: event?.status ?? 'planned',
+    achieved_at: event?.achieved_at || todayIso(),
     notes: event?.notes ?? '',
     depends_on_id: event?.depends_on_id != null ? String(event.depends_on_id) : '',
   }))
@@ -46,7 +47,9 @@ export default function EventModal({ event, defaultYear, range, events = [], onS
   }, [onClose])
 
   const years = []
-  for (let y = range.start; y <= range.end; y++) years.push(y)
+  // Past years too (up to 10 back), so something already done or missed can be logged.
+  const today = range.today ?? range.start
+  for (let y = Math.min(range.start, today - 10, Number(form.year) || today); y <= range.end; y++) years.push(y)
 
   // Other events this one can follow. Events that already (directly or
   // indirectly) happen after this one are left out, so no loop can be picked.
@@ -83,6 +86,7 @@ export default function EventModal({ event, defaultYear, range, events = [], onS
         is_assumed: form.is_assumed,
         is_major: form.is_major,
         status: form.status,
+        achieved_at: form.status === 'done' ? form.achieved_at : null,
         notes: form.notes.trim() || null,
         goal_id: event?.goal_id ?? null,
         depends_on_id: form.depends_on_id ? Number(form.depends_on_id) : null,
@@ -190,6 +194,13 @@ export default function EventModal({ event, defaultYear, range, events = [], onS
                 </button>
               ))}
             </div>
+            {form.status === 'done' && (
+              <div className="mt-3 max-w-[220px]">
+                <label htmlFor="lt-f-achieved" className={LABEL}>Achieved on</label>
+                <input id="lt-f-achieved" type="date" required value={form.achieved_at} max="2200-12-31"
+                  onChange={e => set('achieved_at', e.target.value)} className={INPUT} />
+              </div>
+            )}
           </fieldset>
 
           <div className="space-y-3">

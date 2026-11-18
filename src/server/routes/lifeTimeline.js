@@ -12,7 +12,7 @@ const router = express.Router()
 // soft (deleted_at); nothing relies on ON DELETE CASCADE.
 
 const EVENT_COLS = ['title', 'notes', 'year', 'month', 'day', 'amount', 'amount_note',
-  'category', 'is_assumed', 'is_major', 'status', 'goal_id', 'depends_on_id']
+  'category', 'is_assumed', 'is_major', 'status', 'achieved_at', 'goal_id', 'depends_on_id']
 
 // depends_on_id must point at another live event of the same user, no loops.
 async function checkDepends(db, uid, eventId, dependsOnId) {

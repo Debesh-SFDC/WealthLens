@@ -13,6 +13,7 @@
   --assumed: var(--timeline-assumed);
   --assumed-border: var(--timeline-assumed-border);
   --display: 'Cinzel', 'Trajan Pro', Georgia, serif;
+  --amber: var(--warning);
 
   position: relative;
   height: 100%;
@@ -55,7 +56,10 @@
 
 /* ── Zoomable line: every element is absolutely placed at x = translate3d ── */
 .lt-track2 { position: relative; height: 100%; min-height: 460px; transition: transform .6s cubic-bezier(.6,0,.3,1), opacity .5s; }
-.lt-track2::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: linear-gradient(90deg, transparent, var(--gold) 40px, var(--gold) 70%, var(--gold-deep) 96%, transparent); box-shadow: 0 0 14px var(--gold), 0 0 40px var(--glow); z-index: 1; }
+.lt-track2::before { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: linear-gradient(90deg, transparent, rgba(212,175,55,.42) 40px, rgba(212,175,55,.42) 70%, rgba(184,150,12,.28) 96%, transparent); box-shadow: 0 0 10px rgba(212,175,55,.12); z-index: 1; }
+/* the lived part of the line, up to "You are here": full bright gold */
+.lt-past { position: absolute; left: 0; top: 50%; height: 2px; background: linear-gradient(90deg, transparent, var(--gold) 40px); box-shadow: 0 0 14px var(--gold), 0 0 40px var(--glow); z-index: 1; pointer-events: none; }
+.lt-past::after { content: ""; position: absolute; right: -3px; top: -2px; width: 6px; height: 6px; border-radius: 50%; background: var(--gold-light); box-shadow: 0 0 10px var(--gold-light); }
 .lt-track2.zoom { transform: scale(3.2); opacity: 0; pointer-events: none; }
 
 .lt-node { position: absolute; top: 0; bottom: 0; left: 0; width: var(--hit, 44px); margin-left: calc(var(--hit, 44px) / -2); background: none; border: 0; padding: 0; color: inherit; font: inherit; cursor: pointer; z-index: 2; -webkit-tap-highlight-color: transparent; }
@@ -126,7 +130,7 @@
 .lt .card.assumed em { color: var(--assumed); }
 .lt .card small { display: block; font-size: 12px; color: var(--muted); margin-top: 6px; }
 .lt .card .tag { display: inline-block; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
-.lt .card .tag.done { color: var(--success); }
+.lt .card .tag.done { color: var(--gold); }
 
 /* ── Year view ── */
 .lt-year { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 8px 24px 20px; overflow-y: auto; opacity: 0; transform: scale(.86); pointer-events: none; visibility: hidden; transition: opacity .45s, transform .55s cubic-bezier(.2,.7,.2,1), visibility 0s linear .55s; }
@@ -248,3 +252,121 @@
   .lt-netsvg .nw-edge.dep .pulse { display: none; }
   .lt-year { transform: none; }
 }
+
+/* ── Achievement states (st-*), filters, marking ───────────────────────── */
+/* nodes */
+.lt-node .dot, .lt-mtick .dot { display: block; }
+.lt-node.st-achieved .dot, .lt-mtick.st-achieved .dot { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 16px var(--gold), 0 0 36px rgba(240,208,96,.35); }
+.lt-node.st-overdue .dot, .lt-mtick.st-overdue .dot { border-color: var(--amber); box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px var(--amber), 0 0 16px rgba(243,156,18,.55); }
+.lt-node.ev.st-overdue .dot { background: var(--ink); border: 2px solid var(--amber); }
+.lt-node.st-dropped .dot, .lt-mtick.st-dropped .dot { opacity: .4; }
+.lt-node .chk, .lt-mtick .chk { position: absolute; right: -9px; top: -9px; width: 15px; height: 15px; border-radius: 50%; background: var(--ink); border: 1.5px solid var(--gold); color: var(--gold-light); display: grid; place-items: center; box-shadow: 0 0 8px rgba(212,175,55,.6); }
+.lt-node .chk svg, .lt-mtick .chk svg { width: 9px; height: 9px; }
+.lt-node .ring, .lt-mtick .ring { position: absolute; inset: -6px; border-radius: 50%; background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(212,175,55,.16) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px)); }
+/* filter: non-matching nodes and cards stay in place, dimmed */
+.lt-node.lt-off .dot, .lt-node.lt-off .lbl, .lt-mtick.lt-off .dot { opacity: .18; }
+.lt-cardpos.lt-off .lt-cardwrap, .lt-cardpos.lt-off .lt-conn { opacity: .16; }
+.lt-fitem { display: contents; }
+.lt-fitem.lt-off { display: block; opacity: .25; }
+
+/* cards */
+.lt .card.st-achieved { border-color: rgba(212,175,55,.6); background: linear-gradient(160deg, rgba(212,175,55,.15), var(--panel) 65%); box-shadow: 0 0 20px rgba(212,175,55,.16); }
+.lt .card.st-overdue { border-color: var(--amber); }
+.lt .card.assumed { border-style: dashed; border-color: var(--assumed-border); }
+.lt .card.dropped { opacity: .4; }
+.lt .card .tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 4px; }
+.lt .card .tags .tag { margin-bottom: 0; }
+.lt .card .chip-overdue { display: inline-block; font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: #1A1206; background: var(--amber); border-radius: 999px; padding: 2px 8px; }
+.lt .card small.ach { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--gold); letter-spacing: .02em; }
+.lt .card small.ach svg { width: 12px; height: 12px; flex: none; }
+.lt .card .prog { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.lt .card .prog .bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(212,175,55,.16); overflow: hidden; }
+.lt .card .prog .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-deep), var(--gold-light)); border-radius: 2px; }
+.lt .card .prog b { font-size: 11px; font-weight: 500; color: var(--gold); font-variant-numeric: tabular-nums; }
+
+/* round "Mark achieved" / "Undo" button on a card: on hover/focus with a
+   mouse, always visible on touch screens */
+.lt .cardbox { position: relative; display: block; }
+.lt-mark { position: absolute; top: -10px; right: -10px; z-index: 2; min-width: 28px; height: 28px; padding: 0; border-radius: 999px; display: grid; place-items: center; background: var(--ink); border: 1px solid var(--gold-deep); color: var(--gold); font-size: 11px; font-weight: 500; letter-spacing: .04em; cursor: pointer; opacity: 0; transform: scale(.85); transition: opacity .15s, transform .15s, background .15s, color .15s; box-shadow: 0 2px 10px rgba(0,0,0,.6); }
+.lt-mark::before { content: ""; position: absolute; inset: -8px; } /* bigger touch target */
+.lt-mark svg { width: 15px; height: 15px; }
+.lt-mark.undo { padding: 0 10px; color: var(--muted); }
+.lt-mark:hover { background: var(--gold); color: var(--ink); border-color: var(--gold); }
+.lt .cardbox:hover .lt-mark, .lt-cardwrap:hover .lt-mark, .lt-mark:focus-visible, .lt .cardbox:focus-within .lt-mark { opacity: 1; transform: none; }
+@media (hover: none) { .lt-mark { opacity: 1; transform: none; } }
+
+/* header summary + filter chips */
+.lt-progress { display: flex; flex-direction: column; gap: 6px; min-width: 150px; font-size: 13px; color: var(--muted); align-self: center; }
+.lt-progress b { font-family: var(--display); font-weight: 500; font-size: 18px; color: var(--gold); }
+.lt-progress .bar { height: 3px; border-radius: 2px; background: rgba(212,175,55,.16); overflow: hidden; }
+.lt-progress .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-deep), var(--gold-light)); box-shadow: 0 0 8px var(--gold); }
+.lt-filters { display: flex; gap: 6px; padding-left: 10px; border-left: 1px solid var(--line); }
+.lt-fchip { font: inherit; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; cursor: pointer; transition: color .2s, border-color .2s, background .2s; }
+.lt-fchip:hover { color: var(--gold); border-color: var(--gold-deep); }
+.lt-fchip.on { background: var(--gold); border-color: var(--gold); color: var(--ink); font-weight: 500; }
+.lt-fchip.overdue.on { background: var(--amber); border-color: var(--amber); }
+
+/* popover */
+.lt-pop { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; border-radius: 12px; background: #111; border: 1px solid var(--gold-deep); box-shadow: 0 16px 40px rgba(0,0,0,.65), 0 0 24px rgba(212,175,55,.12); color: var(--text); font-weight: 300; }
+.lt-pop h2 { margin: 0; font-family: var(--display); font-size: 13px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: var(--gold); }
+.lt-pop-t { margin: 0 0 4px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.lt-pop label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
+.lt-pop label span { text-transform: none; letter-spacing: 0; }
+.lt-pop input { font: inherit; font-size: 14px; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; color-scheme: dark; }
+.lt-pop input:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; border-color: transparent; }
+.lt-pop-err { margin: 2px 0 0; font-size: 12px; color: var(--amber); }
+.lt-pop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+.lt-pop .lt-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* gold burst when something is marked achieved (~700ms) */
+.lt-burst { position: fixed; z-index: 70; width: 0; height: 0; pointer-events: none; }
+.lt-burst .ring { position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--gold-light); box-shadow: 0 0 18px var(--gold); animation: lt-burst-ring .7s cubic-bezier(.2,.7,.2,1) forwards; }
+.lt-burst i { position: absolute; left: -3px; top: -3px; width: 6px; height: 6px; border-radius: 50%; background: var(--gold-light); box-shadow: 0 0 8px var(--gold); animation: lt-burst-spark .7s cubic-bezier(.2,.7,.2,1) forwards; }
+@keyframes lt-burst-ring { from { transform: scale(.4); opacity: 1; } to { transform: scale(4.2); opacity: 0; } }
+@keyframes lt-burst-spark { from { transform: rotate(var(--a)) translateX(4px) scale(1); opacity: 1; } 70% { opacity: 1; } to { transform: rotate(var(--a)) translateX(var(--d)) scale(.3); opacity: 0; } }
+
+/* network */
+.nw-node.st-achieved .nw-fill { filter: drop-shadow(0 0 6px rgba(240,208,96,.8)); }
+.nw-node.st-dropped { opacity: .4; }
+.nw-node.off { opacity: .14; }
+.nw-check circle { fill: var(--ink); stroke: var(--gold); stroke-width: 1.5; }
+.nw-check path { fill: none; stroke: var(--gold-light); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.nw-track { fill: none; stroke: rgba(212,175,55,.18); stroke-width: 2; }
+.nw-progress { fill: none; stroke: var(--gold); stroke-width: 2.2; stroke-linecap: round; }
+.nw-overdue { fill: none; stroke: var(--amber); stroke-width: 2; }
+.nw-edge.future .core { opacity: .38; }
+.nw-edge.future .glow { opacity: .03; }
+.nw-edge.past .core { stroke: var(--gold-light); opacity: 1; }
+.nw-edge.past .glow { opacity: .22; }
+.nw-edge.spine.future .core { opacity: .5; }
+.nw-edge.lit .core { opacity: 1; stroke: var(--gold-light); }
+.nw-edge.lit .glow { opacity: .3; }
+.nw-edge.dim path { opacity: .06; }
+.lt-tip small.st.achieved { color: var(--gold); }
+.lt-tip small.st.overdue { color: var(--amber); }
+.lt-netlegend .ok { background: var(--gold); border-radius: 50%; box-shadow: 0 0 6px var(--gold); }
+
+@media (max-width: 640px) {
+  .lt-progress { min-width: 0; flex: 1 1 100%; order: 2; gap: 4px; font-size: 12px; }
+  .lt-progress b { font-size: 15px; }
+  /* room for the summary + filter rows: the two-item legend goes on phones */
+  .lt-legend { display: none; }
+  .lt-filters { padding-left: 0; border-left: 0; overflow-x: auto; scrollbar-width: none; margin: 0 -16px; padding: 2px 16px; }
+  .lt-filters::-webkit-scrollbar { display: none; }
+  .lt-fchip { flex: none; }
+}
+
+/* Upcoming = outline everywhere; only achieved nodes are solid gold */
+.lt-mtick.has .dot, .lt-mo.has .dot { background: var(--ink); border: 2px solid var(--gold); box-sizing: border-box; }
+.lt-node.big:not(.st-achieved) .dot, .lt-node.dec:not(.st-achieved) .dot { background: var(--ink); border: 4px solid var(--gold); box-sizing: border-box; }
+.lt-node.big.st-overdue .dot, .lt-node.dec.st-overdue .dot, .lt-mtick.st-overdue .dot, .lt-mo.st-overdue .dot { border-color: var(--amber); }
+.lt-mo .dot { position: relative; }
+.lt-mo.st-achieved .dot { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 16px var(--gold), 0 0 36px rgba(240,208,96,.35); }
+.lt-mo.st-overdue .dot { box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px var(--amber), 0 0 16px rgba(243,156,18,.55); }
+.lt-mo.st-dropped .dot { opacity: .4; }
+.lt-mo .chk { position: absolute; right: -9px; top: -9px; width: 15px; height: 15px; border-radius: 50%; background: var(--ink); border: 1.5px solid var(--gold); color: var(--gold-light); display: grid; place-items: center; box-shadow: 0 0 8px rgba(212,175,55,.6); }
+.lt-mo .chk svg { width: 9px; height: 9px; }
+.lt-mo .ring { position: absolute; inset: -6px; border-radius: 50%; background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(212,175,55,.16) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px)); }
+/* the month column scrolls, so leave room for the card's corner button */
+.lt-mo .stack { padding: 14px 4px 0; }
+.lt-mo .lt-mark { right: 6px; }

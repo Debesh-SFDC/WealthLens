@@ -8,10 +8,16 @@
 // commonjsOptions.include so Rollup converts it.
 
 const CATEGORIES = ['career', 'family', 'home', 'vehicle', 'money', 'travel', 'health', 'other']
+// Stored values. 'done' is labelled "Achieved" in the UI; the stored value
+// stays 'done' so existing rows and Drive sync keep working.
 const STATUSES = ['planned', 'done', 'dropped']
+// Display states derived by achievementState() — never stored.
+const STATES = ['achieved', 'dropped', 'overdue', 'in_progress', 'upcoming']
 const PLAN_END_AGE = 80
 // Used only when the profile has no date_of_birth, so the line still renders.
 const FALLBACK_SPAN_YEARS = 50
+// How far back the line may start to show past (overdue / achieved) items.
+const MAX_LOOKBACK_YEARS = 50
 
 class ValidationError extends Error {
   constructor(message) {
@@ -34,9 +40,25 @@ function intOrNull(v, field, min, max) {
 
 const flag = (v) => (v === true || v === 1 || v === '1' || v === 'true' ? 1 : 0)
 
+const pad = (n) => String(n).padStart(2, '0')
+const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+
+// 'YYYY-MM-DD' (a longer ISO timestamp is cut to its date) → the same string
+// if it is a real calendar date, else null.
+function isoDateOrNull(v) {
+  if (isBlank(v)) return null
+  const str = String(v).slice(0, 10)
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(str)
+  if (!m) return null
+  const [y, mo, da] = [Number(m[1]), Number(m[2]), Number(m[3])]
+  const d = new Date(y, mo - 1, da)
+  return d.getFullYear() === y && d.getMonth() === mo - 1 && d.getDate() === da ? str : null
+}
+
 // Validates a create/update body and returns the exact column values to
 // write. Throws ValidationError (status 400) on bad input.
-function cleanEvent(d = {}) {
+// achieved_at: kept (default today) while status is 'done', cleared otherwise.
+function cleanEvent(d = {}, today = new Date()) {
   const title = String(d.title ?? '').trim()
   if (!title) throw new ValidationError('title is required')
   if (title.length > 200) throw new ValidationError('title must be 200 characters or fewer')
@@ -61,6 +83,15 @@ function cleanEvent(d = {}) {
   const status = isBlank(d.status) ? 'planned' : String(d.status)
   if (!STATUSES.includes(status)) throw new ValidationError(`status must be one of ${STATUSES.join(', ')}`)
 
+  let achieved_at = null
+  if (status === 'done') {
+    if (isBlank(d.achieved_at)) achieved_at = ymd(today)
+    else {
+      achieved_at = isoDateOrNull(d.achieved_at)
+      if (!achieved_at) throw new ValidationError('achieved_at must be a date (YYYY-MM-DD)')
+    }
+  }
+
   const text = (v, max) => {
     const s = isBlank(v) ? '' : String(v).trim()
     return s ? s.slice(0, max) : null
@@ -78,6 +109,7 @@ function cleanEvent(d = {}) {
     is_assumed: flag(d.is_assumed),
     is_major: flag(d.is_major),
     status,
+    achieved_at,
     goal_id: intOrNull(d.goal_id, 'goal_id', 1, Number.MAX_SAFE_INTEGER),
     depends_on_id: intOrNull(d.depends_on_id, 'depends_on_id', 1, Number.MAX_SAFE_INTEGER),
   }
@@ -123,9 +155,6 @@ function cleanPhases(list) {
     .map((p, i) => ({ ...p, sort_order: i }))
 }
 
-const pad = (n) => String(n).padStart(2, '0')
-const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-
 function parseLocalDate(str) {
   if (!str || typeof str !== 'string') return null
   const d = new Date(`${str.slice(0, 10)}T00:00:00`)
@@ -168,26 +197,75 @@ function resolveRetirement(profile, today = new Date()) {
   }
 }
 
+// ── Achievement state ───────────────────────────────────────────────────────
+// One display state for an event, goal or the retirement node:
+//   achieved    events: status 'done'; goals: is_achieved (the Goals page's
+//               rule); retirement: its date has passed
+//   dropped     status 'dropped'
+//   overdue     neither, and its due date is before today. The due date is
+//               the end of the most precise unit given: the day, else the last
+//               day of the month, else 31 December of the year
+//   in_progress a goal with current_amount > 0
+//   upcoming    everything else
+// percent: goals with a target only — current / target, 0..100 (whole number).
+function achievementState(item, today = new Date()) {
+  const kind = item.kind || 'event'
+  const t = new Date(today.getFullYear(), today.getMonth(), today.getDate())
+  const year = Number(item.year)
+  const month = item.month == null || item.month === '' ? null : Number(item.month)
+  const day = month == null || item.day == null || item.day === '' ? null : Number(item.day)
+  // first moment after the due date
+  const after = month == null ? new Date(year + 1, 0, 1)
+    : day == null ? new Date(year, month, 1)
+    : new Date(year, month - 1, day + 1)
+  const past = after <= t
+
+  let percent = null
+  if (kind === 'goal') {
+    const target = Number(item.target_amount)
+    const current = Number(item.current_amount) || 0
+    if (target > 0) percent = Math.max(0, Math.min(100, Math.round((current / target) * 100)))
+  }
+
+  let state
+  if (kind === 'retirement') {
+    // achieved on the day itself
+    state = new Date(year, (month ?? 12) - 1, day ?? 1) <= t ? 'achieved' : 'upcoming'
+  } else if (kind === 'goal' ? Number(item.is_achieved) === 1 || item.is_achieved === true : item.status === 'done') {
+    state = 'achieved'
+  } else if (item.status === 'dropped') {
+    state = 'dropped'
+  } else if (past) {
+    state = 'overdue'
+  } else if (kind === 'goal' && Number(item.current_amount) > 0) {
+    state = 'in_progress'
+  } else {
+    state = 'upcoming'
+  }
+  return { state, percent }
+}
+
+// "7 of 42 achieved": events and goals; dropped ones and the derived
+// retirement node don't count.
+function summarize(events, goals) {
+  const all = [...events, ...goals].filter(i => i.state !== 'dropped')
+  return { achieved: all.filter(i => i.state === 'achieved').length, total: all.length }
+}
+
 // Assembles the GET /api/life-timeline payload from raw rows.
 function buildTimeline({ profile, fire, phases, events, goals, today = new Date() }) {
   const dob = parseLocalDate(profile?.date_of_birth)
   const birthYear = dob ? dob.getFullYear() : null
-  const start = today.getFullYear()
-  const end = Math.max(start, birthYear != null ? birthYear + PLAN_END_AGE : start + FALLBACK_SPAN_YEARS)
+  const thisYear = today.getFullYear()
+  const end = Math.max(thisYear, birthYear != null ? birthYear + PLAN_END_AGE : thisYear + FALLBACK_SPAN_YEARS)
   const kid = Number(fire?.kid1_year)
   const childBirthYear = Number.isInteger(kid) && kid > 1900 ? kid : null
 
   const num = (v) => (v == null || v === '' ? null : Number(v))
   const liveIds = new Set((events || []).map(e => Number(e.id)))
-  return {
-    range: { start, end },
-    birthYear,
-    childBirthYear,
-    retirement: resolveRetirement(profile, today),
-    phases: (phases || []).map(p => ({
-      id: p.id, numeral: p.numeral, name: p.name, start_year: Number(p.start_year), sort_order: Number(p.sort_order) || 0,
-    })),
-    events: (events || []).map(e => ({
+
+  const outEvents = (events || []).map(e => {
+    const ev = {
       ...e,
       // a link to a deleted event is dropped rather than left dangling
       depends_on_id: e.depends_on_id != null && liveIds.has(Number(e.depends_on_id)) ? Number(e.depends_on_id) : null,
@@ -198,21 +276,50 @@ function buildTimeline({ profile, fire, phases, events, goals, today = new Date(
       goal_id: num(e.goal_id),
       is_assumed: Number(e.is_assumed) ? 1 : 0,
       is_major: Number(e.is_major) ? 1 : 0,
+      status: e.status || 'planned',
+      achieved_at: e.status === 'done' ? isoDateOrNull(e.achieved_at) : null,
+    }
+    return { ...ev, ...achievementState({ ...ev, kind: 'event' }, today) }
+  })
+  const outGoals = (goals || []).map(g => {
+    const d = parseLocalDate(g.target_date)
+    if (!d) return null
+    const goal = {
+      id: g.id,
+      title: g.title,
+      emoji: g.emoji || null,
+      target_amount: num(g.target_amount),
+      current_amount: num(g.current_amount) ?? 0,
+      target_date: g.target_date,
+      is_achieved: Number(g.is_achieved) ? 1 : 0,
+      achieved_at: Number(g.is_achieved) ? isoDateOrNull(g.achieved_at) : null,
+      year: d.getFullYear(),
+      month: d.getMonth() + 1,
+      day: d.getDate(),
+    }
+    return { ...goal, ...achievementState({ ...goal, kind: 'goal' }, today) }
+  }).filter(Boolean)
+  const retirement = resolveRetirement(profile, today)
+
+  // The line normally starts at this year; it reaches back to the earliest
+  // event or goal (so overdue and achieved past items stay visible), but never
+  // before the birth year or more than MAX_LOOKBACK_YEARS back.
+  const floor = Math.max(thisYear - MAX_LOOKBACK_YEARS, birthYear ?? -Infinity)
+  const earliest = Math.min(thisYear, ...outEvents.map(e => e.year), ...outGoals.map(g => g.year))
+  const start = Math.max(floor, earliest)
+
+  return {
+    range: { start, end, today: thisYear },
+    today: ymd(today),
+    summary: summarize(outEvents, outGoals),
+    birthYear,
+    childBirthYear,
+    retirement: { ...retirement, ...achievementState({ ...retirement, kind: 'retirement' }, today) },
+    phases: (phases || []).map(p => ({
+      id: p.id, numeral: p.numeral, name: p.name, start_year: Number(p.start_year), sort_order: Number(p.sort_order) || 0,
     })),
-    goals: (goals || []).map(g => {
-      const d = parseLocalDate(g.target_date)
-      return d && {
-        id: g.id,
-        title: g.title,
-        emoji: g.emoji || null,
-        target_amount: num(g.target_amount),
-        target_date: g.target_date,
-        is_achieved: Number(g.is_achieved) ? 1 : 0,
-        year: d.getFullYear(),
-        month: d.getMonth() + 1,
-        day: d.getDate(),
-      }
-    }).filter(Boolean),
+    events: outEvents,
+    goals: outGoals,
   }
 }
 
@@ -224,18 +331,22 @@ const SQL = {
   fire: 'SELECT kid1_year FROM fire_planner_settings ORDER BY id DESC LIMIT 1',
   phases: 'SELECT * FROM life_phases WHERE user_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, start_year ASC, id ASC',
   events: 'SELECT * FROM life_events WHERE user_id = ? AND deleted_at IS NULL ORDER BY year ASC, COALESCE(month, 13) ASC, COALESCE(day, 32) ASC, id ASC',
-  goals: "SELECT id, title, emoji, target_amount, target_date, is_achieved FROM goals WHERE deleted_at IS NULL AND target_date IS NOT NULL AND target_date <> '' ORDER BY target_date ASC, id ASC",
+  goals: "SELECT id, title, emoji, target_amount, current_amount, target_date, is_achieved, achieved_at FROM goals WHERE deleted_at IS NULL AND target_date IS NOT NULL AND target_date <> '' ORDER BY target_date ASC, id ASC",
 }
 
 module.exports = {
   CATEGORIES,
   STATUSES,
+  STATES,
   PLAN_END_AGE,
   ValidationError,
   cleanEvent,
   checkDependsOn,
   cleanPhases,
   resolveRetirement,
+  achievementState,
+  summarize,
+  isoDateOrNull,
   buildTimeline,
   SQL,
 }

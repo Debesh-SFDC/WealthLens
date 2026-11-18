@@ -10,7 +10,54 @@ export const CATEGORY_LABELS = {
   career: 'Career', family: 'Family', home: 'Home', vehicle: 'Vehicle',
   money: 'Money', travel: 'Travel', health: 'Health', other: 'Other',
 }
-export const STATUS_LABELS = { planned: 'Planned', done: 'Done', dropped: 'Dropped' }
+// Stored status → label. 'done' reads "Achieved"; the stored value stays 'done'.
+export const STATUS_LABELS = { planned: 'Planned', done: 'Achieved', dropped: 'Dropped' }
+// Display states (computed by achievementState in src/shared/lifeTimeline.js
+// and sent with every event, goal and the retirement node).
+export const STATE_LABELS = { achieved: 'Achieved', in_progress: 'In progress', upcoming: 'Upcoming', overdue: 'Overdue', dropped: 'Dropped' }
+export const FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'achieved', label: 'Achieved' },
+  { id: 'upcoming', label: 'Upcoming' },
+  { id: 'overdue', label: 'Overdue' },
+]
+
+// "12 Mar 2027" from 'YYYY-MM-DD' (or a longer ISO string).
+export function fmtDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso || ''))
+  if (!m) return null
+  return `${Number(m[3])} ${MONTHS[Number(m[2]) - 1]} ${m[1]}`
+}
+
+// Today as 'YYYY-MM-DD' in local time (the default "Achieved on" date).
+export function todayIso(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+// Does an item pass the header filter? "Upcoming" includes goals in progress.
+// The derived retirement node only shows under All.
+export function matchesFilter(item, filter) {
+  if (!filter || filter === 'all') return true
+  if (item.kind === 'retirement') return item.state === filter
+  if (filter === 'upcoming') return item.state === 'upcoming' || item.state === 'in_progress'
+  return item.state === filter
+}
+
+// Only events and goals can be marked; dropped events are changed in the form.
+export const canMark = (item) => (item.kind === 'event' || item.kind === 'goal') && item.state !== 'dropped'
+
+// One state for a group of items drawn as one node (a year, a month, a
+// decade): achieved when every live item is, overdue if any is, otherwise the
+// lead item's state (so a goal in progress shows its ring).
+export function groupState(items, lead) {
+  const live = (items || []).filter(i => i.state !== 'dropped')
+  if (!live.length) return { state: items?.length ? 'dropped' : null, percent: null }
+  if (live.every(i => i.state === 'achieved')) return { state: 'achieved', percent: null }
+  if (live.some(i => i.state === 'overdue')) return { state: 'overdue', percent: null }
+  const l = lead || live[0]
+  return { state: l.state === 'achieved' ? 'upcoming' : l.state, percent: l.state === 'in_progress' ? l.percent : null }
+}
 
 // ₹2.25L / ₹90K / ₹9.23 Cr — same scale as the Retirement Countdown.
 export function fmtAmount(v) {
@@ -36,6 +83,7 @@ export function buildItems(data) {
       key: `e${e.id}`, kind: 'event', id: e.id, year: e.year, month: e.month, day: e.day,
       title: e.title, amountText: amount || e.amount_note || null, noteText: amount ? e.amount_note : null,
       assumed: !!e.is_assumed, major: !!e.is_major, status: e.status || 'planned', raw: e,
+      state: e.state || 'upcoming', percent: null, achievedAt: e.achieved_at || null,
     })
   }
   for (const g of data.goals || []) {
@@ -44,6 +92,7 @@ export function buildItems(data) {
       title: g.emoji ? `${g.emoji} ${g.title}` : g.title, amountText: fmtAmount(g.target_amount),
       noteText: `Goal · due ${g.day} ${MONTHS[g.month - 1]}`, assumed: false, major: false,
       status: g.is_achieved ? 'done' : 'planned', raw: g,
+      state: g.state || 'upcoming', percent: g.percent ?? null, achievedAt: g.achieved_at || null,
     })
   }
   const r = data.retirement
@@ -53,6 +102,7 @@ export function buildItems(data) {
       title: `Retire on ${r.day} ${MONTHS_LONG[r.month - 1]}`,
       amountText: data.birthYear != null ? `Age ${r.age}` : null,
       noteText: 'From your retirement settings', assumed: false, major: true, status: 'planned', raw: r,
+      state: r.state || 'upcoming', percent: null, achievedAt: r.state === 'achieved' ? r.date : null,
     })
   }
   const order = (i) => [i.month ?? 13, i.day ?? 32]

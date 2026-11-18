@@ -94,10 +94,16 @@ assert.equal(kinds('retirement'), 1)
 assert.equal(kinds('goal'), 12)
 assert.equal(g.links.filter(l => l.kind === 'spine').length, 4)
 const dep = g.links.filter(l => l.kind === 'dep')
-assert.deepEqual(dep, [{ source: 'e8', target: 'e99', kind: 'dep' }])
+assert.deepEqual(dep, [{ source: 'e8', target: 'e99', kind: 'dep', past: false }])
 assert.equal(g.links.filter(l => l.kind === 'goal').length, 1)
 assert.ok(g.neighbours.get('e99').has('e8') && g.neighbours.get('e99').has('g7') && g.neighbours.get('e99').has('p3'))
-assert.ok(g.nodes.find(x => x.id === 'e99').dim)
+assert.equal(g.nodes.find(x => x.id === 'e99').state, 'achieved')
+// edges are "past" (bright) only between reached nodes: achieved items, begun phases, now
+assert.ok(g.links.filter(l => l.past).every(l => [l.source, l.target].every(id => {
+  const node = g.nodes.find(x => x.id === id)
+  return node.kind === 'phase' || node.kind === 'now' ? node.year <= 2026 : node.state === 'achieved'
+})))
+assert.ok(g.links.some(l => l.past) && g.links.some(l => !l.past))
 // chronological tab order
 for (let i = 1; i < g.nodes.length; i++) assert.ok(g.nodes[i - 1].year <= g.nodes[i].year)
 assert.equal(n.describeNode(g.nodes.find(x => x.id === 'e99')).phase, 'III · Freedom')

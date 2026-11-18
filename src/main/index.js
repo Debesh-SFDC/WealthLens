@@ -1878,7 +1878,7 @@ function setupIpcHandlers() {
   // Admin only, scoped to the session user. Same validation and derivation as
   // the web router (src/server/routes/lifeTimeline.js) via src/shared/lifeTimeline.js.
   const LIFE_EVENT_COLS = ['title', 'notes', 'year', 'month', 'day', 'amount', 'amount_note',
-    'category', 'is_assumed', 'is_major', 'status', 'goal_id', 'depends_on_id']
+    'category', 'is_assumed', 'is_major', 'status', 'achieved_at', 'goal_id', 'depends_on_id']
   const checkLifeDepends = (uid, eventId, dependsOnId) => {
     if (dependsOnId == null) return
     const rows = db.prepare('SELECT id, depends_on_id FROM life_events WHERE user_id = ? AND deleted_at IS NULL').all(uid)
