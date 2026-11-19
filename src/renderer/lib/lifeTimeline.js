@@ -155,20 +155,7 @@ export function pickLead(items) {
   return { lead: live.find(i => i.major) || live[0], count: live.length }
 }
 
-// Items for a multi-line card or preview: live (not dropped) items ordered by
-// month (no-month items last), major items first within a month, then day.
-export function sortForCard(items) {
-  return (items || [])
-    .filter(i => i.status !== 'dropped' && i.state !== 'dropped')
-    .map((it, i) => ({ it, i }))
-    .sort((a, b) => (a.it.month ?? 13) - (b.it.month ?? 13)
-      || Number(!!b.it.major) - Number(!!a.it.major)
-      || (a.it.day ?? 32) - (b.it.day ?? 32)
-      || a.i - b.i)
-    .map(x => x.it)
-}
-
-// Status marker for one card line: achieved check, overdue amber, in-progress
+// Status marker for a pill: achieved check, overdue amber, in-progress
 // ring, assumed dashed, upcoming outline.
 export function markerFor(item) {
   if (item.state === 'achieved') return 'achieved'

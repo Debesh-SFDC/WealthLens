@@ -1,49 +1,163 @@
 // Semantic zoom for the Life Timeline line. Everything is driven by one
 // number, ppy (pixels per year): node positions, which level of detail shows
-// (Decades / Years / Months) and how big each card can be. Pure functions,
-// tested in lifeTimelineZoom.test.js.
-import { pickLead, ageIn, kidsAgesIn, kidsText, phaseLabelAt, groupState, matchesFilter, sortForCard, MONTHS } from './lifeTimeline.js'
+// (Decades / Years / Months) and how much room each item's card gets. Pure
+// functions, tested in lifeTimelineZoom.test.js and lifeTimelineCards.test.js.
+import { pickLead, ageIn, kidsAgesIn, kidsText, phaseLabelAt, groupState, matchesFilter, MONTHS } from './lifeTimeline.js'
 
 export const PRESETS = { decades: 22, years: 128, months: 1150 }
 export const MIN_PPY = 8
 export const MAX_PPY = 2600
 export const PAD_LEFT = 90
 
-export const CARD_W = 180
-const CARD_GAP = 16
+// ── One card per item, in lanes ─────────────────────────────────────────────
+// Every event / goal / the retirement node has its own marker ON the line at
+// its date and its own card in a lane above or below the line (film-style).
+// Lane k on a side hangs CARD_TOP[side] + k * LANE_PITCH px from the line, up
+// to MAX_LANES per side, as many as fit the stage height (EDGE keeps clear of
+// the phase-name row at the top and the "You are here" marker / zoom controls
+// at the bottom). Year, month and decade labels all sit BELOW the line within
+// LABEL_REACH, so lanes below start beyond them; lanes above start just clear
+// of the markers. A lane holds a full card, or up to two compact pills
+// stacked (pill rows at d and d + PILL_PITCH). Pixel sizes match .lt-lcard /
+// .lt-pill in lifeTimeline.css.
+export const CARD_TOP = { up: 28, down: 88 }
+export const LABEL_REACH = 80
+export const EDGE = { up: 40, down: 72 } // down: clears the zoom controls (bottom right) and "You are here"
+export const FULL_W = 172
+export const FULL_H = 64
+export const PILL_H = 24
+export const PILL_PITCH = 32
+export const PILL_MAX_W = 92
+export const LANE_PITCH = FULL_H + 8
+export const MAX_LANES = 3
+// A card's connector meets it this far in from its left end (or its right end
+// when the card extends left of its marker to find room).
+export const ANCHOR = 6
+const H_GAP = 8
 
-// ── Card heights ──────────────────────────────────────────────────────────
-// Cards hang CARD_TOP px from the line (CSS .lt-cardwrap) and grow away from
-// it, so a card never reaches the year labels (a major year's two-line label
-// reaches ~77px from the line) and same-side neighbours are kept apart by width (scaleSlots). What a
-// taller card can hit is the stage edge: the phase-name row at the top and the
-// "You are here" marker / zoom controls at the bottom. Each card gets as many
-// lines as fit between the line and that edge; the rest collapse into
-// "+N more". Pixel sizes match the .card.multi rules in lifeTimeline.css.
-export const CARD_TOP = 88
-export const EDGE = { up: 40, down: 56 }
-export const CARD_PAD = 20 // 1px border + 9px padding, top and bottom
-export const ROW_H = 20
-export const AMOUNT_H = 16
-export const MORE_H = 18
-export const HEAD_H = 18
-export const MAX_LINES = 4
+export const pillWidth = (title) => Math.min(PILL_MAX_W, Math.round(34 + String(title || '').length * 6.6))
 
-// Room for a card on one side of the line in a stage vh px tall.
-export const cardRoom = (vh, side) => Math.max(0, vh / 2 - CARD_TOP - EDGE[side])
-
-// Unscaled height of a card with n lines out of total.
-export function cardHeight({ n, total, head = false, amount = false }) {
-  return CARD_PAD + (head ? HEAD_H : 0) + n * ROW_H + (amount ? AMOUNT_H : 0) + (total > n ? MORE_H : 0)
+// Fractional year of an item on the line: day given → that day; month only →
+// the middle of the month; no month → the start of its year ("sometime").
+export function itemYear(it) {
+  if (!it.month) return it.year
+  const m = it.month - 1
+  if (it.day) {
+    const dim = new Date(it.year, it.month, 0).getDate()
+    return it.year + (m + (it.day - 1) / dim) / 12
+  }
+  return it.year + (m + 0.5) / 12
 }
 
-// Up to MAX_LINES lines (at least one) that fit in `room`; the rest become "+N more".
-export function fitCard(list, room, { head = false, maxLines = MAX_LINES } = {}) {
-  const total = list.length
-  const amount = !!list[0]?.amountText
-  let n = Math.min(maxLines, total)
-  while (n > 1 && cardHeight({ n, total, head, amount }) > room) n--
-  return { rows: list.slice(0, n), more: total - n, h: cardHeight({ n, total, head, amount }) }
+// The track is at least TRACK_MIN_H tall (CSS .lt-track2 min-height) with the
+// line at its middle, so on a short stage the line sits below the stage's
+// middle and the bottom of the track is cut off.
+export const TRACK_MIN_H = 460
+export const lineY = (vh) => Math.max(vh, TRACK_MIN_H) / 2
+
+// Lanes on one side of the line in a stage vh px tall. full: a full card fits
+// there. pills: the pill rows (offsets) that fit in that lane.
+export function laneSlots(vh, side) {
+  const limit = side === 'up' ? lineY(vh) - EDGE.up : vh - lineY(vh) - EDGE.down
+  const out = []
+  for (let k = 0; k < MAX_LANES; k++) {
+    const d = CARD_TOP[side] + k * LANE_PITCH
+    if (d + PILL_H > limit) break
+    const pills = [d, d + PILL_PITCH].filter(p => p + PILL_H <= limit && p + PILL_H <= d + FULL_H)
+    out.push({ k, d, full: d + FULL_H <= limit, pills })
+  }
+  return out
+}
+
+// Which items get room first: majors and the retirement node, then goals in
+// progress / reached, then overdue items, then the rest; ties by date.
+const priority = (it) => (it.major || it.kind === 'retirement' ? 3 : 0)
+  + (it.state === 'in_progress' || it.reached ? 2 : 0) + (it.state === 'overdue' ? 1 : 0)
+
+// Lane placement over ALL items (not just the visible ones, so cards don't
+// jump while panning), in two rounds:
+//  1. Right to left, every item takes the nearest free pill row (preferring
+//     the side opposite its date-order neighbour). An item whose later
+//     neighbour already holds a row steps one row further out, so connectors
+//     pass beside the inner cards (film-style). No row free: just its marker.
+//  2. Pills grow into full cards wherever a full card fits (majors and goals
+//     in progress first) — so zooming in, which spreads items apart, turns
+//     pills back into cards.
+// A spot is free only if it clears every other placed card, its connector
+// doesn't cross a card nearer the line, and it doesn't sit across the
+// connector of a card further out. Cards extend right from their marker (the
+// title starts at its date), or left when that's the only room.
+// Returns [{ item, x, mode: 'full' | 'pill' | 'marker', side, lane, d, a, w, h }].
+export function placeItems(items, { X, vh, grow = true }) {
+  const list = items.map(it => ({ it, x: X(itemYear(it)) }))
+    .sort((p, q) => p.x - q.x || priority(q.it) - priority(p.it))
+  list.forEach((e, i) => { e.pref = i % 2 ? 'down' : 'up' })
+  const lanes = { up: laneSlots(vh, 'up'), down: laneSlots(vh, 'down') }
+  const free = (self, side, d, h, a, b, x) => list.every(o => {
+    const p = o.spot
+    if (o === self || !p || p.side !== side) return true
+    const apart = b + H_GAP <= p.a || p.a + p.w + H_GAP <= a
+    if (d < p.d + p.h + 4 && p.d < d + h + 4) return apart // same band
+    if (p.d < d) return x <= p.a - 3 || x >= p.a + p.w + 3 // our connector passes p
+    return o.x <= a - 3 || o.x >= b + 3 // p's connector passes us
+  })
+  const anchors = (x, w) => [x - ANCHOR, x - w + ANCHOR]
+  const sidesOf = (e) => [e.pref, e.pref === 'up' ? 'down' : 'up']
+  const dropped = (it) => it.status === 'dropped' || it.state === 'dropped'
+
+  const placePill = (e, rights) => {
+    const w = pillWidth(e.it.raw?.title ?? e.it.title)
+    const rows = sidesOf(e).flatMap((side, si) => lanes[side].flatMap(L => L.pills.map(d => ({ side, k: L.k, d, si }))))
+      .sort((p, q) => p.d - q.d || p.si - q.si)
+    for (const right of rights) {
+      for (const r of rows) {
+        const a = anchors(e.x, w)[right ? 0 : 1]
+        if (free(e, r.side, r.d, PILL_H, a, a + w, e.x)) { e.spot = { mode: 'pill', side: r.side, lane: r.k, d: r.d, a, w, h: PILL_H }; return }
+      }
+    }
+  }
+  // 1. pills extending right, right to left (a pill extending left here would
+  //    cover the markers of items not placed yet and shut them out)
+  for (const e of [...list].sort((p, q) => q.x - p.x || priority(q.it) - priority(p.it))) {
+    e.spot = null
+    if (!dropped(e.it)) placePill(e, [true])
+  }
+  // 1b. items still without a spot: either direction, against everything placed
+  for (const e of list) if (!e.spot && !dropped(e.it)) placePill(e, [true, false])
+  // 1c. a major item left as a bare marker takes the spot of a nearby lesser
+  //     item, which then looks for room again (and may become the marker)
+  for (const e of list) {
+    if (e.spot || dropped(e.it) || priority(e.it) < 3) continue
+    const near = list.filter(o => o.spot && priority(o.it) < priority(e.it) && Math.abs(o.x - e.x) <= FULL_W)
+      .sort((p, q) => Math.abs(p.x - e.x) - Math.abs(q.x - e.x))
+    for (const victim of near) {
+      const keep = victim.spot
+      victim.spot = null
+      placePill(e, [true, false])
+      if (e.spot) { placePill(victim, [true, false]); break }
+      victim.spot = keep
+    }
+  }
+  // 2. grow pills into full cards where there's room (own side first)
+  //    Extending right first for everyone, then left for those still pills;
+  //    repeated while anything grows (a pill that moves out to a full lane
+  //    can free the row a neighbour needed).
+  for (const right of grow ? [true, false] : []) {
+    for (let pass = 0, grew = true; grew && pass < 4; pass++) {
+      grew = false
+      for (const e of [...list].filter(x => x.spot?.mode === 'pill').sort((p, q) => priority(q.it) - priority(p.it) || q.x - p.x)) {
+        const sides = [e.spot.side, e.spot.side === 'up' ? 'down' : 'up']
+        grow: for (const side of sides) {
+          for (const L of lanes[side]) {
+            if (!L.full) continue
+            const a = anchors(e.x, FULL_W)[right ? 0 : 1]
+            if (free(e, side, L.d, FULL_H, a, a + FULL_W, e.x)) { e.spot = { mode: 'full', side, lane: L.k, d: L.d, a, w: FULL_W, h: FULL_H }; grew = true; break grow }
+          }
+        }
+      }
+    }
+  }
+  return list.map(e => ({ item: e.it, x: e.x, ...(e.spot || { mode: 'marker', side: null, lane: null, d: 0, a: e.x, w: 0, h: 0 }) }))
 }
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
@@ -86,34 +200,6 @@ const LOG_MAX = Math.log(MAX_PPY)
 export const ppyToSlider = (p) => Math.round(((Math.log(clampPpy(p)) - LOG_MIN) / (LOG_MAX - LOG_MIN)) * 1000)
 export const sliderToPpy = (v) => Math.exp(LOG_MIN + (clamp(v, 0, 1000) / 1000) * (LOG_MAX - LOG_MIN))
 
-// ── Card slots ─────────────────────────────────────────────────────────────
-// Each slot gets the largest scale (0..1) at which its card can't overlap the
-// nearest card on the same side of the line: width <= distance - gap to both
-// neighbours, so two neighbours can never both reach past their midpoint.
-function scaleSlots(slots) {
-  const sides = { up: [], down: [] }
-  slots.forEach((s, i) => { s.side = i % 2 ? 'down' : 'up'; sides[s.side].push(s) })
-  for (const list of Object.values(sides)) {
-    list.forEach((s, i) => {
-      const prev = i > 0 ? s.x - list[i - 1].x : Infinity
-      const next = i < list.length - 1 ? list[i + 1].x - s.x : Infinity
-      s.scale = clamp((Math.min(prev, next) - CARD_GAP) / CARD_W, 0, 1)
-    })
-  }
-  return slots
-}
-
-const cardOpacity = (scale, weight) => smoothstep(0.42, 0.72, scale) * weight
-
-// The decade card's two titles: majors first, then the biggest amounts, shown
-// in date order.
-function topTwo(live) {
-  const amt = (i) => i.raw?.amount ?? i.raw?.target_amount ?? 0
-  return [...live].sort((a, b) => Number(!!b.major) - Number(!!a.major) || amt(b) - amt(a))
-    .slice(0, 2)
-    .sort((a, b) => a.year - b.year || (a.month ?? 13) - (b.month ?? 13))
-}
-
 function biggest(items) {
   const live = items.filter(i => i.status !== 'dropped')
   if (!live.length) return null
@@ -124,11 +210,13 @@ function biggest(items) {
 // ── Labels ─────────────────────────────────────────────────────────────────
 // Rough text widths (Cinzel digits / Plus Jakarta Sans) — generous on purpose.
 const textW = (str, px) => String(str).length * px
-const yearLabelW = (lines, big) => Math.max(textW('0000', big ? 13.5 : 9.5), ...lines.slice(1).map(l => textW(l, 6.4))) + 10
+// +16: the label's opaque backing (padding) plus breathing room.
+const yearLabelW = (lines, big) => Math.max(textW('0000', big ? 17 : 10), ...lines.slice(1).map(l => textW(l, 6.6))) + 16
 
-// Greedy by priority: keep a label only if its box clears every kept label and
-// every obstacle (card connectors) on the same side. Guarantees no overlap.
-function placeLabels(labels, obstacles) {
+// Greedy by priority: keep a label only if its box clears every kept label on
+// the same side. Labels sit on an opaque backing above the connectors (which
+// pass behind them) and below the cards, which start beyond LABEL_REACH.
+function placeLabels(labels) {
   const kept = { up: [], down: [] }
   const order = [...labels].sort((a, b) => b.priority - a.priority || a.x - b.x)
   for (const l of order) {
@@ -136,7 +224,6 @@ function placeLabels(labels, obstacles) {
     const b = l.x + l.w / 2
     const side = kept[l.side]
     const hit = side.some(k => a < k.b + 6 && b > k.a - 6)
-      || (obstacles[l.side] || []).some(o => a < o + 5 && b > o - 5)
     l.visible = !hit
     if (!hit) side.push({ a, b })
   }
@@ -162,32 +249,7 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, k
   const decadesDominant = w.decades >= 0.5
   const showMeta = ppy >= 60
 
-  // Card sets ----------------------------------------------------------------
-  // Year cards list every live item that year (ordered by month, majors first
-  // within a month); month cards list that month's items.
-  const yearSlots = []
-  const monthSlots = []
-  for (let y = start; y <= end; y++) {
-    const items = byYear.get(y) || []
-    const list = sortForCard(items)
-    if (list.length) yearSlots.push({ key: `y${y}`, set: 'years', year: y, x: X(y), list, match: anyMatch(list) })
-    const groups = new Map()
-    for (const it of list) {
-      const k = it.month ?? 0
-      if (!groups.has(k)) groups.set(k, [])
-      groups.get(k).push(it)
-    }
-    for (const k of [...groups.keys()].sort((a, b) => a - b)) {
-      const ml = groups.get(k)
-      monthSlots.push({
-        key: `m${y}-${k}`, set: 'months', year: y, month: k || null, loose: k === 0,
-        x: X(y + (k ? (k - 1) / 12 : 0)), list: ml,
-        tag: k === 0 ? 'Sometime this year' : null, noMonth: true,
-        match: anyMatch(ml),
-      })
-    }
-  }
-  const decadeSlots = []
+  // Decade summaries (counts, achieved) for the Decades level ---------------------
   const decades = []
   for (let ds = Math.floor(start / 10) * 10; ds <= end; ds += 10) {
     const a = Math.max(ds, start)
@@ -197,53 +259,28 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, k
     const live = items.filter(i => i.status !== 'dropped' && i.state !== 'dropped')
     const achieved = live.filter(i => i.state === 'achieved').length
     const top = biggest(items)
-    const x = X((a + b + 1) / 2)
     const progress = live.length ? `${achieved} of ${live.length} achieved` : 'nothing planned'
     const g = groupState(items, top)
-    decades.push({ key: `d${ds}`, decade: ds, x, count: live.length, achieved, progress, top, openYear: top ? top.year : a, state: g.state, percent: g.percent, match: anyMatch(items) })
-    if (top) {
-      // the summary, then the decade's top 2 titles (labelled by year)
-      decadeSlots.push({
-        key: `d${ds}`, set: 'decades', year: top.year, x,
-        list: topTwo(live), tag: progress, yearLabels: true, maxLines: 2, moreCount: 0,
-        match: anyMatch(items),
-      })
-    }
-  }
-  scaleSlots(yearSlots)
-  scaleSlots(monthSlots)
-  scaleSlots(decadeSlots)
-  // lines that fit on each card's side of the line
-  for (const slot of [...yearSlots, ...monthSlots, ...decadeSlots]) {
-    const head = !!slot.tag
-    const fit = fitCard(slot.list, cardRoom(vh, slot.side), { head, maxLines: slot.maxLines })
-    slot.rows = fit.rows
-    // no month on any line: give the titles the month column's room
-    if (!slot.yearLabels && slot.rows.every(r => !r.month)) slot.noMonth = true
-    slot.more = slot.moreCount ?? fit.more
-    slot.h = slot.moreCount === 0 && fit.more ? fit.h - MORE_H : fit.h
-    slot.item = slot.list[0]
+    decades.push({ key: `d${ds}`, decade: ds, x: X((a + b + 1) / 2), count: live.length, achieved, progress, top, openYear: top ? top.year : a, state: g.state, percent: g.percent, match: anyMatch(items) })
   }
 
+  // Items: a marker on the line for each, a card / pill where there's room.
+  // Decades shows summary nodes only, so items fade out as it takes over.
+  const itemOpacity = 1 - w.decades
+  const allItems = []
+  for (let y = start; y <= end; y++) allItems.push(...(byYear.get(y) || []))
+  const placements = itemOpacity > 0.02 ? placeItems(allItems, { X, vh }) : []
+  const markers = []
   const cards = []
-  const push = (slots, weight) => {
-    for (const s of slots) {
-      const opacity = cardOpacity(s.scale, weight)
-      if (opacity < 0.02 || !inView(s.x, CARD_W)) continue
-      cards.push({ ...s, opacity })
-    }
+  for (const p of placements) {
+    if (!inView(p.x, PILL_MAX_W + FULL_W)) continue
+    const match = matchesFilter(p.item, filter)
+    const loose = !p.item.month
+    markers.push({ key: `k${p.item.key}`, item: p.item, x: p.x, loose, mode: p.mode, match, opacity: itemOpacity })
+    if (p.mode !== 'marker') cards.push({ key: p.item.key, item: p.item, x: p.x, mode: p.mode, side: p.side, lane: p.lane, d: p.d, a: p.a, w: p.w, h: p.h, loose, match, opacity: itemOpacity })
   }
-  push(decadeSlots, w.decades)
-  push(yearSlots, w.years)
-  push(monthSlots, w.months)
-
-  // Connectors of clearly visible cards are obstacles for labels on that side.
-  const obstacles = { up: [], down: [] }
-  for (const c of cards) if (c.opacity > 0.25) obstacles[c.side].push(c.x)
 
   // Year nodes -----------------------------------------------------------------
-  const yearCardSide = new Map(yearSlots.map(s => [s.year, s.side]))
-  const looseSide = new Map(monthSlots.filter(s => s.loose).map(s => [s.year, s.side]))
   const years = []
   const labels = []
   for (let y = start; y <= end; y++) {
@@ -254,7 +291,6 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, k
     const age = ageIn(y, birthYear)
     const kidAges = kidsAgesIn(y, kidYears)
     const child = kidsText(kidAges)
-    const cardSide = monthsDominant ? looseSide.get(y) : decadesDominant ? null : yearCardSide.get(y)
     const big = !monthsDominant && !!lead
     const lines = [String(y)]
     if (showMeta) {
@@ -267,19 +303,19 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, k
       }
     }
     const label = {
-      key: `yl${y}`, x, side: cardSide === 'down' ? 'up' : 'down', lines, big,
+      key: `yl${y}`, x, side: 'down', lines, big, year: y,
+      kind: monthsDominant ? 'mark' : big ? (lead.major ? 'big' : 'ev') : 'yr',
       w: yearLabelW(lines, big),
       priority: (lead ? 4 : 2) + (y % 10 === 0 ? 1 : y % 5 === 0 ? 0.5 : 0) + (y === today ? 3 : y === start ? 1 : 0),
     }
     labels.push(label)
-    // Zoomed to months the year node is 1 January, so it carries January's items.
-    const own = monthsDominant ? items.filter(i => i.month === 1) : items
-    const g = own.length ? groupState(own, monthsDominant ? null : lead) : { state: null, percent: null }
+    // Each item has its own marker now, so the year node is a plain tick
+    // (its state is only read out to screen readers).
+    const g = items.length ? groupState(items, lead) : { state: null, percent: null }
     years.push({
       year: y, x, lead, count, age, child, kidAges, label,
-      ev: big, major: big && !!lead?.major, mark: monthsDominant,
       state: g.state, percent: g.percent,
-      match: anyMatch(own), today: y === today,
+      match: anyMatch(items), today: y === today,
     })
   }
 
@@ -289,8 +325,8 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, k
     for (const d of decades) {
       if (!inView(d.x)) continue
       const label = {
-        key: `dl${d.decade}`, x: d.x, side: 'down', lines: [`${d.decade}s`, d.progress],
-        big: true, w: Math.max(textW(`${d.decade}s`, 14), textW(d.progress, 6.4)) + 12,
+        key: `dl${d.decade}`, x: d.x, side: 'down', lines: [`${d.decade}s`, d.progress], kind: 'dec', year: d.openYear,
+        big: true, w: Math.max(textW(`${d.decade}s`, 17), textW(d.progress, 6.6)) + 16,
         priority: decadesDominant ? 9 : -1,
       }
       if (decadesDominant) labels.push(label)
@@ -302,27 +338,23 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, k
   // Month ticks ------------------------------------------------------------------
   const months = []
   if (w.monthTicks > 0.02) {
-    const has = new Set(monthSlots.filter(s => !s.loose).map(s => `${s.year}-${s.month}`))
-    const monthItems = (y, m) => (byYear.get(y) || []).filter(i => i.month === m)
     for (let y = start; y <= end; y++) {
       if (!inView(X(y), ppy)) continue
       for (let m = 2; m <= 12; m++) {
         const x = X(y + (m - 1) / 12)
         if (!inView(x)) continue
         const label = {
-          key: `ml${y}-${m}`, x, side: 'down', lines: [MONTHS[m - 1].toUpperCase()], big: false,
-          w: textW('MMM', 11) + 8, priority: w.monthTicks >= 0.5 ? 1 : -1,
+          key: `ml${y}-${m}`, x, side: 'down', lines: [MONTHS[m - 1].toUpperCase()], big: false, kind: 'mon', year: y,
+          w: textW('MMM', 11) + 14, priority: w.monthTicks >= 0.5 ? 1 : -1,
         }
         if (w.monthTicks >= 0.5) labels.push(label)
         else label.visible = false
-        const its = monthsDominant && has.has(`${y}-${m}`) ? monthItems(y, m) : null
-        const g = its ? groupState(its) : { state: null, percent: null }
-        months.push({ key: `m${y}-${m}`, x, year: y, month: m, has: !!its, label, opacity: w.monthTicks, state: g.state, percent: g.percent, match: its ? anyMatch(its) : true })
+        months.push({ key: `m${y}-${m}`, x, year: y, month: m, label, opacity: w.monthTicks })
       }
     }
   }
 
-  placeLabels(labels, obstacles)
+  placeLabels(labels)
 
   // Phases -----------------------------------------------------------------------
   const sorted = [...(phases || [])].sort((a, b) => a.start_year - b.start_year)
@@ -356,6 +388,8 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, k
     weights: w,
     level: levelFor(ppy),
     cards,
+    markers,
+    labels: labels.filter(l => l.visible),
     years,
     decades: decadeNodes,
     months,

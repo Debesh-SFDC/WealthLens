@@ -97,16 +97,6 @@
 .lt-mtick .lbl b { font-size: 11px; letter-spacing: .14em; }
 .lt-mtick.has .lbl b { color: var(--text); }
 
-.lt-cardpos { position: absolute; top: 0; bottom: 0; left: 0; width: 180px; margin-left: -90px; pointer-events: none; z-index: 3; }
-.lt-conn { position: absolute; left: 50%; width: 1px; height: 74px; background: var(--gold-deep); }
-.lt-cardpos.up .lt-conn { bottom: calc(50% + 14px); }
-.lt-cardpos.down .lt-conn { top: calc(50% + 14px); }
-.lt-cardwrap { position: absolute; left: 0; width: 180px; cursor: pointer; --hy: 0px; transform: translateY(var(--hy)) scale(var(--s, 1)); }
-.lt-cardpos.up .lt-cardwrap { bottom: calc(50% + 88px); transform-origin: 50% 100%; }
-.lt-cardpos.down .lt-cardwrap { top: calc(50% + 88px); transform-origin: 50% 0; }
-.lt-cardpos.up .lt-cardwrap:hover { --hy: -4px; }
-.lt-cardpos.down .lt-cardwrap:hover { --hy: 4px; }
-.lt-cardwrap:hover .card { border-color: var(--gold-deep); }
 
 .lt-band { position: absolute; top: calc(50% - 22px); height: 44px; border-radius: 22px; display: flex; align-items: flex-start; justify-content: center; padding-top: 4px; overflow: hidden; pointer-events: none; z-index: 0; border: 1px solid rgba(212,175,55,.18); }
 .lt-band.c0 { background: rgba(212,175,55,.16); }
@@ -250,7 +240,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lt-track2, .lt-year, .lt-year.show, .lt .card, .lt-node .dot, .lt-chip, .lt-cardwrap, .lt-scroller, .lt-network, .lt-hide { transition: none; }
+  .lt-track2, .lt-year, .lt-year.show, .lt .card, .lt-node .dot, .lt-chip, .lt-scroller, .lt-network, .lt-hide { transition: none; }
   .lt-netsvg .nw-pulse, .lt-netsvg .nw-edge.dep .pulse { animation: none; }
   .lt-netsvg .nw-edge.dep .pulse { display: none; }
   .lt-year { transform: none; }
@@ -278,7 +268,6 @@
 .lt-node .ring, .lt-mtick .ring { position: absolute; inset: -6px; border-radius: 50%; background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(212,175,55,.16) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px)); }
 /* filter: non-matching nodes and cards stay in place, dimmed */
 .lt-node.lt-off .dot, .lt-node.lt-off .lbl, .lt-mtick.lt-off .dot { opacity: .18; }
-.lt-cardpos.lt-off .lt-cardwrap, .lt-cardpos.lt-off .lt-conn { opacity: .16; }
 .lt-fitem { display: contents; }
 .lt-fitem.lt-off { display: block; opacity: .25; }
 
@@ -305,7 +294,7 @@
 .lt-mark svg { width: 15px; height: 15px; }
 .lt-mark.undo { padding: 0 10px; color: var(--muted); }
 .lt-mark:hover { background: var(--gold); color: var(--ink); border-color: var(--gold); }
-.lt .cardbox:hover .lt-mark, .lt-cardwrap:hover .lt-mark, .lt-mark:focus-visible, .lt .cardbox:focus-within .lt-mark { opacity: 1; transform: none; }
+.lt .cardbox:hover .lt-mark, .lt-mark:focus-visible, .lt .cardbox:focus-within .lt-mark { opacity: 1; transform: none; }
 @media (hover: none) { .lt-mark { opacity: 1; transform: none; } }
 
 /* header summary + filter chips */
@@ -392,24 +381,82 @@
 .lt-pop.touch input { font-size: 17px; min-height: 48px; padding: 10px 12px; }
 .lt-pop.touch .lt-btn { min-height: 48px; padding: 10px 20px; font-size: 15px; border-radius: 10px; }
 
-/* ── Multi-item line cards ──
-   Sizes are mirrored in lifeTimelineZoom.js (CARD_PAD, ROW_H, AMOUNT_H,
-   MORE_H, HEAD_H) so layoutLine knows each card's height; change both. */
-.lt .card.multi { padding: 9px 12px; box-sizing: border-box; }
-.lt .card.multi .mhead { display: block; height: 18px; line-height: 18px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lt .card.multi .mline { display: block; }
-.lt .card.multi .mrow { display: grid; grid-template-columns: 14px 28px minmax(0, 1fr); align-items: center; column-gap: 6px; height: 20px; }
-.lt .card.multi.nomon .mrow { grid-template-columns: 14px minmax(0, 1fr); }
-.lt .card.multi.yl .mrow { grid-template-columns: 14px 34px minmax(0, 1fr); }
-.lt .card.multi .mmon { font-size: 11px; letter-spacing: .04em; color: var(--muted); font-variant-numeric: tabular-nums; }
-.lt .card.multi .mtitle { font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lt .card.multi .mrow.assumed .mtitle { color: var(--assumed); }
-.lt .card.multi .mrow.reached .mtitle { color: var(--gold-light); }
-.lt .card.multi .mamt { display: block; height: 16px; line-height: 16px; margin: 0 0 0 20px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.lt .card.multi.nomon .mamt { margin-left: 20px; }
-.lt .card.multi .mmore { display: block; height: 18px; line-height: 18px; margin: 0 0 0 20px; font-size: 12px; color: var(--gold); }
+/* ── One card per item, in lanes ──
+   Sizes are mirrored in lifeTimelineZoom.js (CARD_TOP, LABEL_REACH, FULL_W,
+   FULL_H, PILL_H); change both. Stacking: year ticks (2) < connectors (3) <
+   labels on an opaque backing (4) < item markers (5) < cards (6). */
+.lt-lane { display: contents; }
+.lt-conn2 { position: absolute; left: 0; width: 1px; margin-left: -.5px; background: var(--gold-deep); z-index: 3; pointer-events: none; transition: height .25s cubic-bezier(.2,.7,.2,1); }
+.lt-lane.up .lt-conn2 { bottom: 50%; }
+.lt-lane.down .lt-conn2 { top: 50%; }
+.lt-lane.lt-off .lt-conn2 { opacity: .18 !important; }
+.lt-lanepos { position: absolute; left: 0; top: 50%; height: 0; z-index: 6; pointer-events: none; }
+.lt-lanebox { position: absolute; left: 0; top: 0; cursor: pointer; transition: transform .25s cubic-bezier(.2,.7,.2,1); }
+.lt-lane.lt-off .lt-lanebox { opacity: .3; }
+.lt-lanebox:hover .card, .lt-lanebox:hover .lt-pill { border-color: var(--gold-deep); }
 
-/* status markers (line cards and the year preview) */
+/* full card: fixed 64px tall */
+.lt .card.lt-lcard { width: 172px; height: 64px; padding: 6px 10px; box-sizing: border-box; overflow: hidden; display: flex; flex-direction: column; }
+.lt .card.lt-lcard strong { font-size: 13.5px; line-height: 18px; height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; overflow-wrap: normal; }
+.lt .card.lt-lcard em { margin: 0; font-size: 12.5px; line-height: 16px; height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt .card.lt-lcard small { margin: 0; font-size: 11.5px; line-height: 16px; height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt .card.lt-lcard small.ach { display: flex; align-items: center; gap: 4px; color: var(--gold); }
+.lt .card.lt-lcard small.ach svg { width: 11px; height: 11px; flex: none; }
+.lt .card.lt-lcard .prog { margin: 0; height: 16px; }
+.lt .card.lt-lcard .chip-overdue { align-self: flex-start; margin-top: 1px; line-height: 14px; }
+.lt .card.lt-lcard.reached { border-color: var(--gold); box-shadow: 0 0 14px rgba(212,175,55,.3); }
+.lt .lt-lanebox .cardbox { display: block; position: relative; }
+
+/* compact pill */
+.lt-pill { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px 0 7px; box-sizing: border-box; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 12px; line-height: 22px; white-space: nowrap; }
+.lt-pill .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.lt-pill.assumed { border-style: dashed; border-color: var(--assumed-border); }
+.lt-pill.assumed .t { color: var(--assumed); }
+.lt-pill.st-overdue { border-color: var(--amber); }
+.lt-pill.st-achieved { border-color: var(--gold-deep); }
+.lt-pill.reached { border-color: var(--gold); }
+
+/* item markers on the line */
+.lt-imk { position: absolute; left: 0; top: 50%; width: 0; height: 0; padding: 0; border: 0; background: none; z-index: 5; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.lt-imk::before { content: ""; position: absolute; left: -10px; top: -10px; width: 20px; height: 20px; border-radius: 50%; } /* touch target */
+.lt-imk .d { position: absolute; left: -4.5px; top: -4.5px; width: 9px; height: 9px; border-radius: 50%; box-sizing: border-box; background: var(--ink); border: 2px solid var(--gold); transition: transform .15s; }
+.lt-imk.st-achieved .d { background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+.lt-imk.st-overdue .d { border-color: var(--amber); background: var(--amber); box-shadow: 0 0 8px rgba(243,156,18,.6); }
+.lt-imk.st-in_progress .d { border: 0; background: conic-gradient(var(--gold) calc(var(--p, 0) * 1%), rgba(212,175,55,.25) 0); }
+.lt-imk.st-dropped .d { opacity: .35; }
+.lt-imk.assumed .d { border-color: var(--assumed); border-style: dashed; }
+/* "sometime this year": a dashed ring at the start of the year */
+.lt-imk.loose .d { left: -7px; top: -7px; width: 14px; height: 14px; background: transparent; border: 1.5px dashed var(--gold); box-shadow: none; }
+.lt-imk.loose.st-achieved .d { border-style: solid; background: rgba(212,175,55,.25); }
+.lt-imk.loose.st-overdue .d { border-color: var(--amber); background: transparent; }
+.lt-imk.solo .d { box-shadow: 0 0 0 3px rgba(212,175,55,.18); }
+.lt-imk:hover .d { transform: scale(1.45); }
+.lt-imk.lt-off .d { opacity: .2; }
+
+/* line labels: their own layer, above connectors, on an opaque backing */
+.lt-lblpos { position: absolute; top: 0; bottom: 0; left: 0; width: 0; z-index: 4; pointer-events: none; }
+.lt-lblpos .lbl { background: var(--ink); padding: 1px 6px 2px; border-radius: 6px; pointer-events: auto; cursor: pointer; }
+.lt-lblpos.mon .lbl { top: calc(50% + 12px); cursor: default; pointer-events: none; }
+.lt-lblpos.mon .lbl b { font-size: 11px; letter-spacing: .14em; }
+.lt-lblpos.ev .lbl, .lt-lblpos.big .lbl { top: calc(50% + 16px); }
+.lt-lblpos.ev .lbl b { font-size: 19px; color: var(--text); }
+.lt-lblpos.big .lbl b { font-size: 24px; line-height: 1.2; color: var(--gold); }
+.lt-lblpos.dec .lbl { top: calc(50% + 20px); }
+.lt-lblpos.dec .lbl b { font-size: 24px; line-height: 1.2; color: var(--gold); }
+.lt-lblpos.mark .lbl b { color: var(--gold); }
+.lt-lblpos .lbl:hover b, .lt-lblpos.focus .lbl b { color: var(--gold); }
+.lt-lblpos.focus .lbl b { text-decoration: underline; text-underline-offset: 4px; }
+.lt-node.now .dot { background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+
+/* full card shown for a marker or pill (hover / tap) */
+.lt-tip2 { position: absolute; z-index: 7; padding: 10px; border-radius: 12px; background: #111; border: 1px solid var(--gold-deep); box-shadow: 0 16px 40px rgba(0,0,0,.65), 0 0 24px rgba(212,175,55,.12); box-sizing: border-box; display: flex; flex-direction: column; gap: 8px; }
+.lt-tip2-card { cursor: pointer; }
+.lt-tip2 .card { width: auto; }
+.lt-tip2 .lt-mark { opacity: 1; transform: none; }
+.lt-tip2-open { align-self: flex-end; min-height: 32px; padding: 4px 12px; }
+.lt-tip2 button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* status markers (pills) */
 .lt-mk { position: relative; display: inline-grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--gold-deep); box-sizing: border-box; flex: none; }
 .lt-mk.upcoming { border-color: var(--gold); }
 .lt-mk.assumed { border: 1.5px dashed var(--assumed); }
@@ -419,36 +466,11 @@
 .lt-mk.progress { border: 0; background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(212,175,55,.2) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px)); }
 .lt-mk.reached { box-shadow: 0 0 10px var(--gold); }
 
-/* ── Year preview (hover / first tap / Space) ── */
-.lt-prev { position: absolute; z-index: 7; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px; border-radius: 12px; background: #111; border: 1px solid var(--gold-deep); box-shadow: 0 16px 40px rgba(0,0,0,.65), 0 0 24px rgba(212,175,55,.12); color: var(--text); box-sizing: border-box; cursor: default; touch-action: pan-y; }
-.lt-prev-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
-.lt-prev-h b { font-family: var(--display); font-size: 22px; font-weight: 700; color: var(--gold); letter-spacing: .06em; font-variant-numeric: tabular-nums; }
-.lt-prev-h span { font-size: 12px; color: var(--muted); }
-.lt-prev-g h3 { margin: 10px 0 4px; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-.lt-prev-g ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.lt-prev-row { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.05); }
-.lt-prev-row .lt-mk { margin-top: 3px; }
-.lt-prev-row.st-dropped { opacity: .55; }
-.lt-prev-row.st-dropped .t { text-decoration: line-through; }
-.lt-prev-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.lt-prev-body .t { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
-.lt-prev-row.assumed .t { color: var(--assumed); }
-.lt-prev-body .m { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 12px; color: var(--muted); }
-.lt-prev-body .m em { font-style: normal; color: var(--gold); font-variant-numeric: tabular-nums; }
-.lt-prev-row.st-overdue .m { color: var(--amber); }
-.lt-prev-body .prog { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
-.lt-prev-body .prog .bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(212,175,55,.16); overflow: hidden; }
-.lt-prev-body .prog .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-deep), var(--gold-light)); }
-.lt-prev-body .prog b { font-size: 11px; font-weight: 500; color: var(--gold); font-variant-numeric: tabular-nums; }
-.lt-prev .lt-mark { position: relative; top: auto; right: auto; flex: none; opacity: 1; transform: none; box-shadow: none; }
-.lt-prev-f { display: flex; justify-content: flex-end; margin-top: 10px; }
-.lt-prev button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
-
-/* "You've reached ₹1 Cr. Mark achieved?" — year preview, year view card */
+/* "You've reached ₹1 Cr. Mark achieved?" — year view card */
 .lt-reached { display: inline-flex; align-items: center; align-self: flex-start; margin-top: 6px; min-height: 32px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--gold); background: linear-gradient(135deg, rgba(240,208,96,.2), rgba(184,150,12,.16)); color: var(--gold-light); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 0 14px rgba(212,175,55,.25); }
 .lt-reached:hover, .lt-reached:focus-visible { background: linear-gradient(135deg, rgba(240,208,96,.32), rgba(184,150,12,.26)); outline: none; }
 .lt .cardbox.has-reached { display: flex; flex-direction: column; }
 @media (max-width: 640px) {
-  .lt-prev { padding: 12px; }
   .lt-reached { min-height: 40px; }
+  .lt-imk::before { left: -14px; top: -14px; width: 28px; height: 28px; }
 }

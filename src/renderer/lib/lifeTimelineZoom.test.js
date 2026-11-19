@@ -61,11 +61,13 @@ for (let s = 0; s <= 1000; s += 10) {
       for (let i = 1; i < ls.length; i++) {
         assert.ok(ls[i - 1].x + ls[i - 1].w / 2 <= ls[i].x - ls[i].w / 2, `labels overlap at ppy ${ppy.toFixed(1)}: ${ls[i - 1].lines[0]} / ${ls[i].lines[0]}`)
       }
-      for (const set of ['decades', 'years', 'months']) {
-        const cs = L.cards.filter(c => c.side === side && c.set === set).sort((a, b) => a.x - b.x)
-        for (let i = 1; i < cs.length; i++) {
-          const half = (c) => (z.CARD_W * c.scale) / 2
-          assert.ok(cs[i - 1].x + half(cs[i - 1]) < cs[i].x - half(cs[i]), `cards overlap at ppy ${ppy.toFixed(1)}`)
+      // cards / pills never overlap (same side, overlapping bands)
+      const cs = L.cards.filter(c => c.side === side)
+      for (let i = 0; i < cs.length; i++) {
+        for (let j = i + 1; j < cs.length; j++) {
+          const p = cs[i], q = cs[j]
+          if (!(p.d < q.d + q.h && q.d < p.d + p.h)) continue
+          assert.ok(p.a + p.w <= q.a || q.a + q.w <= p.a, `cards overlap at ppy ${ppy.toFixed(1)}`)
         }
       }
     }
@@ -77,11 +79,13 @@ for (let s = 0; s <= 1000; s += 10) {
 
 // level of detail
 const at = (ppy) => z.layoutLine({ range: data.range, byYear, phases: data.phases, birthYear: 1996, childBirthYear: 2024, ppy, left: 0, vw: 4000 })
-assert.ok(at(22).decades.length >= 5 && at(22).cards.every(c => c.set === 'decades'))
-assert.ok(at(128).cards.every(c => c.set === 'years') && at(128).months.length === 0)
+// Decades: summary nodes only (no item cards or markers)
+assert.ok(at(22).decades.length >= 5 && at(22).cards.length === 0 && at(22).markers.length === 0)
+assert.ok(at(128).cards.length > 0 && at(128).months.length === 0)
 const mon = at(1150)
-assert.ok(mon.cards.every(c => c.set === 'months') && mon.months.length > 0)
-assert.ok(mon.cards.some(c => c.loose && c.tag === 'Sometime this year'))
+assert.ok(mon.cards.length > 0 && mon.months.length > 0)
+// a no-month item sits at the start of its year, marked "sometime"
+assert.ok(mon.markers.some(m => m.loose && m.x === z.xOf(m.item.year, 1150, data.range.start)))
 assert.equal(at(22).bands.length, 5)
 assert.equal(at(22).decades[0].label.lines[0], '2020s')
 

@@ -161,14 +161,12 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView,
   const setFilter = (f) => { setFilterState(f); writeFilter(f) }
 
   // ── Mark achieved / undo ──────────────────────────────────────────────
-  // Where the burst goes: the item's node on the line (its month tick when
-  // zoomed to months), else the button that was pressed (year view).
+  // Where the burst goes: the item's own marker on the line, else the button
+  // that was pressed (year view).
   const burstAt = useCallback((item, anchor) => {
     let el = null
     if (!zoomed && mode === 'line' && trackRef.current) {
-      el = (item.month && item.month > 1 && trackRef.current.querySelector(`.lt-mtick.has[data-ym="${item.year}-${item.month}"] .dot`))
-        || trackRef.current.querySelector(`.lt-node[data-y="${item.year}"] .dot`)
-        || [...trackRef.current.querySelectorAll('.lt-node.dec')].find(n => n.getAttribute('aria-label')?.startsWith(`${Math.floor(item.year / 10) * 10}s`))?.querySelector('.dot')
+      el = trackRef.current.querySelector(`.lt-imk[data-key="${item.key}"] .d`)
     }
     const r = (el && el.getBoundingClientRect().width ? el : anchor).getBoundingClientRect()
     const id = Date.now() + Math.random()

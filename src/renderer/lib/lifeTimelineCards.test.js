@@ -1,10 +1,11 @@
 // Run: node src/renderer/lib/lifeTimelineCards.test.js   (plain node:assert, no deps)
-// Multi-item year cards (heights, no overlaps), linked event + goal merge,
-// children's ages and the shared net worth calculation.
+// One card per item in lanes (positions, no overlaps, compact pills that grow
+// back when zooming in), linked event + goal merge, children's ages and the
+// shared net worth calculation.
 import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import * as z from './lifeTimelineZoom.js'
-import { buildItems, groupByYear, sortForCard, kidsOf, reachedText } from './lifeTimeline.js'
+import { buildItems, groupByYear, kidsOf, reachedText } from './lifeTimeline.js'
 import { pickDeskItems } from './deskTimeline.js'
 import { buildGraph } from './lifeTimelineNetwork.js'
 import { computeNetWorth, effectiveCurrentValue } from '../../shared/netWorth.mjs'
@@ -17,6 +18,10 @@ const today = new Date(2026, 10, 19)
 let id = 1
 const ev = (year, month, title, extra = {}) => ({ id: id++, title, year, month, is_major: 0, is_assumed: 0, status: 'planned', category: 'other', ...extra })
 const events = [
+  // 2027: nine items, two of them in March
+  ev(2027, 1, 'Close the IDBI account'), ev(2027, 3, 'Tax filing'), ev(2027, 3, 'Car insurance renewal'),
+  ev(2027, 5, 'Trip to Goa'), ev(2027, 7, 'Laptop upgrade'), ev(2027, 9, 'Health check-up'),
+  ev(2027, 11, '5 years at MotiveMinds, gratuity earned'), ev(2027, null, 'Sell the old bike', { is_assumed: 1 }),
   ev(2027, 12, 'Resign from MotiveMinds', { is_major: 1 }),
   ev(2028, 1, 'First child: start trying'),
   ev(2028, 4, 'New job at 45 LPA or more'),
@@ -55,8 +60,8 @@ const byYear = groupByYear(items)
   assert.equal(it.amountText, '₹62.35L of ₹1 Cr')
   assert.equal(it.goal.current_amount, 6234567, 'live net worth, not the stored 1')
   assert.equal(it.reached, false)
-  // counted once in "N of M achieved": 16 live events (one dropped) + 1 unlinked goal
-  assert.equal(data.summary.total, 17)
+  // counted once in "N of M achieved": 24 live events (one dropped) + 1 unlinked goal
+  assert.equal(data.summary.total, 25)
   // Network: one node, no separate goal node
   const g = buildGraph(data)
   assert.equal(g.nodes.filter(n => /1st crore/.test(n.title)).length, 1)
@@ -81,29 +86,6 @@ const byYear = groupByYear(items)
   assert.equal(data.goals.find(x => x.id === 502).current_amount, 200000)
 }
 
-// ── A1: card ordering and lines ───────────────────────────────────────────────
-{
-  const list = sortForCard(byYear.get(2028))
-  assert.equal(list.length, 8, 'dropped items are not listed')
-  // by month, majors first within a month, no-month last
-  assert.deepEqual(list.map(i => i.title), [
-    'First child: start trying', 'Car fund', 'New job at 45 LPA or more', '1st house purchase', 'House warming party',
-    'Make 1st crore', "First child's expected birth", 'Move to Bhubaneswar',
-  ])
-  const L = z.layoutLine({ range: data.range, byYear, phases: [], birthYear: 1994, kids: data.kids, ppy: z.PRESETS.years, left: 0, vw: 1920, vh: 800, todayMonth: 11 })
-  const c28 = L.cards.find(c => c.key === 'y2028')
-  assert.equal(c28.rows.length, 4)
-  assert.equal(c28.more, 4, '"+4 more"')
-  const c29 = L.cards.find(c => c.key === 'y2029')
-  assert.equal(c29.rows.length, 4)
-  assert.equal(c29.more, 1)
-  assert.deepEqual(c29.rows.map(r => r.title).slice(0, 2), ['B (major)', 'A'])
-  // a short stage keeps the card inside it by collapsing lines into "+N more"
-  const S = z.layoutLine({ range: data.range, byYear, phases: [], birthYear: 1994, kids: data.kids, ppy: z.PRESETS.years, left: 0, vw: 1280, vh: 460, todayMonth: 11 })
-  const s28 = S.cards.find(c => c.key === 'y2028')
-  assert.ok(s28.rows.length >= 1 && s28.rows.length + s28.more === 8)
-}
-
 // ── A4: children's ages on the year labels ────────────────────────────────────
 {
   assert.deepEqual(data.kids, [2028, 2031])
@@ -116,66 +98,106 @@ const byYear = groupByYear(items)
   assert.deepEqual(shared.buildTimeline({ profile, fire: { ...fire, kids_planned: 1 }, phases: [], events: [], goals: [], today }).kids, [2028])
 }
 
-// ── No overlaps: Decades / Years / Months × 1280, 1920 and Wide ───────────────
-// Rectangles from the layout's own geometry: cards hang CARD_TOP px from the
-// line and are h * scale tall; year labels reach up to ~77px from the line
-// (a major year's 26px Cinzel year + meta line, measured in Chrome).
+// ── One card per item, at its own date ────────────────────────────────────────
+const X = (ppy) => (yf) => z.xOf(yf, ppy, data.range.start)
+const layout = (o) => z.layoutLine({ range: data.range, byYear, phases: [], birthYear: 1994, kids: data.kids, todayMonth: 11, ...o })
 {
-  const LABEL_REACH = 80
+  // positions: month m sits mid-month; a day pins it; no month = start of the year
+  assert.equal(z.itemYear({ year: 2028, month: 6 }), 2028 + 5.5 / 12)
+  assert.equal(z.itemYear({ year: 2028, month: 6, day: 16 }), 2028 + (5 + 15 / 30) / 12)
+  assert.equal(z.itemYear({ year: 2028, month: null }), 2028)
+  // lanes fit the stage: 3 per side on a tall stage, fewer on a short one
+  assert.equal(z.laneSlots(1000, 'up').length, 3)
+  assert.equal(z.laneSlots(1000, 'down').length, 3)
+  assert.equal(z.laneSlots(440, 'up').filter(l => l.full).length, 2) // above: no labels to clear
+  assert.equal(z.laneSlots(440, 'down').filter(l => l.full).length, 0) // short stage: pills only below
+  assert.equal(z.laneSlots(440, 'down')[0].pills.length, 1)
+  assert.equal(z.laneSlots(330, 'down').length, 0) // phone: the line sits low, nothing fits below
+  assert.equal(z.laneSlots(1000, 'down')[0].pills.length, 2) // a lane holds two pills
+
+  const y27 = items.filter(i => i.year === 2027)
+  assert.equal(y27.length, 9)
+  for (const ppy of [z.PRESETS.years, 300, z.PRESETS.months]) {
+    const P = z.placeItems(items, { X: X(ppy), vh: 760 })
+    // every item has exactly one placement: none merged, none missing
+    assert.equal(P.length, items.length)
+    assert.equal(new Set(P.map(p => p.item.key)).size, items.length)
+    for (const p of P) assert.equal(p.x, X(ppy)(z.itemYear(p.item)), `${p.item.title} sits at its own date`)
+    // two items in March 2027: two separate placements at the same marker x
+    const mar = P.filter(p => p.item.year === 2027 && p.item.month === 3)
+    assert.equal(mar.length, 2)
+    assert.equal(mar[0].x, mar[1].x)
+    assert.notEqual(mar[0].item.key, mar[1].item.key)
+    // a dropped item is a marker only
+    assert.equal(P.find(p => p.item.title === 'Dropped thing').mode, 'marker')
+  }
+
+  // zooming in on 2027 turns compact pills (and bare markers) into full cards
+  const modes = (ppy) => {
+    const P = z.placeItems(items, { X: X(ppy), vh: 760 }).filter(p => p.item.year === 2027)
+    return { full: P.filter(p => p.mode === 'full').length, pill: P.filter(p => p.mode === 'pill').length, marker: P.filter(p => p.mode === 'marker').length }
+  }
+  const at128 = modes(z.PRESETS.years)
+  const at600 = modes(600)
+  const at1150 = modes(z.PRESETS.months)
+  assert.ok(at128.pill + at128.marker > 0, `some 2027 items are compact at Years: ${JSON.stringify(at128)}`)
+  assert.ok(at600.full > at128.full, `zooming in gives more full cards: ${JSON.stringify(at128)} -> ${JSON.stringify(at600)}`)
+  assert.equal(at1150.full, 9, `all of 2027 is full cards at Months: ${JSON.stringify(at1150)}`)
+  console.log(`  2027 at Years ${JSON.stringify(at128)} · 600 ppy ${JSON.stringify(at600)} · Months ${JSON.stringify(at1150)}`)
+}
+
+// ── No overlaps: Years and Months × 1280, 1920 and Wide, zoom sweep ────────────
+// Rectangles from the layout's own geometry: lane cards / pills hang d px from
+// the line and are h tall; labels reach at most LABEL_REACH from the line;
+// connectors are vertical segments from the line to their card.
+{
   const stages = [
-    { vw: 1280, vh: 460 }, { vw: 1280, vh: 520 }, // laptop (min height, typical)
+    { vw: 390, vh: 330 },                         // phone (track taller than the stage)
+    { vw: 1280, vh: 440 }, { vw: 1280, vh: 520 }, // laptop (short, typical)
     { vw: 1920, vh: 760 },                        // desktop
     { vw: 1920, vh: 960 }, { vw: 2560, vh: 1200 }, // wide view
   ]
   let checked = 0
   for (const { vw, vh } of stages) {
-    const mid = vh / 2
-    for (const level of ['decades', 'years', 'months']) {
-      const ppy = z.PRESETS[level]
+    const mid = z.lineY(vh)
+    for (let s = 300; s <= 1000; s += 25) {
+      const ppy = z.sliderToPpy(s)
       const width = z.trackWidth(data.range, ppy, vw)
-      for (const frac of [0, 0.03, 0.06, 0.1, 0.3]) {
+      for (const frac of [0, 0.02, 0.05, 0.1, 0.3]) {
         const left = Math.max(0, (width - vw) * frac)
-        const L = z.layoutLine({ range: data.range, byYear, phases: [], birthYear: 1994, kids: data.kids, ppy, left, vw, vh, todayMonth: 11 })
-        const shown = L.cards.filter(c => c.opacity > 0.02)
-        const rect = (c) => {
-          const hw = (z.CARD_W * c.scale) / 2
-          const h = c.h * c.scale
-          return c.side === 'up'
-            ? { a: c.x - hw, b: c.x + hw, top: mid - z.CARD_TOP - h, bot: mid - z.CARD_TOP }
-            : { a: c.x - hw, b: c.x + hw, top: mid + z.CARD_TOP, bot: mid + z.CARD_TOP + h }
-        }
+        const L = layout({ ppy, left, vw, vh })
+        const rect = (c) => (c.side === 'up'
+          ? { a: c.a, b: c.a + c.w, top: mid - c.d - c.h, bot: mid - c.d }
+          : { a: c.a, b: c.a + c.w, top: mid + c.d, bot: mid + c.d + c.h })
         const hit = (p, q) => p.a < q.b && q.a < p.b && p.top < q.bot && q.top < p.bot
-        for (let i = 0; i < shown.length; i++) {
-          const r = rect(shown[i])
-          assert.ok(r.top >= z.EDGE.up - 0.01 && r.bot <= vh - z.EDGE.down + 0.01,
-            `${level} ${vw}x${vh}: card ${shown[i].key} leaves the stage (${r.top.toFixed(0)}..${r.bot.toFixed(0)})`)
-          for (let j = i + 1; j < shown.length; j++) {
-            assert.ok(!hit(r, rect(shown[j])), `${level} ${vw}x${vh}: cards ${shown[i].key} and ${shown[j].key} overlap`)
+        const tag = `${vw}x${vh} ppy ${ppy.toFixed(0)}`
+        for (let i = 0; i < L.cards.length; i++) {
+          const c = L.cards[i]
+          const r = rect(c)
+          assert.ok(r.top >= z.EDGE.up - 0.01 && r.bot <= vh - z.EDGE.down + 0.01, `${tag}: ${c.item.title} leaves the stage`)
+          for (let j = 0; j < L.cards.length; j++) {
+            if (j === i) continue
+            const o = L.cards[j]
+            if (j > i) assert.ok(!hit(r, rect(o)), `${tag}: ${c.item.title} overlaps ${o.item.title}`)
+            // c's connector (x, from the line to its card) never crosses another card
+            if (o.side === c.side && o.d + o.h <= c.d) assert.ok(c.x <= o.a || c.x >= o.a + o.w, `${tag}: ${c.item.title}'s connector crosses ${o.item.title}`)
           }
-          for (const lab of [...L.years.map(y => y.label), ...L.decades.map(d => d.label), ...L.months.map(m => m.label)].filter(l => l.visible)) {
-            const lr = lab.side === 'up'
-              ? { a: lab.x - lab.w / 2, b: lab.x + lab.w / 2, top: mid - LABEL_REACH, bot: mid }
-              : { a: lab.x - lab.w / 2, b: lab.x + lab.w / 2, top: mid, bot: mid + LABEL_REACH }
-            assert.ok(!hit(r, lr), `${level} ${vw}x${vh}: card ${shown[i].key} overlaps label ${lab.lines[0]}`)
+          for (const lab of L.labels) {
+            const lr = { a: lab.x - lab.w / 2, b: lab.x + lab.w / 2, top: mid, bot: mid + z.LABEL_REACH }
+            assert.ok(!hit(r, lr), `${tag}: ${c.item.title} overlaps label ${lab.lines[0]}`)
           }
         }
+        // labels never overlap each other
+        const ls = [...L.labels].sort((p, q) => p.x - q.x)
+        for (let i = 1; i < ls.length; i++) assert.ok(ls[i - 1].x + ls[i - 1].w / 2 <= ls[i].x - ls[i].w / 2, `${tag}: labels overlap`)
         checked++
       }
     }
   }
-  // the 2028 / 2029 neighbours are both on screen at Years
-  const Y = z.layoutLine({ range: data.range, byYear, phases: [], birthYear: 1994, kids: data.kids, ppy: z.PRESETS.years, left: 0, vw: 1280, vh: 520 })
-  assert.ok(Y.cards.some(c => c.key === 'y2028') && Y.cards.some(c => c.key === 'y2029'))
-  // A3: Decades keep the summary and add the top 2 titles
-  const D = z.layoutLine({ range: data.range, byYear, phases: [], birthYear: 1994, kids: data.kids, ppy: z.PRESETS.decades, left: 0, vw: 1280, vh: 520 })
-  const d20 = D.cards.find(c => c.key === 'd2020')
-  assert.match(d20.tag, /of \d+ achieved/)
-  assert.equal(d20.rows.length, 2)
-  assert.equal(d20.more, 0)
-  // A3: two items in one month stack on one month card (June 2028)
-  const M = z.layoutLine({ range: data.range, byYear, phases: [], birthYear: 1994, kids: data.kids, ppy: z.PRESETS.months, left: z.xOf(2028.3, z.PRESETS.months, data.range.start), vw: 1280, vh: 520 })
-  const jun = M.cards.find(c => c.key === 'm2028-6')
-  assert.deepEqual(jun.rows.map(r => r.title), ['1st house purchase', 'House warming party'])
+  // A3: Decades keeps the summary nodes, no item cards
+  const D = layout({ ppy: z.PRESETS.decades, left: 0, vw: 1280, vh: 520 })
+  assert.equal(D.cards.length, 0)
+  assert.match(D.decades.find(d => d.decade === 2020).progress, /of \d+ achieved/)
   console.log(`  overlap layouts checked: ${checked}`)
 }
 

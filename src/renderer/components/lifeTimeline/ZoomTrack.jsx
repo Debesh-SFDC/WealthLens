@@ -1,22 +1,17 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import LineCard from './LineCard'
-import YearPreview from './YearPreview'
+import { LaneCard, LanePill } from './LineCard'
+import ItemTip from './ItemTip'
 import { layoutLine } from '../../lib/lifeTimelineZoom'
+import { MONTHS, STATE_LABELS } from '../../lib/lifeTimeline'
 
-const HOVER_OPEN_MS = 140
-const HOVER_CLOSE_MS = 200
-
+const HOVER_OPEN_MS = 120
+const HOVER_CLOSE_MS = 180
 const DRAG_THRESHOLD = 6
 const WHEEL_ZOOM_SPEED = 0.0025 // per pixel of deltaY
 
-const NodeLabel = ({ label, className = '' }) => (
-  <span className={`lbl ${label.side === 'up' ? 'above' : ''} ${label.visible ? '' : 'off'} ${className}`} aria-hidden="true">
-    <b>{label.lines[0]}</b>
-    {label.lines.slice(1).map((l, i) => <i key={i}>{l}</i>)}
-  </span>
-)
+const stateCls = (state, match) => `${state ? ` st-${state}` : ''}${match === false ? ' lt-off' : ''}`
 
-// Check badge / progress ring / overdue ring for a node's dot.
+// Check badge / progress ring for a decade node's dot.
 const NodeMarks = ({ state, percent }) => (
   <>
     {state === 'in_progress' && percent != null && <span className="ring" style={{ '--p': percent }} />}
@@ -27,27 +22,56 @@ const NodeMarks = ({ state, percent }) => (
     )}
   </>
 )
-const stateCls = (state, match) => `${state ? ` st-${state}` : ''}${match === false ? ' lt-off' : ''}`
 
-// A card on the line. Mouse: hover opens the year preview, a click opens the
-// year view. Touch / pen: the first tap opens the preview, a second tap (on
-// the card or the preview's "Open year") opens the year view.
-const Card = memo(function Card({ c, onActivate, onHover }) {
+// One item's card or pill in its lane, with its connector down (or up) to
+// its marker on the line. The lane offset animates when lanes are recomputed
+// as the zoom changes; x follows the zoom directly.
+const Lane = memo(function Lane({ c, onActivate, onHover, onMark }) {
   const lastType = useRef('mouse')
+  const y = c.side === 'up' ? -(c.d + c.h) : c.d
   return (
-    <div className={`lt-cardpos ${c.side}${c.match === false ? ' lt-off' : ''}`} data-cy={c.set === 'years' ? c.year : undefined} style={{ transform: `translate3d(${c.x}px,0,0)`, opacity: c.opacity }} aria-hidden="true">
-      <span className="lt-conn" />
-      <div
-        className="lt-cardwrap"
-        style={{ '--s': c.scale, pointerEvents: c.opacity > 0.5 ? 'auto' : 'none' }}
-        onPointerDown={(e) => { lastType.current = e.pointerType || 'mouse' }}
-        onPointerEnter={(e) => { if (e.pointerType === 'mouse') onHover(c, e.currentTarget, true) }}
-        onPointerLeave={(e) => { if (e.pointerType === 'mouse') onHover(c, e.currentTarget, false) }}
-        onClick={(e) => onActivate(c, e.currentTarget, lastType.current)}
-      >
-        <LineCard slot={c} />
+    // display: contents — the connector and the card stack separately, so year
+    // labels can sit between them (opacity is set on each, not on a wrapper)
+    <div className={`lt-lane ${c.side} ${c.mode}${c.match === false ? ' lt-off' : ''}`} data-key={c.key} aria-hidden="true">
+      <span className="lt-conn2" style={{ transform: `translate3d(${c.x}px,0,0)`, height: c.d, opacity: c.opacity }} />
+      <div className="lt-lanepos" style={{ transform: `translate3d(${c.a}px,0,0)`, opacity: c.opacity }}>
+        <div
+          className="lt-lanebox"
+          style={{ transform: `translateY(${y}px)`, width: c.w, height: c.h, pointerEvents: c.opacity > 0.5 ? 'auto' : 'none' }}
+          onPointerDown={(e) => { lastType.current = e.pointerType || 'mouse' }}
+          onPointerEnter={(e) => { if (e.pointerType === 'mouse' && c.mode === 'pill') onHover(c.item, e.currentTarget, true) }}
+          onPointerLeave={(e) => { if (e.pointerType === 'mouse' && c.mode === 'pill') onHover(c.item, e.currentTarget, false) }}
+          onClick={(e) => onActivate(c.item, e.currentTarget, lastType.current, c.mode)}
+        >
+          {c.mode === 'full' ? <LaneCard item={c.item} loose={c.loose} onMark={onMark} /> : <LanePill item={c.item} width={c.w} />}
+        </div>
       </div>
     </div>
+  )
+})
+
+// The marker ON the line at an item's date. A small dot (status-coloured);
+// a dashed ring for "sometime this year". Hover (marker-only items) or a tap
+// shows the item's full card.
+const ItemMarker = memo(function ItemMarker({ m, onActivate, onHover }) {
+  const lastType = useRef('mouse')
+  const it = m.item
+  const when = it.month ? `${it.day ? `${it.day} ` : ''}${MONTHS[it.month - 1]} ${it.year}` : `sometime in ${it.year}`
+  return (
+    <button
+      type="button"
+      className={`lt-imk${m.loose ? ' loose' : ''}${stateCls(it.state, m.match)}${it.assumed ? ' assumed' : ''}${m.mode === 'marker' ? ' solo' : ''}`}
+      style={{ transform: `translate3d(${m.x}px,0,0)`, opacity: m.opacity, pointerEvents: m.opacity > 0.5 ? 'auto' : 'none' }}
+      tabIndex={-1}
+      aria-label={`${it.raw?.title ?? it.title}, ${when}${it.state && it.state !== 'upcoming' ? `, ${STATE_LABELS[it.state] || it.state}` : ''}`}
+      data-key={it.key}
+      onPointerDown={(e) => { lastType.current = e.pointerType || 'mouse' }}
+      onPointerEnter={(e) => { if (e.pointerType === 'mouse' && m.mode !== 'full') onHover(it, e.currentTarget, true) }}
+      onPointerLeave={(e) => { if (e.pointerType === 'mouse' && m.mode !== 'full') onHover(it, e.currentTarget, false) }}
+      onClick={(e) => onActivate(it, e.currentTarget, lastType.current, 'marker')}
+    >
+      <span className="d" style={it.state === 'in_progress' && it.percent != null ? { '--p': it.percent } : undefined} />
+    </button>
   )
 })
 
@@ -65,76 +89,70 @@ export default function ZoomTrack({
     [range, byYear, phases, birthYear, childBirthYear, kids, ppy, left, vw, vh, todayMonth, filter],
   )
 
-  // ── Year preview ─────────────────────────────────────────────────────────
-  // { year, anchorEl, side, x, pinned, focus, nodeEl }. pinned: opened by tap or
-  // keyboard (hover-out doesn't close it).
-  const [preview, setPreview] = useState(null)
-  const previewRef = useRef(null)
-  previewRef.current = preview
+  // ── Item tooltip ─────────────────────────────────────────────────────────
+  // { item, anchorEl, pinned }: the full card of a marker-only item or a pill.
+  // pinned: opened by a tap (hover-out doesn't close it).
+  const [tip, setTip] = useState(null)
+  const tipRef = useRef(null)
+  tipRef.current = tip
   const hoverTimer = useRef(0)
   const clearHover = () => { clearTimeout(hoverTimer.current); hoverTimer.current = 0 }
   useEffect(() => () => clearTimeout(hoverTimer.current), [])
-  // Panning, zooming or leaving the line closes it (its anchor moves).
+  // Panning or zooming closes it (its anchor moves); so does leaving the line.
   const lastView = useRef({ ppy, left })
   useEffect(() => {
     const moved = Math.abs(lastView.current.ppy - ppy) > 1e-6 || Math.abs(lastView.current.left - left) > 2
     lastView.current = { ppy, left }
-    if (moved && previewRef.current) setPreview(null)
+    if (moved && tipRef.current) setTip(null)
   }, [ppy, left])
-  useEffect(() => { if (zoomed || hidden) setPreview(null) }, [zoomed, hidden])
+  useEffect(() => { if (zoomed || hidden) setTip(null) }, [zoomed, hidden])
+  const closeTip = useCallback(() => { clearHover(); setTip(null) }, [])
 
   const yearNode = (y) => trackRef.current?.querySelector(`.lt-node[data-y="${y}"]`)
-  const cardFor = (y) => trackRef.current?.querySelector(`.lt-cardpos[data-cy="${y}"] .lt-cardwrap`)
-  const openPreview = useCallback((p) => { clearHover(); setPreview(p) }, [])
-  const closePreview = useCallback((returnFocus) => {
-    clearHover()
-    const p = previewRef.current
-    setPreview(null)
-    if (returnFocus && p?.focus) {
-      const n = trackRef.current?.querySelector(`.lt-node[data-y="${p.year}"]`)
-      n?.focus({ preventScroll: true })
-    }
-  }, [trackRef])
+  const openYearAt = useCallback((year) => {
+    setTip(null)
+    onOpenYear(year, yearNode(year), L.years.find(n => n.year === year)?.x)
+  }, [onOpenYear, L]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const onCardHover = useCallback((c, el, entering) => {
+  const onItemHover = useCallback((item, el, entering) => {
     clearHover()
-    const p = previewRef.current
+    const t = tipRef.current
     if (entering) {
-      if (p?.pinned && p.year !== c.year) return
-      if (p?.year === c.year) return
-      hoverTimer.current = setTimeout(() => setPreview({ year: c.year, anchorEl: el, side: c.side, x: c.x }), HOVER_OPEN_MS)
-    } else if (p && !p.pinned) {
-      hoverTimer.current = setTimeout(() => setPreview(null), HOVER_CLOSE_MS)
+      if (t?.pinned && t.item.key !== item.key) return
+      if (t?.item.key === item.key) return
+      hoverTimer.current = setTimeout(() => setTip({ item, anchorEl: el }), HOVER_OPEN_MS)
+    } else if (t && !t.pinned) {
+      hoverTimer.current = setTimeout(() => setTip(null), HOVER_CLOSE_MS)
     }
   }, [])
-  const onPreviewHover = useCallback((entering) => {
+  const onTipHover = useCallback((entering) => {
     clearHover()
-    if (!entering && previewRef.current && !previewRef.current.pinned) {
-      hoverTimer.current = setTimeout(() => setPreview(null), HOVER_CLOSE_MS)
-    }
+    if (!entering && tipRef.current && !tipRef.current.pinned) hoverTimer.current = setTimeout(() => setTip(null), HOVER_CLOSE_MS)
   }, [])
 
-  const openYearAt = useCallback((year, x) => {
-    setPreview(null)
-    onOpenYear(year, yearNode(year), x)
-  }, [onOpenYear]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Full card: opens the year. Pill or marker: a mouse click opens the year;
+  // a tap shows the full card first and a second tap opens the year.
+  const onItemActivate = useCallback((item, el, pointerType, mode) => {
+    const t = tipRef.current
+    if (mode === 'full' || (pointerType === 'mouse' && mode !== 'marker') || t?.item.key === item.key) { openYearAt(item.year); return }
+    if (pointerType === 'mouse') {
+      // a mouse click on a bare marker shows its card if hover hasn't yet
+      if (!t) { clearHover(); setTip({ item, anchorEl: el, pinned: true }); return }
+      openYearAt(item.year)
+      return
+    }
+    clearHover()
+    setTip({ item, anchorEl: el, pinned: true })
+  }, [openYearAt])
 
-  const onCardActivate = useCallback((c, el, pointerType) => {
-    const p = previewRef.current
-    // Decade and month cards open the year view directly; so does a mouse click
-    // or a second tap.
-    if (c.set !== 'years' || pointerType === 'mouse' || (p && p.year === c.year)) { openYearAt(c.year, c.x); return }
-    openPreview({ year: c.year, anchorEl: el, side: c.side, x: c.x, pinned: true })
-  }, [openYearAt, openPreview])
+  const markFromTip = useCallback((item, btn) => {
+    const anchor = tipRef.current?.anchorEl
+    setTip(null)
+    onMark(item, anchor?.isConnected ? anchor : btn)
+  }, [onMark])
 
-  const previewItems = preview ? byYear.get(preview.year) || [] : null
-  const markFromPreview = useCallback((item) => {
-    const p = previewRef.current
-    // anchor the Mark achieved popover to the year's card (or node), which stays on screen
-    const anchor = (p && (cardFor(p.year) || yearNode(p.year))) || null
-    setPreview(null)
-    if (anchor) onMark(item, anchor)
-  }, [onMark]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [focusYear, setFocusYear] = useState(null)
+
   const zoomRef = useRef(zoom)
   zoomRef.current = zoom
   const gesture = useRef({ pointers: new Map(), pan: null, pinch: null, dragged: false, samples: [], inertia: 0 })
@@ -285,7 +303,6 @@ export default function ZoomTrack({
 
   const w = L.weights
   const inactive = zoomed || hidden
-  const nodePointer = useRef('mouse')
 
   return (
     <>
@@ -310,9 +327,8 @@ export default function ZoomTrack({
         ))}
 
         {L.months.map(m => (
-          <div key={m.key} className={`lt-mtick${m.has ? ' has' : ''}${stateCls(m.state, m.match)}`} data-ym={`${m.year}-${m.month}`} style={{ transform: `translate3d(${m.x}px,0,0)`, opacity: m.opacity }} aria-hidden="true">
-            <span className="dot"><NodeMarks state={m.state} percent={m.percent} /></span>
-            <NodeLabel label={m.label} className="mlbl" />
+          <div key={m.key} className="lt-mtick" style={{ transform: `translate3d(${m.x}px,0,0)`, opacity: m.opacity }} aria-hidden="true">
+            <span className="dot" />
           </div>
         ))}
 
@@ -328,7 +344,6 @@ export default function ZoomTrack({
             onClick={(e) => onOpenYear(d.openYear, e.currentTarget, d.x)}
           >
             <span className="dot"><NodeMarks state={d.state} percent={d.percent} /></span>
-            <NodeLabel label={d.label} />
           </button>
         ))}
 
@@ -343,63 +358,55 @@ export default function ZoomTrack({
             <button
               key={y.year}
               type="button"
-              className={`lt-node${y.ev ? ' ev' : ''}${y.major ? ' big' : ''}${y.mark ? ' mark' : ''}${y.year < (range.today ?? range.start) ? ' past' : ''}${stateCls(y.state, y.match)}`}
-              style={{ transform: `translate3d(${y.x}px,0,0)`, '--hit': `${Math.max(18, Math.min(56, ppy))}px` }}
+              className={`lt-node${y.year < (range.today ?? range.start) ? ' past' : ''}${y.match === false ? ' lt-off' : ''}${y.today ? ' now' : ''}`}
+              style={{ transform: `translate3d(${y.x}px,0,0)`, '--hit': `${Math.max(18, Math.min(40, ppy * 0.3))}px` }}
               data-y={y.year}
               aria-label={label}
               tabIndex={inactive ? -1 : 0}
-              aria-haspopup="dialog"
-              aria-expanded={preview?.year === y.year || undefined}
-              onFocus={() => onFocusNode(y.x)}
-              onPointerDown={(e) => { nodePointer.current = e.pointerType || 'mouse' }}
-              onKeyDown={(e) => {
-                // Space previews the year; Enter (the button's click) opens it.
-                if (e.key !== ' ') return
-                e.preventDefault()
-                if (!y.count) return
-                const card = cardFor(y.year)
-                openPreview({ year: y.year, anchorEl: card || e.currentTarget, side: card ? (L.cards.find(c => c.key === `y${y.year}`)?.side ?? null) : null, x: y.x, pinned: true, focus: true })
-              }}
-              onKeyUp={(e) => { if (e.key === ' ') e.preventDefault() }}
-              onClick={(e) => {
-                const pt = nodePointer.current
-                nodePointer.current = 'mouse'
-                // touch: the first tap on a year with items previews it
-                if (pt !== 'mouse' && y.count && preview?.year !== y.year) {
-                  const card = cardFor(y.year)
-                  openPreview({ year: y.year, anchorEl: card || e.currentTarget, side: card ? (L.cards.find(c => c.key === `y${y.year}`)?.side ?? null) : null, x: y.x, pinned: true })
-                  return
-                }
-                openYearAt(y.year, y.x)
-              }}
+              onFocus={() => { onFocusNode(y.x); setFocusYear(y.year) }}
+              onBlur={() => setFocusYear(f => (f === y.year ? null : f))}
+              onClick={() => openYearAt(y.year)}
             >
-              <span className="dot"><NodeMarks state={y.state} percent={y.percent} /></span>
-              <NodeLabel label={y.label} />
+              <span className="dot" />
             </button>
           )
         })}
 
-        {L.cards.map(c => <Card key={c.key} c={c} onActivate={onCardActivate} onHover={onCardHover} />)}
+        {/* connectors and cards sit in lanes; labels go above the connectors
+            (on an opaque backing) and below the cards, which start beyond them */}
+        {L.labels.map(l => (
+          <div
+            key={l.key}
+            className={`lt-lblpos ${l.kind}${focusYear != null && l.kind !== 'mon' && l.year === focusYear ? ' focus' : ''}`}
+            style={{ transform: `translate3d(${l.x}px,0,0)` }}
+            aria-hidden="true"
+          >
+            <span className="lbl" onClick={() => { if (l.kind !== 'mon') openYearAt(l.year) }}>
+              <b>{l.lines[0]}</b>
+              {l.lines.slice(1).map((t, i) => <i key={i}>{t}</i>)}
+            </span>
+          </div>
+        ))}
+
+        {L.markers.map(m => <ItemMarker key={m.key} m={m} onActivate={onItemActivate} onHover={onItemHover} />)}
+
+        {L.cards.map(c => <Lane key={c.key} c={c} onActivate={onItemActivate} onHover={onItemHover} onMark={onMark} />)}
 
         <div className="lt-now2" style={{ transform: `translate3d(${L.nowX}px,0,0)` }} aria-hidden="true">You are here</div>
       </div>
     </div>
-    {preview && previewItems && (
-      <YearPreview
-        year={preview.year}
-        items={previewItems}
-        anchorEl={preview.anchorEl}
-        side={preview.side}
+    {tip && (
+      <ItemTip
+        item={tip.item}
+        anchorEl={tip.anchorEl}
         stageEl={scrollerRef.current?.parentElement}
-        focusOnOpen={!!preview.focus}
-        onOpenYear={() => openYearAt(preview.year, preview.x)}
-        onMark={markFromPreview}
-        onClose={closePreview}
-        onHoverIn={() => onPreviewHover(true)}
-        onHoverOut={() => onPreviewHover(false)}
+        onOpenYear={() => openYearAt(tip.item.year)}
+        onMark={markFromTip}
+        onClose={closeTip}
+        onHoverIn={() => onTipHover(true)}
+        onHoverOut={() => onTipHover(false)}
       />
     )}
     </>
   )
 }
-
