@@ -2,6 +2,10 @@ const express = require('express')
 const { randomUUID } = require('crypto')
 const { getDb } = require('../db')
 const { parseIds, buildReorder } = require('../reorder')
+const { withLiveGoalAmounts } = require('../netWorth')
+
+// auto_source: only known values are stored; anything else means a manual goal.
+const autoSource = (v) => (v === 'net_worth' ? 'net_worth' : null)
 
 const router = express.Router()
 
@@ -16,7 +20,8 @@ const GOALS_WITH_ITEM_COUNTS = `
 router.get('/', async (req, res) => {
   const db = getDb()
   const { rows } = await db.query(GOALS_WITH_ITEM_COUNTS)
-  res.json(rows)
+  // auto_source = 'net_worth': current_amount is the live net worth
+  res.json(await withLiveGoalAmounts(db, rows))
 })
 
 // POST /api/goals — mirrors goals:create
@@ -27,15 +32,15 @@ router.post('/', async (req, res) => {
   const { rows } = await db.query(
     `INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
        bank_or_provider, emoji, color, inflation_adjust, inflation_rate, monthly_emi, notes,
-       created_at, updated_at, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+       auto_source, created_at, updated_at, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
        (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM goals WHERE deleted_at IS NULL))
      RETURNING id`,
     [
       randomUUID(), d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
       d.target_date ?? null, d.bank_or_provider ?? null, d.emoji ?? null, d.color ?? null,
       d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6, d.monthly_emi ?? 0, d.notes ?? null,
-      now, now,
+      autoSource(d.auto_source), now, now,
     ]
   )
   res.json({ id: rows[0].id })
@@ -64,13 +69,15 @@ router.put('/:id', async (req, res) => {
     `UPDATE goals SET title = ?, type = ?, category = ?, target_amount = ?, current_amount = ?,
        target_date = ?, bank_or_provider = ?, emoji = ?, color = ?,
        inflation_adjust = ?, inflation_rate = ?, monthly_emi = ?, notes = ?,
-       is_achieved = ?, achieved_at = ?, updated_at = ?
+       is_achieved = ?, achieved_at = ?,
+       auto_source = CASE WHEN ? = 1 THEN ? ELSE auto_source END, updated_at = ?
      WHERE id = ?`,
     [
       d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
       d.target_date ?? null, d.bank_or_provider ?? null, d.emoji ?? null, d.color ?? null,
       d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6, d.monthly_emi ?? 0, d.notes ?? null,
       d.is_achieved ? 1 : 0, d.is_achieved ? (d.achieved_at || now) : null,
+      'auto_source' in d ? 1 : 0, autoSource(d.auto_source),
       now, req.params.id,
     ]
   )

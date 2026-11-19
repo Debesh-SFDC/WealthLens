@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useId, useRef } from 'react'
 import bridge from '../lib/bridge'
+import { fmtAmount } from '../lib/lifeTimeline'
 import { SortableList, SortableItem, DragHandle, OrderBadge, ReorderHint } from '../components/Sortable'
 
 // Goal↔investment linking and investment-sync are Electron-only (no web
@@ -111,6 +112,31 @@ function effectiveTarget(goal) {
     return (goal.target_amount || 0) * Math.pow(1 + (goal.inflation_rate || 6) / 100, years)
   }
   return goal.target_amount || 0
+}
+
+// auto_source = 'net_worth': current_amount is the live net worth (the API
+// returns it; the stored column is only a cache), so there's nothing to add by
+// hand. Achievement stays manual.
+const isAutoNetWorth = (goal) => goal?.auto_source === 'net_worth'
+const hasReached = (goal) => {
+  const target = effectiveTarget(goal)
+  return isAutoNetWorth(goal) && !goal.is_achieved && target > 0 && (goal.current_amount || 0) >= target
+}
+const AUTO_NOTE = 'Tracks your net worth automatically'
+
+// Gold "You've reached ₹1 Cr. Mark achieved?" prompt for a net-worth goal.
+function ReachedPrompt({ goal, onAchieve, className = '' }) {
+  if (!hasReached(goal) || !onAchieve) return null
+  return (
+    <button
+      type="button"
+      onClick={(e) => { e.stopPropagation(); onAchieve(goal) }}
+      className={`w-full px-3 py-2 rounded-xl text-xs font-bold transition-opacity hover:opacity-90 ${className}`}
+      style={{ color: '#0A0A0A', background: 'linear-gradient(135deg, #F0D060, #B8960C)', boxShadow: '0 0 18px rgba(212,175,55,.35)' }}
+    >
+      You've reached {fmtAmount(effectiveTarget(goal))}. Mark achieved?
+    </button>
+  )
 }
 
 function progressPct(goal) {
@@ -420,7 +446,8 @@ function LinkedInvestmentChips({ linkedInvestments, className = 'mb-3' }) {
   )
 }
 
-function GoalCardGrid({ goal, rank, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute }) {
+function GoalCardGrid({ goal, rank, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute, onAchieve }) {
+  const auto = isAutoNetWorth(goal)
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
@@ -455,7 +482,7 @@ function GoalCardGrid({ goal, rank, linkedInvestments, onView, onEdit, onClone, 
             </div>
           </div>
           <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
-            <button onClick={() => onContribute(goal)} title="Add contribution" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><PlusIcon /></button>
+            {!auto && <button onClick={() => onContribute(goal)} title="Add contribution" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><PlusIcon /></button>}
             <button onClick={() => onEdit(goal)} title="Edit" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><EditIcon /></button>
             <button onClick={() => onClone(goal)} title="Clone" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><CopyIcon /></button>
             <button onClick={() => onDelete(goal.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-gray-700 hover:text-red-500 transition-colors"><TrashIcon /></button>
@@ -489,12 +516,14 @@ function GoalCardGrid({ goal, rank, linkedInvestments, onView, onEdit, onClone, 
               <>
                 <p className="text-lg font-bold text-gray-900 leading-tight">{fmtCr(goal.current_amount || 0)}</p>
                 <p className="text-xs text-gray-400">
-                  of {fmtCr(target)} · {(linkedInvestments || []).length > 0 ? 'Auto' : 'Manual'}
+                  of {fmtCr(target)} · {auto ? 'Net worth' : (linkedInvestments || []).length > 0 ? 'Auto' : 'Manual'}
                 </p>
               </>
             )}
           </div>
         </div>
+        {auto && <p className="text-[11px] font-medium mb-3" style={{ color: '#D4AF37' }}>{AUTO_NOTE}</p>}
+        <ReachedPrompt goal={goal} onAchieve={onAchieve} className="mb-3" />
 
         <div className="flex items-center justify-between pt-3 border-t border-gray-50">
           <span className={`text-xs font-medium ${!achieved && pct < 100 && isOverdue(goal.target_date) ? 'text-red-500' : 'text-gray-400'}`}>
@@ -512,7 +541,8 @@ function GoalCardGrid({ goal, rank, linkedInvestments, onView, onEdit, onClone, 
 }
 
 // ── List view row ─────────────────────────────────────────────────────────
-function GoalListRow({ goal, rank, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute }) {
+function GoalListRow({ goal, rank, linkedInvestments, onView, onEdit, onClone, onDelete, onContribute, onAchieve }) {
+  const auto = isAutoNetWorth(goal)
   const meta = TYPE_META[goal.type] || TYPE_META.life_goal
   const accent = goal.color || meta.color
   const target = effectiveTarget(goal)
@@ -555,6 +585,8 @@ function GoalListRow({ goal, rank, linkedInvestments, onView, onEdit, onClone, o
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
           <div className="h-full rounded-full transition-all" style={{ width: `${achieved ? 100 : pct}%`, background: 'linear-gradient(90deg, #D4AF37, #B8960C)' }} />
         </div>
+        {auto && <p className="text-[11px] font-medium mt-1" style={{ color: '#D4AF37' }}>{AUTO_NOTE}</p>}
+        <ReachedPrompt goal={goal} onAchieve={onAchieve} className="mt-2" />
       </div>
 
       <div className="w-36 shrink-0 text-right">
@@ -569,7 +601,7 @@ function GoalListRow({ goal, rank, linkedInvestments, onView, onEdit, onClone, o
       </div>
 
       <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" onClick={e => e.stopPropagation()}>
-        <button onClick={() => onContribute(goal)} title="Add contribution" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><PlusIcon /></button>
+        {!auto && <button onClick={() => onContribute(goal)} title="Add contribution" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><PlusIcon /></button>}
         <button onClick={() => onEdit(goal)} title="Edit" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><EditIcon /></button>
         <button onClick={() => onClone(goal)} title="Clone" className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-700 hover:text-gold transition-colors"><CopyIcon /></button>
         <button onClick={() => onDelete(goal.id)} title="Delete" className="p-1.5 rounded-lg hover:bg-red-50 text-gray-700 hover:text-red-500 transition-colors"><TrashIcon /></button>
@@ -826,7 +858,10 @@ function GoalFormWizard({ initial, investments, onSave, onClose }) {
                 </div>
               </div>
 
-              {!isDebt && (
+              {!isDebt && isAutoNetWorth(initial) && (
+                <p className="text-xs font-medium" style={{ color: '#D4AF37' }}>{AUTO_NOTE}</p>
+              )}
+              {!isDebt && !isAutoNetWorth(initial) && (
                 <div>
                   <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">
                     Already Saved (₹) <span className="font-normal normal-case text-gray-400">optional</span>
@@ -1381,6 +1416,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
   const outstanding = isDebt ? Math.max(0, (goal.target_amount || 0) - (goal.current_amount || 0)) : null
   const achieved = Boolean(goal.is_achieved)
   const ringColor = achieved ? '#D4AF37' : accent
+  const auto = isAutoNetWorth(goal)
 
   return (
     <div className="p-6 max-w-3xl">
@@ -1392,13 +1428,15 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
           <button onClick={onEdit} className="px-4 py-2 rounded-xl text-sm font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors">
             Edit Goal
           </button>
-          {!achieved && pct >= 95 && (
+          {!achieved && pct >= 95 && !hasReached(goal) && (
             <button onClick={onAchieve} className="px-4 py-2 rounded-xl text-sm font-semibold text-white hover:opacity-90 transition-opacity" style={{ backgroundColor: '#2ECC71' }}>
               ✓ Mark as Achieved
             </button>
           )}
         </div>
       </div>
+
+      <ReachedPrompt goal={goal} onAchieve={onAchieve} className="mb-3 py-3 text-sm" />
 
       {[...nudges, ...(sipNudge ? [sipNudge] : [])].map((n, i) => {
         const s = NUDGE_STYLE[n.tone] || NUDGE_STYLE.warning
@@ -1444,8 +1482,8 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
                 <div>
                   <p className="text-xs text-gray-400 mb-0.5">{isDebt ? 'Paid Off' : 'Saved'}</p>
                   <p className="text-2xl font-bold text-gray-900">{fmtCr(goal.current_amount || 0)}</p>
-                  <p className="text-[10px] font-medium mt-0.5" style={{ color: linkedInvestments.length > 0 ? '#D4AF37' : '#6B6B6B' }}>
-                    {linkedInvestments.length > 0 ? 'Auto-calculated from linked investments' : 'Manual'}
+                  <p className="text-[10px] font-medium mt-0.5" style={{ color: auto || linkedInvestments.length > 0 ? '#D4AF37' : '#6B6B6B' }}>
+                    {auto ? AUTO_NOTE : linkedInvestments.length > 0 ? 'Auto-calculated from linked investments' : 'Manual'}
                   </p>
                 </div>
                 <div className="text-right">
@@ -1537,7 +1575,7 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
             <h2 className="font-semibold text-gray-800">Linked Investments</h2>
             <p className="text-xs text-gray-400 mt-0.5">{linkedInvestments.length} investment{linkedInvestments.length !== 1 ? 's' : ''} funding this goal</p>
           </div>
-          {linkedInvestments.length > 0 && (
+          {linkedInvestments.length > 0 && !auto && (
             <button onClick={onSyncAll} disabled={syncing}
               className="px-3.5 py-2 rounded-xl text-xs font-semibold text-gray-700 border border-gray-400 hover:text-gold hover:border-gold transition-colors disabled:opacity-50">
               {syncing ? 'Syncing…' : '↻ Sync All'}
@@ -1579,9 +1617,11 @@ function GoalDetailScreen({ goal, linkedInvestments, contributions, items, synci
             <h2 className="font-semibold text-gray-800">Contribution History</h2>
             <p className="text-xs text-gray-400 mt-0.5">{contributions.length} entr{contributions.length !== 1 ? 'ies' : 'y'}</p>
           </div>
-          <button onClick={onAddContribution} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: accent }}>
-            <span>+</span> {isDebt ? 'Update Balance' : 'Add Contribution'}
-          </button>
+          {!auto && (
+            <button onClick={onAddContribution} className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-white text-xs font-semibold hover:opacity-90 transition-opacity" style={{ backgroundColor: accent }}>
+              <span>+</span> {isDebt ? 'Update Balance' : 'Add Contribution'}
+            </button>
+          )}
         </div>
         {contributions.length === 0 ? (
           <div className="flex items-center justify-center py-10 text-sm text-gray-400">No contributions logged yet.</div>
@@ -2022,7 +2062,8 @@ export function GoalsContent({ initialGoalId = null } = {}) {
             const Card = view === 'grid' ? GoalCardGrid : GoalListRow
             const renderCard = (g) => (
               <Card goal={g} rank={rankById.get(g.id)} linkedInvestments={goalInvestmentsMap[g.id]}
-                onView={openDetail} onEdit={openWizard} onClone={setCloneSource} onDelete={handleDelete} onContribute={openContribution} />
+                onView={openDetail} onEdit={openWizard} onClone={setCloneSource} onDelete={handleDelete} onContribute={openContribution}
+                onAchieve={handleAchieve} />
             )
             return (
               <div className={view === 'grid' ? 'grid grid-cols-2 xl:grid-cols-3 gap-4' : 'space-y-2'}>

@@ -91,12 +91,14 @@ const kinds = (k) => g.nodes.filter(x => x.kind === k).length
 assert.equal(kinds('phase'), 5)
 assert.equal(kinds('now'), 1)
 assert.equal(kinds('retirement'), 1)
-assert.equal(kinds('goal'), 12)
+// goal 7 is linked from event 99, so it is one item (the event), not a goal node
+assert.equal(kinds('goal'), 11)
 assert.equal(g.links.filter(l => l.kind === 'spine').length, 4)
 const dep = g.links.filter(l => l.kind === 'dep')
 assert.deepEqual(dep, [{ source: 'e8', target: 'e99', kind: 'dep', past: false }])
-assert.equal(g.links.filter(l => l.kind === 'goal').length, 1)
-assert.ok(g.neighbours.get('e99').has('e8') && g.neighbours.get('e99').has('g7') && g.neighbours.get('e99').has('p3'))
+assert.equal(g.links.filter(l => l.kind === 'goal').length, 0)
+assert.ok(!g.nodes.some(x => x.id === 'g7'))
+assert.ok(g.neighbours.get('e99').has('e8') && g.neighbours.get('e99').has('p3'))
 assert.equal(g.nodes.find(x => x.id === 'e99').state, 'achieved')
 // edges are "past" (bright) only between reached nodes: achieved items, begun phases, now
 assert.ok(g.links.filter(l => l.past).every(l => [l.source, l.target].every(id => {

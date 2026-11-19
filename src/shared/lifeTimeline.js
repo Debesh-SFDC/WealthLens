@@ -252,17 +252,61 @@ function summarize(events, goals) {
   return { achieved: all.filter(i => i.state === 'achieved').length, total: all.length }
 }
 
+// The goal fields the timeline needs. netWorth: the live figure (from
+// src/shared/netWorth.mjs) used as current_amount when auto_source is
+// 'net_worth' — the stored column is only a cache.
+function goalSummary(g, netWorth) {
+  const num = (v) => (v == null || v === '' ? null : Number(v))
+  const auto = g.auto_source === 'net_worth' ? 'net_worth' : null
+  const current = auto && netWorth != null ? Number(netWorth) : (num(g.current_amount) ?? 0)
+  const target = num(g.target_amount)
+  const achieved = Number(g.is_achieved) ? 1 : 0
+  return {
+    id: g.id,
+    title: g.title,
+    emoji: g.emoji || null,
+    target_amount: target,
+    current_amount: current,
+    target_date: g.target_date || null,
+    auto_source: auto,
+    is_achieved: achieved,
+    achieved_at: achieved ? isoDateOrNull(g.achieved_at) : null,
+    // net worth reached the target but it isn't marked achieved yet
+    // (achievement stays manual, so the UI offers it)
+    reached: !!auto && !achieved && target > 0 && current >= target,
+  }
+}
+
+// Children from the newest fire_planner_settings row: kid 2 only counts when
+// kids_planned is 2 or more.
+function kidYears(fire) {
+  const yr = (v) => {
+    const n = Number(v)
+    return v != null && v !== '' && Number.isInteger(n) && n > 1900 ? n : null
+  }
+  const planned = Number(fire?.kids_planned) || 0
+  const kid1 = yr(fire?.kid1_year)
+  const kid2 = planned >= 2 ? yr(fire?.kid2_year) : null
+  return [kid1, kid2].filter(v => v != null)
+}
+
 // Assembles the GET /api/life-timeline payload from raw rows.
-function buildTimeline({ profile, fire, phases, events, goals, today = new Date() }) {
+// An event linked to a live goal (goal_id) and that goal are ONE item: the
+// event keeps its title, month and is_major and carries the goal's live
+// progress under `goal`; the goal is not listed again under `goals`.
+function buildTimeline({ profile, fire, phases, events, goals, netWorth = null, today = new Date() }) {
   const dob = parseLocalDate(profile?.date_of_birth)
   const birthYear = dob ? dob.getFullYear() : null
   const thisYear = today.getFullYear()
   const end = Math.max(thisYear, birthYear != null ? birthYear + PLAN_END_AGE : thisYear + FALLBACK_SPAN_YEARS)
+  const kids = kidYears(fire)
   const kid = Number(fire?.kid1_year)
   const childBirthYear = Number.isInteger(kid) && kid > 1900 ? kid : null
 
   const num = (v) => (v == null || v === '' ? null : Number(v))
   const liveIds = new Set((events || []).map(e => Number(e.id)))
+  const goalById = new Map((goals || []).map(g => [Number(g.id), goalSummary(g, netWorth)]))
+  const linkedGoalIds = new Set()
 
   const outEvents = (events || []).map(e => {
     const ev = {
@@ -279,20 +323,28 @@ function buildTimeline({ profile, fire, phases, events, goals, today = new Date(
       status: e.status || 'planned',
       achieved_at: e.status === 'done' ? isoDateOrNull(e.achieved_at) : null,
     }
-    return { ...ev, ...achievementState({ ...ev, kind: 'event' }, today) }
+    const goal = ev.goal_id != null ? goalById.get(ev.goal_id) : null
+    if (!goal) return { ...ev, goal: null, ...achievementState({ ...ev, kind: 'event' }, today) }
+    linkedGoalIds.add(goal.id)
+    // Achieved when either side is (the Goals page or the timeline marked it);
+    // otherwise the goal's progress drives in_progress / percent.
+    const st = achievementState({
+      ...ev, kind: 'goal', target_amount: goal.target_amount, current_amount: goal.current_amount,
+      is_achieved: ev.status === 'done' || goal.is_achieved ? 1 : 0,
+    }, today)
+    return {
+      ...ev,
+      achieved_at: ev.achieved_at || goal.achieved_at,
+      goal,
+      ...st,
+    }
   })
   const outGoals = (goals || []).map(g => {
+    if (linkedGoalIds.has(Number(g.id))) return null
     const d = parseLocalDate(g.target_date)
     if (!d) return null
     const goal = {
-      id: g.id,
-      title: g.title,
-      emoji: g.emoji || null,
-      target_amount: num(g.target_amount),
-      current_amount: num(g.current_amount) ?? 0,
-      target_date: g.target_date,
-      is_achieved: Number(g.is_achieved) ? 1 : 0,
-      achieved_at: Number(g.is_achieved) ? isoDateOrNull(g.achieved_at) : null,
+      ...goalById.get(Number(g.id)),
       year: d.getFullYear(),
       month: d.getMonth() + 1,
       day: d.getDate(),
@@ -314,6 +366,8 @@ function buildTimeline({ profile, fire, phases, events, goals, today = new Date(
     summary: summarize(outEvents, outGoals),
     birthYear,
     childBirthYear,
+    // children's birth years in order (kid 2 only when kids_planned >= 2)
+    kids,
     retirement: { ...retirement, ...achievementState({ ...retirement, kind: 'retirement' }, today) },
     phases: (phases || []).map(p => ({
       id: p.id, numeral: p.numeral, name: p.name, start_year: Number(p.start_year), sort_order: Number(p.sort_order) || 0,
@@ -325,13 +379,15 @@ function buildTimeline({ profile, fire, phases, events, goals, today = new Date(
 
 // SQL shared by both backends (`?` placeholders; src/server/db.js converts
 // them for Postgres). Goals are one global list in this app (no per-user
-// scope — see goals:getAll), so only soft-deleted and undated goals are left out.
+// scope — see goals:getAll), so only soft-deleted goals are left out. Undated
+// goals are kept so an event can link to one; buildTimeline only places dated
+// goals that no event links to.
 const SQL = {
   profile: 'SELECT date_of_birth, retirement_age, retirement_date FROM profile ORDER BY id ASC LIMIT 1',
-  fire: 'SELECT kid1_year FROM fire_planner_settings ORDER BY id DESC LIMIT 1',
+  fire: 'SELECT kids_planned, kid1_year, kid2_year FROM fire_planner_settings ORDER BY id DESC LIMIT 1',
   phases: 'SELECT * FROM life_phases WHERE user_id = ? AND deleted_at IS NULL ORDER BY sort_order ASC, start_year ASC, id ASC',
   events: 'SELECT * FROM life_events WHERE user_id = ? AND deleted_at IS NULL ORDER BY year ASC, COALESCE(month, 13) ASC, COALESCE(day, 32) ASC, id ASC',
-  goals: "SELECT id, title, emoji, target_amount, current_amount, target_date, is_achieved, achieved_at FROM goals WHERE deleted_at IS NULL AND target_date IS NOT NULL AND target_date <> '' ORDER BY target_date ASC, id ASC",
+  goals: 'SELECT id, title, emoji, target_amount, current_amount, target_date, is_achieved, achieved_at, auto_source FROM goals WHERE deleted_at IS NULL ORDER BY target_date ASC, id ASC',
 }
 
 module.exports = {

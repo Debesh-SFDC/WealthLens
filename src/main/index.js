@@ -12,6 +12,7 @@ import {
 } from '../db/database.js'
 import { buildSyncFile, applySyncMerge } from '../db/sync.js'
 import lifeTimeline from '../shared/lifeTimeline.js'
+import { computeNetWorth, withLiveAmount, NET_WORTH_SQL } from '../shared/netWorth.mjs'
 import {
   initiateAuth, disconnect as driveDisconnect, backupDatabase, listBackups,
   restoreFromDrive, getDriveStatus, getSyncStatus, getDbLastModified,
@@ -575,13 +576,20 @@ function setupIpcHandlers() {
   }
 
   // ── Goals ─────────────────────────────────────────────────────────────────
+  // Same net worth as the Net Worth page (src/shared/netWorth.mjs).
+  const liveNetWorth = () => computeNetWorth(db.prepare(NET_WORTH_SQL).all())
+
   ipcMain.handle('goals:getAll', () => {
-    return db.prepare(`
+    const rows = db.prepare(`
       SELECT g.*,
         (SELECT COUNT(*) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL) AS item_count,
         (SELECT COUNT(*) FROM goal_items i WHERE i.goal_id = g.id AND i.deleted_at IS NULL AND i.is_purchased = 1) AS item_bought_count
       FROM goals g WHERE g.deleted_at IS NULL ORDER BY g.sort_order ASC, g.id ASC
     `).all()
+    // auto_source = 'net_worth': current_amount is the live net worth
+    if (!rows.some(g => g.auto_source === 'net_worth')) return rows
+    const nw = liveNetWorth()
+    return rows.map(g => withLiveAmount(g, nw))
   })
 
   // Goals are one global list, so no per-user scope (same as goals:update).
@@ -592,14 +600,14 @@ function setupIpcHandlers() {
     const result = db.prepare(`
       INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
         bank_or_provider, emoji, color, inflation_adjust, inflation_rate,
-        monthly_emi, notes, device_id, sort_order)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        monthly_emi, notes, auto_source, device_id, sort_order)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM goals WHERE deleted_at IS NULL))
     `).run(
       randomUUID(), d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
       d.target_date ?? null, d.bank_or_provider ?? null,
       d.emoji ?? null, d.color ?? null, d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6,
-      d.monthly_emi ?? 0, d.notes ?? null, deviceId
+      d.monthly_emi ?? 0, d.notes ?? null, d.auto_source === 'net_worth' ? 'net_worth' : null, deviceId
     )
     return { id: result.lastInsertRowid }
   })
@@ -610,7 +618,9 @@ function setupIpcHandlers() {
       UPDATE goals SET title = ?, type = ?, category = ?, target_amount = ?, current_amount = ?,
         target_date = ?, bank_or_provider = ?, emoji = ?, color = ?,
         inflation_adjust = ?, inflation_rate = ?, monthly_emi = ?, notes = ?,
-        is_achieved = ?, achieved_at = ?, updated_at = datetime('now'), device_id = ?
+        is_achieved = ?, achieved_at = ?,
+        auto_source = CASE WHEN ? = 1 THEN ? ELSE auto_source END,
+        updated_at = datetime('now'), device_id = ?
       WHERE id = ?
     `).run(
       d.title, d.type, d.category ?? 'need', d.target_amount ?? 0, d.current_amount ?? 0,
@@ -618,6 +628,7 @@ function setupIpcHandlers() {
       d.emoji ?? null, d.color ?? null, d.inflation_adjust ? 1 : 0, d.inflation_rate ?? 6,
       d.monthly_emi ?? 0, d.notes ?? null,
       d.is_achieved ? 1 : 0, d.is_achieved ? (d.achieved_at || new Date().toISOString()) : null,
+      'auto_source' in d ? 1 : 0, d.auto_source === 'net_worth' ? 'net_worth' : null,
       deviceId, d.id
     )
     return { success: true }
@@ -1404,10 +1415,11 @@ function setupIpcHandlers() {
     let totalInvested = 0, netWorth = 0, activeGoals = 0, familyWeights = []
     if (isAdmin) {
       const inv = db.prepare(
-        'SELECT COALESCE(SUM(invested_amount), 0) as invested, COALESCE(SUM(current_value), 0) as value FROM investments WHERE deleted_at IS NULL'
+        'SELECT COALESCE(SUM(invested_amount), 0) as invested FROM investments WHERE deleted_at IS NULL'
       ).get()
       totalInvested = inv.invested
-      netWorth = inv.value
+      // Same figure as the Net Worth page (insurance / RD valued from their schedule).
+      netWorth = liveNetWorth()
       const { c } = db.prepare('SELECT COUNT(*) as c FROM goals WHERE deleted_at IS NULL AND is_achieved = 0').get()
       activeGoals = c
 
@@ -1898,12 +1910,15 @@ function setupIpcHandlers() {
   ipcMain.handle('lifeTimeline:get', () => {
     const uid = requireAdminSession()
     const { SQL } = lifeTimeline
+    const goals = db.prepare(SQL.goals).all()
     return lifeTimeline.buildTimeline({
       profile: db.prepare(SQL.profile).get(),
       fire: db.prepare(SQL.fire).get(),
       phases: db.prepare(SQL.phases).all(uid),
       events: db.prepare(SQL.events).all(uid),
-      goals: db.prepare(SQL.goals).all(),
+      goals,
+      // live net worth only when a goal tracks it
+      netWorth: goals.some(g => g.auto_source === 'net_worth') ? liveNetWorth() : null,
     })
   })
 

@@ -95,6 +95,10 @@ SELECT setval('goals_id_seq', COALESCE((SELECT MAX(id) FROM goals), 1));
 -- completion via is_achieved; these are informational only).
 ALTER TABLE goals ADD COLUMN IF NOT EXISTS user_id INTEGER;
 ALTER TABLE goals ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active';
+-- 'net_worth': current_amount is the live net worth (src/shared/netWorth.mjs),
+-- the stored column only a cache. NULL for ordinary goals. Also shipped
+-- standalone in scripts/networth-goal-2026-11-19.sql.
+ALTER TABLE goals ADD COLUMN IF NOT EXISTS auto_source TEXT;
 
 -- Seed six planning goals for the admin account. Guarded by title so they are
 -- added at most once and not recreated after the user edits/deletes them.

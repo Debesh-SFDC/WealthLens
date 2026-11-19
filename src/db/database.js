@@ -647,6 +647,9 @@ function migrateGoalInvestmentsJunction() {
     try { db.exec('ALTER TABLE goals DROP COLUMN linked_investment_id') } catch {}
   }
   try { db.exec('ALTER TABLE goals ADD COLUMN last_synced_at TEXT') } catch {}
+  // 'net_worth': current_amount is the live net worth (src/shared/netWorth.mjs),
+  // the stored column only a cache. NULL for ordinary goals.
+  try { db.exec('ALTER TABLE goals ADD COLUMN auto_source TEXT') } catch {}
 }
 
 // Adds the row-level sync bookkeeping columns (sync_id UUID, deleted_at soft-delete,

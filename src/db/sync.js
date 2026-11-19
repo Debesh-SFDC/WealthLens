@@ -27,7 +27,7 @@ export function getSyncSnapshot(db) {
   const goals = db.prepare(`
     SELECT sync_id as id, title, type, category, target_amount, current_amount, target_date,
            bank_or_provider, emoji, color, inflation_adjust, inflation_rate, monthly_emi, notes,
-           is_achieved, achieved_at, created_at, updated_at, deleted_at, device_id
+           is_achieved, achieved_at, auto_source, created_at, updated_at, deleted_at, device_id
     FROM goals WHERE sync_id IS NOT NULL
   `).all()
 
@@ -135,23 +135,26 @@ export function applySyncMerge(db, remoteData, deviceId) {
       const insert = db.prepare(`
         INSERT INTO goals (sync_id, title, type, category, target_amount, current_amount, target_date,
           bank_or_provider, emoji, color, inflation_adjust, inflation_rate, monthly_emi, notes,
-          is_achieved, achieved_at, created_at, updated_at, deleted_at, device_id)
+          is_achieved, achieved_at, auto_source, created_at, updated_at, deleted_at, device_id)
         VALUES (@id, @title, @type, @category, @target_amount, @current_amount, @target_date,
           @bank_or_provider, @emoji, @color, @inflation_adjust, @inflation_rate, @monthly_emi, @notes,
-          @is_achieved, @achieved_at, @created_at, @updated_at, @deleted_at, @device_id)
+          @is_achieved, @achieved_at, @auto_source, @created_at, @updated_at, @deleted_at, @device_id)
       `)
       const update = db.prepare(`
         UPDATE goals SET title=@title, type=@type, category=@category, target_amount=@target_amount,
           current_amount=@current_amount, target_date=@target_date, bank_or_provider=@bank_or_provider,
           emoji=@emoji, color=@color, inflation_adjust=@inflation_adjust, inflation_rate=@inflation_rate,
           monthly_emi=@monthly_emi, notes=@notes, is_achieved=@is_achieved, achieved_at=@achieved_at,
-          updated_at=@updated_at, deleted_at=@deleted_at, device_id=@device_id
+          auto_source=CASE WHEN @has_auto_source = 1 THEN @auto_source ELSE auto_source END, updated_at=@updated_at, deleted_at=@deleted_at, device_id=@device_id
         WHERE sync_id=@id
       `)
       for (const raw of remoteData.goals || []) {
         const r = fillDefaults(raw, { notes: null, bank_or_provider: null, emoji: null, color: null,
           achieved_at: null, deleted_at: null, device_id: null, inflation_adjust: 0, inflation_rate: 6,
-          monthly_emi: 0, is_achieved: 0, target_date: null })
+          monthly_emi: 0, is_achieved: 0, target_date: null, auto_source: null })
+        // A file from an older build has no auto_source: keep the local value
+        // instead of clearing it.
+        r.has_auto_source = Object.prototype.hasOwnProperty.call(raw, 'auto_source') ? 1 : 0
         const local = findLocal.get(r.id)
         if (!local) { insert.run(r); downloaded++ }
         else if (newer(r.updated_at, local.updated_at)) { update.run(r); downloaded++ }

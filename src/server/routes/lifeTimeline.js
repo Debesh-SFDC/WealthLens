@@ -2,6 +2,7 @@ const express = require('express')
 const { randomUUID } = require('crypto')
 const { getDb } = require('../db')
 const { cleanEvent, cleanPhases, buildTimeline, checkDependsOn, SQL } = require('../../shared/lifeTimeline')
+const { liveNetWorth } = require('../netWorth')
 
 const router = express.Router()
 
@@ -52,12 +53,15 @@ router.get('/', async (req, res) => {
       db.query(SQL.events, [uid]),
       db.query(SQL.goals),
     ])
+    // live net worth only when a goal tracks it
+    const netWorth = goals.rows.some(g => g.auto_source === 'net_worth') ? await liveNetWorth(db) : null
     res.json(buildTimeline({
       profile: profile.rows[0],
       fire: fire.rows[0],
       phases: phases.rows,
       events: events.rows,
       goals: goals.rows,
+      netWorth,
     }))
   } catch (e) {
     sendError(res, e, 'GET /life-timeline failed')

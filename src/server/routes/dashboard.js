@@ -1,5 +1,6 @@
 const express = require('express')
 const { getDb } = require('../db')
+const { liveNetWorth } = require('../netWorth')
 
 const router = express.Router()
 
@@ -65,10 +66,11 @@ router.get('/stats', async (req, res) => {
   let totalInvested = 0, netWorth = 0, activeGoals = 0, familyWeights = []
   if (isAdmin) {
     const { rows: invRows } = await db.query(
-      'SELECT COALESCE(SUM(invested_amount), 0) as invested, COALESCE(SUM(current_value), 0) as value FROM investments WHERE deleted_at IS NULL'
+      'SELECT COALESCE(SUM(invested_amount), 0) as invested FROM investments WHERE deleted_at IS NULL'
     )
     totalInvested = Number(invRows[0].invested)
-    netWorth = Number(invRows[0].value)
+    // Same figure as the Net Worth page (insurance / RD valued from their schedule).
+    netWorth = await liveNetWorth(db)
     const { rows: goalRows } = await db.query(
       'SELECT COUNT(*) as c FROM goals WHERE deleted_at IS NULL AND is_achieved = 0'
     )

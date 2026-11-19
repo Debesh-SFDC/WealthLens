@@ -2,7 +2,7 @@
 // number, ppy (pixels per year): node positions, which level of detail shows
 // (Decades / Years / Months) and how big each card can be. Pure functions,
 // tested in lifeTimelineZoom.test.js.
-import { pickLead, ageIn, childAgeIn, phaseLabelAt, groupState, matchesFilter, MONTHS } from './lifeTimeline.js'
+import { pickLead, ageIn, kidsAgesIn, kidsText, phaseLabelAt, groupState, matchesFilter, sortForCard, MONTHS } from './lifeTimeline.js'
 
 export const PRESETS = { decades: 22, years: 128, months: 1150 }
 export const MIN_PPY = 8
@@ -11,6 +11,40 @@ export const PAD_LEFT = 90
 
 export const CARD_W = 180
 const CARD_GAP = 16
+
+// ── Card heights ──────────────────────────────────────────────────────────
+// Cards hang CARD_TOP px from the line (CSS .lt-cardwrap) and grow away from
+// it, so a card never reaches the year labels (a major year's two-line label
+// reaches ~77px from the line) and same-side neighbours are kept apart by width (scaleSlots). What a
+// taller card can hit is the stage edge: the phase-name row at the top and the
+// "You are here" marker / zoom controls at the bottom. Each card gets as many
+// lines as fit between the line and that edge; the rest collapse into
+// "+N more". Pixel sizes match the .card.multi rules in lifeTimeline.css.
+export const CARD_TOP = 88
+export const EDGE = { up: 40, down: 56 }
+export const CARD_PAD = 20 // 1px border + 9px padding, top and bottom
+export const ROW_H = 20
+export const AMOUNT_H = 16
+export const MORE_H = 18
+export const HEAD_H = 18
+export const MAX_LINES = 4
+
+// Room for a card on one side of the line in a stage vh px tall.
+export const cardRoom = (vh, side) => Math.max(0, vh / 2 - CARD_TOP - EDGE[side])
+
+// Unscaled height of a card with n lines out of total.
+export function cardHeight({ n, total, head = false, amount = false }) {
+  return CARD_PAD + (head ? HEAD_H : 0) + n * ROW_H + (amount ? AMOUNT_H : 0) + (total > n ? MORE_H : 0)
+}
+
+// Up to MAX_LINES lines (at least one) that fit in `room`; the rest become "+N more".
+export function fitCard(list, room, { head = false, maxLines = MAX_LINES } = {}) {
+  const total = list.length
+  const amount = !!list[0]?.amountText
+  let n = Math.min(maxLines, total)
+  while (n > 1 && cardHeight({ n, total, head, amount }) > room) n--
+  return { rows: list.slice(0, n), more: total - n, h: cardHeight({ n, total, head, amount }) }
+}
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v))
 export const clampPpy = (p) => clamp(p, MIN_PPY, MAX_PPY)
@@ -71,6 +105,15 @@ function scaleSlots(slots) {
 
 const cardOpacity = (scale, weight) => smoothstep(0.42, 0.72, scale) * weight
 
+// The decade card's two titles: majors first, then the biggest amounts, shown
+// in date order.
+function topTwo(live) {
+  const amt = (i) => i.raw?.amount ?? i.raw?.target_amount ?? 0
+  return [...live].sort((a, b) => Number(!!b.major) - Number(!!a.major) || amt(b) - amt(a))
+    .slice(0, 2)
+    .sort((a, b) => a.year - b.year || (a.month ?? 13) - (b.month ?? 13))
+}
+
 function biggest(items) {
   const live = items.filter(i => i.status !== 'dropped')
   if (!live.length) return null
@@ -104,7 +147,10 @@ function placeLabels(labels, obstacles) {
 // byYear: Map(year -> items) from groupByYear(buildItems(data)).
 // filter: header filter id; nodes and cards that don't match get match: false
 // (drawn dimmed, never removed, so the line keeps its shape).
-export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, ppy, left, vw, todayMonth = 1, filter = 'all' }) {
+// vh: stage height (cards get as many lines as fit). kids: children's birth
+// years (payload.kids); childBirthYear is the older single-child field.
+export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, kids, ppy, left, vw, vh = 460, todayMonth = 1, filter = 'all' }) {
+  const kidYears = kids ?? (childBirthYear != null ? [childBirthYear] : [])
   const { start, end } = range
   const today = range.today ?? start
   const anyMatch = (items) => filter === 'all' || items.some(i => matchesFilter(i, filter))
@@ -117,27 +163,27 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
   const showMeta = ppy >= 60
 
   // Card sets ----------------------------------------------------------------
+  // Year cards list every live item that year (ordered by month, majors first
+  // within a month); month cards list that month's items.
   const yearSlots = []
   const monthSlots = []
   for (let y = start; y <= end; y++) {
     const items = byYear.get(y) || []
-    const { lead, count } = pickLead(items)
-    if (lead) yearSlots.push({ key: `y${y}`, set: 'years', year: y, x: X(y), item: lead, extra: count > 1 ? `+ ${count - 1} more this year` : null, match: matchesFilter(lead, filter) })
+    const list = sortForCard(items)
+    if (list.length) yearSlots.push({ key: `y${y}`, set: 'years', year: y, x: X(y), list, match: anyMatch(list) })
     const groups = new Map()
-    for (const it of items) {
+    for (const it of list) {
       const k = it.month ?? 0
       if (!groups.has(k)) groups.set(k, [])
       groups.get(k).push(it)
     }
     for (const k of [...groups.keys()].sort((a, b) => a - b)) {
-      const { lead: ml, count: mc } = pickLead(groups.get(k))
-      if (!ml) continue
+      const ml = groups.get(k)
       monthSlots.push({
         key: `m${y}-${k}`, set: 'months', year: y, month: k || null, loose: k === 0,
-        x: X(y + (k ? (k - 1) / 12 : 0)), item: ml,
-        tag: k === 0 ? 'Sometime this year' : null,
-        extra: mc > 1 ? `+ ${mc - 1} more` : null,
-        match: matchesFilter(ml, filter),
+        x: X(y + (k ? (k - 1) / 12 : 0)), list: ml,
+        tag: k === 0 ? 'Sometime this year' : null, noMonth: true,
+        match: anyMatch(ml),
       })
     }
   }
@@ -156,9 +202,10 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
     const g = groupState(items, top)
     decades.push({ key: `d${ds}`, decade: ds, x, count: live.length, achieved, progress, top, openYear: top ? top.year : a, state: g.state, percent: g.percent, match: anyMatch(items) })
     if (top) {
+      // the summary, then the decade's top 2 titles (labelled by year)
       decadeSlots.push({
         key: `d${ds}`, set: 'decades', year: top.year, x,
-        item: { ...top, amountText: progress, noteText: top.amountText || null },
+        list: topTwo(live), tag: progress, yearLabels: true, maxLines: 2, moreCount: 0,
         match: anyMatch(items),
       })
     }
@@ -166,6 +213,17 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
   scaleSlots(yearSlots)
   scaleSlots(monthSlots)
   scaleSlots(decadeSlots)
+  // lines that fit on each card's side of the line
+  for (const slot of [...yearSlots, ...monthSlots, ...decadeSlots]) {
+    const head = !!slot.tag
+    const fit = fitCard(slot.list, cardRoom(vh, slot.side), { head, maxLines: slot.maxLines })
+    slot.rows = fit.rows
+    // no month on any line: give the titles the month column's room
+    if (!slot.yearLabels && slot.rows.every(r => !r.month)) slot.noMonth = true
+    slot.more = slot.moreCount ?? fit.more
+    slot.h = slot.moreCount === 0 && fit.more ? fit.h - MORE_H : fit.h
+    slot.item = slot.list[0]
+  }
 
   const cards = []
   const push = (slots, weight) => {
@@ -194,17 +252,18 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
     const items = byYear.get(y) || []
     const { lead, count } = pickLead(items)
     const age = ageIn(y, birthYear)
-    const child = childAgeIn(y, childBirthYear)
+    const kidAges = kidsAgesIn(y, kidYears)
+    const child = kidsText(kidAges)
     const cardSide = monthsDominant ? looseSide.get(y) : decadesDominant ? null : yearCardSide.get(y)
     const big = !monthsDominant && !!lead
     const lines = [String(y)]
     if (showMeta) {
       if (big) {
-        const meta = [age != null ? `age ${age}` : null, child != null ? `child ${child}` : null].filter(Boolean).join(' · ')
+        const meta = [age != null ? `age ${age}` : null, child].filter(Boolean).join(' · ')
         if (meta) lines.push(meta)
       } else {
         if (age != null) lines.push(String(age))
-        if (child != null) lines.push(`child ${child}`)
+        if (child) lines.push(child)
       }
     }
     const label = {
@@ -217,7 +276,7 @@ export function layoutLine({ range, byYear, phases, birthYear, childBirthYear, p
     const own = monthsDominant ? items.filter(i => i.month === 1) : items
     const g = own.length ? groupState(own, monthsDominant ? null : lead) : { state: null, percent: null }
     years.push({
-      year: y, x, lead, count, age, child, label,
+      year: y, x, lead, count, age, child, kidAges, label,
       ev: big, major: big && !!lead?.major, mark: monthsDominant,
       state: g.state, percent: g.percent,
       match: anyMatch(own), today: y === today,

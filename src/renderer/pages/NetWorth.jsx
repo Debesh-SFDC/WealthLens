@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import bridge from '../lib/bridge'
+import { effectiveCurrentValue, computeNetWorth } from '../../shared/netWorth.mjs'
 
 // ── Formatters ────────────────────────────────────────────────────────────
 const INR = new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 })
@@ -13,33 +14,8 @@ function fmtCr(v) {
 }
 
 // ── Investment helpers ────────────────────────────────────────────────────
-function effectiveCurrentValue(inv) {
-  if (inv.type === 'insurance') {
-    const monthly = Number(inv.monthly_sip_amount) || 0
-    const premiumYears = Number(inv.interest_rate) || 0
-    const maturityAmt = Number(inv.purchase_price) || 0
-    const start = inv.start_date ? new Date(inv.start_date).getTime() : null
-    const maturityTs = inv.maturity_date ? new Date(inv.maturity_date).getTime() : null
-    if (!start || !monthly) return 0
-    if (maturityTs && Date.now() >= maturityTs) return maturityAmt
-    const msPerMonth = 30.4375 * 24 * 60 * 60 * 1000
-    const n = Math.min(Math.floor((Date.now() - start) / msPerMonth), Math.round(premiumYears * 12))
-    return n * monthly
-  }
-  if (inv.type === 'rd') {
-    const monthly = Number(inv.monthly_sip_amount) || 0
-    const tenureMonths = Number(inv.units) || 0
-    const maturityAmt = Number(inv.purchase_price) || 0
-    const start = inv.start_date ? new Date(inv.start_date).getTime() : null
-    const maturityTs = inv.maturity_date ? new Date(inv.maturity_date).getTime() : null
-    if (!start || !monthly) return 0
-    if (maturityTs && Date.now() >= maturityTs) return maturityAmt
-    const msPerMonth = 30.4375 * 24 * 60 * 60 * 1000
-    const n = Math.min(Math.floor((Date.now() - start) / msPerMonth), tenureMonths)
-    return n * monthly
-  }
-  return Number(inv.current_value) || 0
-}
+// effectiveCurrentValue / computeNetWorth live in src/shared/netWorth.mjs so the
+// dashboard, Retirement Countdown and net-worth goals show this same figure.
 
 // RD: standard recurring-deposit maturity formula (quarterly compounding)
 function calcRDMaturity(monthly, annualRatePct, tenureMonths) {
@@ -522,7 +498,7 @@ export default function NetWorth() {
     )
   }
 
-  const currentNW = investments.reduce((s, inv) => s + effectiveCurrentValue(inv), 0)
+  const currentNW = computeNetWorth(investments)
   const monthlySIP = calcMonthlySIP(investments)
 
   const allSeries = SCENARIOS.map(sc => ({

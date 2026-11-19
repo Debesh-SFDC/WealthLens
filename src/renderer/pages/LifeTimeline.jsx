@@ -3,7 +3,7 @@ import '@fontsource/cinzel/latin-500.css'
 import '@fontsource/cinzel/latin-700.css'
 import '../lifeTimeline.css'
 import bridge from '../lib/bridge'
-import { buildItems, groupByYear, FILTERS } from '../lib/lifeTimeline'
+import { buildItems, groupByYear, kidsOf, FILTERS } from '../lib/lifeTimeline'
 import { PRESETS, MIN_PPY, MAX_PPY, PAD_LEFT, levelFor, xOf, ppyToSlider, sliderToPpy } from '../lib/lifeTimelineZoom'
 import GoldDust from '../components/lifeTimeline/GoldDust'
 import ZoomTrack from '../components/lifeTimeline/ZoomTrack'
@@ -145,6 +145,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView,
   }, [wideView])
 
   const byYear = useMemo(() => groupByYear(buildItems(data)), [data])
+  const kids = useMemo(() => kidsOf(data), [data])
   const phases = data?.phases || []
   const todayYear = range?.today ?? range?.start
 
@@ -441,6 +442,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView,
               phases={phases}
               birthYear={data.birthYear}
               childBirthYear={data.childBirthYear}
+              kids={kids}
               zoom={zoom}
               zoomed={zoomed && !isNet}
               hidden={isNet}
@@ -491,7 +493,7 @@ export default function LifeTimeline({ onNavigate, wideView = false, onWideView,
               range={range}
               phases={phases}
               birthYear={data.birthYear}
-              childBirthYear={data.childBirthYear}
+              kids={kids}
               backRef={backRef}
               backLabel={isNet ? '← Network' : '← All years'}
               onBack={closeYear}

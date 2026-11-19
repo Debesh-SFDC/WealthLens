@@ -11,6 +11,8 @@ const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2)
 export default function useLineZoom({ range, scrollerRef, initialPpy, reducedMotion }) {
   const [z, setZ] = useState({ ppy: initialPpy, left: 0 })
   const [vw, setVw] = useState(800)
+  // stage height: how tall a line card may grow (see layoutLine)
+  const [vh, setVh] = useState(460)
   const zRef = useRef(z)
   const vwRef = useRef(vw)
   const apply = useRef(false)
@@ -40,6 +42,8 @@ export default function useLineZoom({ range, scrollerRef, initialPpy, reducedMot
     const el = scrollerRef.current
     if (!el || !range) return
     const measure = (fromObserver) => {
+      const nh = el.clientHeight || 460
+      setVh(h => (h === nh ? h : nh))
       const nw = el.clientWidth || 800
       const ow = vwRef.current
       if (!measured.current) {
@@ -115,5 +119,5 @@ export default function useLineZoom({ range, scrollerRef, initialPpy, reducedMot
 
   useEffect(() => stopAnim, [stopAnim])
 
-  return { ppy: z.ppy, left: z.left, vw, zoomAt, zoomBy, animateTo, panTo, centerOnYear, yearAtPx, syncFromScroll, stopAnim }
+  return { ppy: z.ppy, left: z.left, vw, vh, zoomAt, zoomBy, animateTo, panTo, centerOnYear, yearAtPx, syncFromScroll, stopAnim }
 }

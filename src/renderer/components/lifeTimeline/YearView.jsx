@@ -1,18 +1,19 @@
 import EventCard from './EventCard'
-import { MONTHS, ageIn, childAgeIn, phaseFor, matchesFilter, groupState } from '../../lib/lifeTimeline'
+import { MONTHS, ageIn, kidsAgesIn, phaseFor, matchesFilter, groupState } from '../../lib/lifeTimeline'
 
 // Inside one year: a January–December line with items placed in their month,
 // items without a month under "Sometime this year", Previous/Next year, and
 // add/edit entry points. The month line scrolls sideways on phones.
 export default function YearView({
-  year, show, items, range, phases, birthYear, childBirthYear, backRef, backLabel = '← All years',
+  year, show, items, range, phases, birthYear, kids, backRef, backLabel = '← All years',
   onBack, onPrev, onNext, onAdd, onSelectItem, onMark, filter,
 }) {
   const list = items || []
   const dated = list.filter(i => i.month != null)
   const loose = list.filter(i => i.month == null)
   const age = year != null ? ageIn(year, birthYear) : null
-  const child = year != null ? childAgeIn(year, childBirthYear) : null
+  const kidAges = year != null ? kidsAgesIn(year, kids) : []
+  const child = kidAges.length ? kidAges.join(', ') : null
   const phase = year != null ? phaseFor(year, phases) : null
   // Filtered-out items stay in place, dimmed (same rule as the line).
   const card = (it) => (
@@ -34,7 +35,7 @@ export default function YearView({
             <h2 className="lt-ytitle" aria-live="polite" style={{ margin: 0 }}>{year}</h2>
             <div className="lt-ymeta">
               {age != null && <>Your age <b>{age}</b></>}
-              {child != null && <>{age != null && <>&nbsp;·&nbsp;</>}Child <b>{child}</b></>}
+              {child != null && <>{age != null && <>&nbsp;·&nbsp;</>}{kidAges.length > 1 ? 'Kids' : 'Child'} <b>{child}</b></>}
               {phase && <>{(age != null || child != null) && <>&nbsp;·&nbsp;</>}Chapter {phase.numeral ? `${phase.numeral}, ` : ''}{phase.name}</>}
             </div>
             <div className="lt-navs">

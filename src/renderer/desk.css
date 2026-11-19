@@ -536,6 +536,9 @@
 .desk-lt-assumed { margin-left: 0.6em; font-size: 0.78em; font-weight: 600; color: #A8DBF5; white-space: nowrap; }
 .desk-lt-meta { margin-top: 0.25em; font-size: var(--due); opacity: 0.85; }
 .desk-lt-meta .amt { color: #F0D060; font-weight: 700; opacity: 1; }
+/* Net worth (or a goal) reached its target — achievement stays manual, so offer it */
+.desk-lt-reached { display: inline-flex; align-items: center; margin-top: 0.5em; min-height: 44px; padding: 0.35em 0.9em; border-radius: 999px; border: 1px solid #F0D060; background: linear-gradient(135deg, rgba(240,208,96,.22), rgba(184,150,12,.18)); color: #F0D060; font-weight: 700; font-size: var(--due); cursor: pointer; box-shadow: 0 0 18px rgba(240,208,96,.25); }
+.desk-lt-reached:hover, .desk-lt-reached:focus-visible { background: linear-gradient(135deg, rgba(240,208,96,.34), rgba(184,150,12,.28)); outline: none; }
 .desk-lt-clear { margin-top: 0.4em; font-size: var(--title); opacity: 0.9; }
 .desk-lt-clear button { color: #F0D060; font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
 

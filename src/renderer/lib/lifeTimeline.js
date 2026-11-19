@@ -72,6 +72,19 @@ export function fmtAmount(v) {
   return `₹${Math.round(n)}`
 }
 
+// "₹62.3L of ₹1 Cr" — a goal's live progress.
+export function goalProgressText(goal) {
+  if (!goal || !(Number(goal.target_amount) > 0)) return null
+  return `${fmtAmount(goal.current_amount || 0)} of ${fmtAmount(goal.target_amount)}`
+}
+
+// "You've reached ₹1 Cr. Mark achieved?" — shown on a goal (or linked event)
+// whose live amount has reached its target but isn't marked achieved yet.
+export function reachedText(item) {
+  const target = fmtAmount(item?.goal?.target_amount ?? item?.raw?.target_amount)
+  return target ? `You've reached ${target}. Mark achieved?` : 'Target reached. Mark achieved?'
+}
+
 // One shape for everything drawn on the line: user events, goals with a
 // target date, and the derived retirement node.
 export function buildItems(data) {
@@ -79,20 +92,31 @@ export function buildItems(data) {
   const items = []
   for (const e of data.events || []) {
     const amount = fmtAmount(e.amount)
+    // An event linked to a goal is one item: the event's title, month and
+    // is_major, with the goal's live progress ("₹62L of ₹1 Cr").
+    const goal = e.goal || null
+    const progressText = goal ? goalProgressText(goal) : null
+    const state = e.state || 'upcoming'
     items.push({
       key: `e${e.id}`, kind: 'event', id: e.id, year: e.year, month: e.month, day: e.day,
-      title: e.title, amountText: amount || e.amount_note || null, noteText: amount ? e.amount_note : null,
+      title: e.title,
+      amountText: progressText || amount || e.amount_note || null,
+      noteText: progressText ? (goal.auto_source === 'net_worth' ? 'Tracks your net worth' : 'Linked goal') : amount ? e.amount_note : null,
       assumed: !!e.is_assumed, major: !!e.is_major, status: e.status || 'planned', raw: e,
-      state: e.state || 'upcoming', percent: null, achievedAt: e.achieved_at || null,
+      state, percent: goal ? (e.percent ?? null) : null, achievedAt: e.achieved_at || null,
+      goal, reached: !!goal?.reached && state !== 'achieved',
     })
   }
   for (const g of data.goals || []) {
+    const state = g.state || 'upcoming'
     items.push({
       key: `g${g.id}`, kind: 'goal', id: g.id, year: g.year, month: g.month, day: g.day,
-      title: g.emoji ? `${g.emoji} ${g.title}` : g.title, amountText: fmtAmount(g.target_amount),
+      title: g.emoji ? `${g.emoji} ${g.title}` : g.title,
+      amountText: g.auto_source === 'net_worth' ? goalProgressText(g) : fmtAmount(g.target_amount),
       noteText: `Goal · due ${g.day} ${MONTHS[g.month - 1]}`, assumed: false, major: false,
       status: g.is_achieved ? 'done' : 'planned', raw: g,
-      state: g.state || 'upcoming', percent: g.percent ?? null, achievedAt: g.achieved_at || null,
+      state, percent: g.percent ?? null, achievedAt: g.achieved_at || null,
+      goal: g, reached: !!g.reached && state !== 'achieved',
     })
   }
   const r = data.retirement
@@ -131,6 +155,29 @@ export function pickLead(items) {
   return { lead: live.find(i => i.major) || live[0], count: live.length }
 }
 
+// Items for a multi-line card or preview: live (not dropped) items ordered by
+// month (no-month items last), major items first within a month, then day.
+export function sortForCard(items) {
+  return (items || [])
+    .filter(i => i.status !== 'dropped' && i.state !== 'dropped')
+    .map((it, i) => ({ it, i }))
+    .sort((a, b) => (a.it.month ?? 13) - (b.it.month ?? 13)
+      || Number(!!b.it.major) - Number(!!a.it.major)
+      || (a.it.day ?? 32) - (b.it.day ?? 32)
+      || a.i - b.i)
+    .map(x => x.it)
+}
+
+// Status marker for one card line: achieved check, overdue amber, in-progress
+// ring, assumed dashed, upcoming outline.
+export function markerFor(item) {
+  if (item.state === 'achieved') return 'achieved'
+  if (item.state === 'overdue') return 'overdue'
+  if (item.state === 'in_progress') return 'progress'
+  if (item.assumed) return 'assumed'
+  return 'upcoming'
+}
+
 export function ageIn(year, birthYear) {
   return birthYear == null ? null : year - birthYear
 }
@@ -141,6 +188,20 @@ export function childAgeIn(year, childBirthYear) {
   const k = year - childBirthYear
   return k >= 0 ? k : null
 }
+
+// Ages of the children born by `year` (kids: birth years from the payload).
+export function kidsAgesIn(year, kids) {
+  return (kids || []).map(k => year - k).filter(a => a >= 0)
+}
+
+// "child 3" with one child, "kids 3, 0" once the second is born.
+export function kidsText(ages) {
+  if (!ages?.length) return null
+  return ages.length === 1 ? `child ${ages[0]}` : `kids ${ages.join(', ')}`
+}
+
+// Payload → children's birth years (older payloads only had childBirthYear).
+export const kidsOf = (data) => data?.kids ?? (data?.childBirthYear != null ? [data.childBirthYear] : [])
 
 export function phaseFor(year, phases) {
   let found = null

@@ -98,12 +98,12 @@
 .lt-mtick.has .lbl b { color: var(--text); }
 
 .lt-cardpos { position: absolute; top: 0; bottom: 0; left: 0; width: 180px; margin-left: -90px; pointer-events: none; z-index: 3; }
-.lt-conn { position: absolute; left: 50%; width: 1px; height: 64px; background: var(--gold-deep); }
+.lt-conn { position: absolute; left: 50%; width: 1px; height: 74px; background: var(--gold-deep); }
 .lt-cardpos.up .lt-conn { bottom: calc(50% + 14px); }
 .lt-cardpos.down .lt-conn { top: calc(50% + 14px); }
 .lt-cardwrap { position: absolute; left: 0; width: 180px; cursor: pointer; --hy: 0px; transform: translateY(var(--hy)) scale(var(--s, 1)); }
-.lt-cardpos.up .lt-cardwrap { bottom: calc(50% + 78px); transform-origin: 50% 100%; }
-.lt-cardpos.down .lt-cardwrap { top: calc(50% + 78px); transform-origin: 50% 0; }
+.lt-cardpos.up .lt-cardwrap { bottom: calc(50% + 88px); transform-origin: 50% 100%; }
+.lt-cardpos.down .lt-cardwrap { top: calc(50% + 88px); transform-origin: 50% 0; }
 .lt-cardpos.up .lt-cardwrap:hover { --hy: -4px; }
 .lt-cardpos.down .lt-cardwrap:hover { --hy: 4px; }
 .lt-cardwrap:hover .card { border-color: var(--gold-deep); }
@@ -391,3 +391,64 @@
 .lt-pop.touch label { font-size: 12px; }
 .lt-pop.touch input { font-size: 17px; min-height: 48px; padding: 10px 12px; }
 .lt-pop.touch .lt-btn { min-height: 48px; padding: 10px 20px; font-size: 15px; border-radius: 10px; }
+
+/* ── Multi-item line cards ──
+   Sizes are mirrored in lifeTimelineZoom.js (CARD_PAD, ROW_H, AMOUNT_H,
+   MORE_H, HEAD_H) so layoutLine knows each card's height; change both. */
+.lt .card.multi { padding: 9px 12px; box-sizing: border-box; }
+.lt .card.multi .mhead { display: block; height: 18px; line-height: 18px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--gold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt .card.multi .mline { display: block; }
+.lt .card.multi .mrow { display: grid; grid-template-columns: 14px 28px minmax(0, 1fr); align-items: center; column-gap: 6px; height: 20px; }
+.lt .card.multi.nomon .mrow { grid-template-columns: 14px minmax(0, 1fr); }
+.lt .card.multi.yl .mrow { grid-template-columns: 14px 34px minmax(0, 1fr); }
+.lt .card.multi .mmon { font-size: 11px; letter-spacing: .04em; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lt .card.multi .mtitle { font-size: 13px; font-weight: 500; line-height: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt .card.multi .mrow.assumed .mtitle { color: var(--assumed); }
+.lt .card.multi .mrow.reached .mtitle { color: var(--gold-light); }
+.lt .card.multi .mamt { display: block; height: 16px; line-height: 16px; margin: 0 0 0 20px; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lt .card.multi.nomon .mamt { margin-left: 20px; }
+.lt .card.multi .mmore { display: block; height: 18px; line-height: 18px; margin: 0 0 0 20px; font-size: 12px; color: var(--gold); }
+
+/* status markers (line cards and the year preview) */
+.lt-mk { position: relative; display: inline-grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--gold-deep); box-sizing: border-box; flex: none; }
+.lt-mk.upcoming { border-color: var(--gold); }
+.lt-mk.assumed { border: 1.5px dashed var(--assumed); }
+.lt-mk.overdue { border-color: var(--amber); background: var(--amber); box-shadow: 0 0 8px rgba(243,156,18,.55); }
+.lt-mk.achieved { border: 0; background: var(--gold); color: var(--ink); }
+.lt-mk.achieved svg { width: 9px; height: 9px; }
+.lt-mk.progress { border: 0; background: conic-gradient(var(--gold) calc(var(--p) * 1%), rgba(212,175,55,.2) 0); -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2.5px)); }
+.lt-mk.reached { box-shadow: 0 0 10px var(--gold); }
+
+/* ── Year preview (hover / first tap / Space) ── */
+.lt-prev { position: absolute; z-index: 7; overflow-y: auto; overscroll-behavior: contain; padding: 12px 14px; border-radius: 12px; background: #111; border: 1px solid var(--gold-deep); box-shadow: 0 16px 40px rgba(0,0,0,.65), 0 0 24px rgba(212,175,55,.12); color: var(--text); box-sizing: border-box; cursor: default; touch-action: pan-y; }
+.lt-prev-h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+.lt-prev-h b { font-family: var(--display); font-size: 22px; font-weight: 700; color: var(--gold); letter-spacing: .06em; font-variant-numeric: tabular-nums; }
+.lt-prev-h span { font-size: 12px; color: var(--muted); }
+.lt-prev-g h3 { margin: 10px 0 4px; font-size: 11px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.lt-prev-g ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.lt-prev-row { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,.05); }
+.lt-prev-row .lt-mk { margin-top: 3px; }
+.lt-prev-row.st-dropped { opacity: .55; }
+.lt-prev-row.st-dropped .t { text-decoration: line-through; }
+.lt-prev-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.lt-prev-body .t { font-size: 14px; font-weight: 500; overflow-wrap: anywhere; }
+.lt-prev-row.assumed .t { color: var(--assumed); }
+.lt-prev-body .m { display: flex; flex-wrap: wrap; gap: 0 8px; font-size: 12px; color: var(--muted); }
+.lt-prev-body .m em { font-style: normal; color: var(--gold); font-variant-numeric: tabular-nums; }
+.lt-prev-row.st-overdue .m { color: var(--amber); }
+.lt-prev-body .prog { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.lt-prev-body .prog .bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(212,175,55,.16); overflow: hidden; }
+.lt-prev-body .prog .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-deep), var(--gold-light)); }
+.lt-prev-body .prog b { font-size: 11px; font-weight: 500; color: var(--gold); font-variant-numeric: tabular-nums; }
+.lt-prev .lt-mark { position: relative; top: auto; right: auto; flex: none; opacity: 1; transform: none; box-shadow: none; }
+.lt-prev-f { display: flex; justify-content: flex-end; margin-top: 10px; }
+.lt-prev button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* "You've reached ₹1 Cr. Mark achieved?" — year preview, year view card */
+.lt-reached { display: inline-flex; align-items: center; align-self: flex-start; margin-top: 6px; min-height: 32px; padding: 4px 12px; border-radius: 999px; border: 1px solid var(--gold); background: linear-gradient(135deg, rgba(240,208,96,.2), rgba(184,150,12,.16)); color: var(--gold-light); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; box-shadow: 0 0 14px rgba(212,175,55,.25); }
+.lt-reached:hover, .lt-reached:focus-visible { background: linear-gradient(135deg, rgba(240,208,96,.32), rgba(184,150,12,.26)); outline: none; }
+.lt .cardbox.has-reached { display: flex; flex-direction: column; }
+@media (max-width: 640px) {
+  .lt-prev { padding: 12px; }
+  .lt-reached { min-height: 40px; }
+}

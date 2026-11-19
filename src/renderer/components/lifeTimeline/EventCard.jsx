@@ -1,4 +1,4 @@
-import { canMark, fmtDate } from '../../lib/lifeTimeline'
+import { canMark, fmtDate, reachedText } from '../../lib/lifeTimeline'
 
 const CheckIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -90,6 +90,19 @@ export default function EventCard({ item, extra, as = 'span', onClick, showTag =
     card = <span className={cls.join(' ')}>{body}</span>
   }
   if (!markable) return card
+  // Net worth (or any goal) has reached its target: achievement stays manual,
+  // so offer it. Outside the card button (no nested buttons).
+  const reached = item.reached && !undo && (
+    <button
+      type="button"
+      className="lt-reached"
+      tabIndex={as === 'span' ? -1 : 0}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => { e.stopPropagation(); e.preventDefault(); onMark(item, e.currentTarget) }}
+    >
+      {reachedText(item)}
+    </button>
+  )
   const Box = as === 'button' ? 'div' : 'span'
-  return <Box className="cardbox" data-key={item.key}>{card}{mark}</Box>
+  return <Box className={`cardbox${reached ? ' has-reached' : ''}`} data-key={item.key}>{card}{mark}{reached}</Box>
 }

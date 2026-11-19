@@ -60,7 +60,9 @@ export function buildGraph(data) {
         : it.kind === 'goal' ? GOAL_COLOR : '#D4AF37',
       assumed: it.assumed, major: it.major, status: it.status,
       state: it.state, percent: it.percent,
-      amountText: fmtAmount(amount) || (it.kind === 'event' ? it.raw.amount_note : null) || (it.kind === 'retirement' ? it.amountText : null),
+      // an event linked to a goal shows the goal's live progress ("₹62L of ₹1 Cr")
+      amountText: (it.goal ? it.amountText : null) || fmtAmount(amount) || (it.kind === 'event' ? it.raw.amount_note : null) || (it.kind === 'retirement' ? it.amountText : null),
+      reached: !!it.reached,
       r: radiusFor(it.kind, it.major, amount),
       item: it,
     }

@@ -1,4 +1,5 @@
 import { pickDeskItems, countdownText, overdueText, whenText, chapterText } from '../lib/deskTimeline'
+import { reachedText } from '../lib/lifeTimeline'
 
 const MAX_OVERDUE = 3
 
@@ -59,6 +60,16 @@ export default function DeskTimelineCard({ data, now, onOpen, onMark, className 
                   {next.amountText && chapter && <span aria-hidden="true"> · </span>}
                   {chapter && <span>{chapter}</span>}
                 </p>
+              )}
+              {next.reached && onMark && (
+                <button
+                  type="button"
+                  className="desk-lt-reached"
+                  aria-haspopup="dialog"
+                  onClick={(e) => { e.stopPropagation(); onMark(next, e.currentTarget) }}
+                >
+                  {reachedText(next)}
+                </button>
               )}
             </div>
             {next.state === 'in_progress' && next.percent != null && <ProgressRing percent={next.percent} />}
