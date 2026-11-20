@@ -43,7 +43,8 @@ function ProgressRing({ percent }) {
 // The Life Timeline card: the next 3 upcoming goals or events with a live
 // countdown, plus what's overdue. One component, two looks:
 //   variant 'desk'    (Desk Mode) the first item large, items 2 and 3 as
-//                     one-line rows, the overdue list with big checks
+//                     one-line rows (screens >= 1280×900 only, see desk.css),
+//                     the overdue list with big checks
 //   variant 'compact' (Dashboard) a normal Dashboard card: 3 rows, the first
 //                     slightly larger, an amber "2 overdue" chip, a check per row
 // data: the GET /api/life-timeline payload (states already derived there).

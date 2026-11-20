@@ -570,8 +570,12 @@
 .desk-lt-more { font-size: var(--due); font-weight: 700; letter-spacing: 0.02em; text-transform: none; color: #F0D060; padding: 0 0.2em; min-height: 44px; margin: -12px 0; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
 .desk-lt-more:hover { text-decoration: underline; text-underline-offset: 3px; }
 .dp-lt { flex: 0 0 auto; }
-/* items 2 and 3: one line each (marker · title · date · countdown · percent),
-   so the strip over the task columns only grows by two short rows */
+/* items 2 and 3: one line each (marker · title · date · countdown · percent).
+   Only on screens at least 1280×900 — below that the card shows just the
+   first item, as before, so the task columns keep their height. */
+@media not all and (min-width: 1280px) and (min-height: 900px) {
+  .desk-lt-up { display: none; }
+}
 .desk-lt-nextcol { min-width: 0; }
 .desk-lt-up { margin-top: 0.45em; border-top: 1px solid rgba(255, 255, 255, 0.12); container-type: inline-size; }
 .desk-lt-urow {
