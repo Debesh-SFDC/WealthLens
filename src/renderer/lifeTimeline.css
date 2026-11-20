@@ -2,8 +2,9 @@
    is scoped under .lt. Colours come from the black-and-gold tokens in
    index.css; --timeline-glow and --timeline-assumed are the only new ones. */
 /* Tokens are shared with the popover and burst, which can also open over
-   Desk Mode (outside .lt). */
-.lt, .lt-pop, .lt-burst {
+   Desk Mode (outside .lt), and with the Life Timeline card (.lt-tokens:
+   DeskTimelineCard on Desk Mode and the Dashboard) for its status markers. */
+.lt, .lt-pop, .lt-burst, .lt-tokens {
   --ink: var(--sidebar-bg);
   --panel: var(--bg-secondary);
   --line: var(--border-primary);

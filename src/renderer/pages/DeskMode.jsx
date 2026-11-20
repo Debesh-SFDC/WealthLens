@@ -12,10 +12,8 @@ import CategoryChips from '../components/CategoryChips'
 import Toast from '../components/Toast'
 import '../desk.css'
 import '@fontsource/cinzel/latin-700.css'
-import '../lifeTimeline.css' // the Mark achieved popover and burst
 import DeskTimelineCard from '../components/DeskTimelineCard'
-import AchievePopover, { Burst } from '../components/lifeTimeline/AchievePopover'
-import { setAchieved } from '../lib/lifeTimelineActions'
+import useTimelineCard from '../components/useTimelineCard'
 
 // Desk Mode — full-screen ambient display for a spare monitor or tablet: live
 // clock, every open task grouped by category (Job / Personal / Project) and
@@ -960,11 +958,11 @@ function Controls({ onExit, onRefresh, refreshing, showSettings, setShowSettings
 }
 
 // ── Page ────────────────────────────────────────────────────────────────────
-const BURST_HOLD_MS = 450 // gold burst plays before the item leaves the overdue list
-const wait = (ms) => new Promise(r => setTimeout(r, ms))
-
 // onOpenTimeline({ year, open, filter }): leave Desk Mode for the Life Timeline.
-export default function DeskMode({ profileName, onExit, onOpenTimeline }) {
+// isAdmin: the Life Timeline card is Admin only. App.jsx only renders Desk
+// Mode for Admin today, but the card defaults to hidden (and makes no request)
+// unless it's told the viewer is an Admin.
+export default function DeskMode({ profileName, onExit, onOpenTimeline, isAdmin = false }) {
   const [now, setNow]           = useState(() => new Date())
   const [items, setItems]       = useState([])
   const [weather, setWeather]   = useState(null)
@@ -983,11 +981,9 @@ export default function DeskMode({ profileName, onExit, onOpenTimeline }) {
   const [movePrompt, setMovePrompt] = useState(null)  // date popup after a move
   const [moveMenu, setMoveMenu] = useState(null)      // "Move to…" for this task
   const [toast, setToast] = useState(null)            // error message
-  // Life Timeline card: the payload, or null (not loaded / request failed —
-  // the card is then simply not shown).
-  const [timeline, setTimeline] = useState(null)
-  const [achievePop, setAchievePop] = useState(null)  // { item, anchor }
-  const [bursts, setBursts] = useState([])            // [{ id, x, y }]
+  // Life Timeline card: the payload, or null (not Admin / not loaded /
+  // request failed — the card is then simply not shown).
+  const { data: timeline, reload: loadTimeline, onMark: markTimeline, popOpen: achieveOpen, closePop: closeAchieve, overlays: timelineOverlays } = useTimelineCard({ enabled: isAdmin, touch: true })
   const inputRef = useRef(null)
   const cursorTimer = useRef(null)
   const undoTimer = useRef(null)
@@ -1015,14 +1011,10 @@ export default function DeskMode({ profileName, onExit, onOpenTimeline }) {
       if (seq === mutationSeq.current) setItems(rows)
     } catch (e) { console.error(e) }
   }, [])
-  // Life Timeline card (admin only, like the page — Desk Mode is admin only).
-  // Any failure just hides the card; it must never break Desk Mode.
-  const loadTimeline = useCallback(async () => {
-    try { setTimeline(await bridge.getLifeTimeline()) } catch (e) { console.error('Desk Mode life timeline', e); setTimeline(null) }
-  }, [])
+  // The timeline card loads itself on mount (useTimelineCard); it refreshes
+  // here with the tasks. Any failure just hides the card.
   useEffect(() => {
     loadData()
-    loadTimeline()
     const id = setInterval(() => {
       loadTimeline()
       if (dragActive.current || Date.now() < refreshHoldUntil.current) return
@@ -1031,21 +1023,12 @@ export default function DeskMode({ profileName, onExit, onOpenTimeline }) {
     return () => clearInterval(id)
   }, [loadData, loadTimeline])
 
-  const saveAchieved = useCallback(async ({ date, note }) => {
-    const { item, anchor } = achievePop
-    await setAchieved(item, true, { date, note })
-    setAchievePop(null)
-    const r = anchor.getBoundingClientRect()
-    setBursts(b => [...b, { id: Date.now() + Math.random(), x: r.left + r.width / 2, y: r.top + r.height / 2 }])
-    await Promise.all([loadTimeline(), wait(BURST_HOLD_MS)])
-  }, [achievePop, loadTimeline])
-  const closeAchieve = useCallback(() => setAchievePop(null), [])
   const openTimeline = useCallback((params) => (onOpenTimeline ? onOpenTimeline(params) : onExit()), [onOpenTimeline, onExit])
   const timelineCard = (cls) => timeline && (
     <DeskTimelineCard
       data={timeline} now={now} className={cls}
       onOpen={openTimeline}
-      onMark={(item, anchor) => setAchievePop({ item, anchor })}
+      onMark={markTimeline}
     />
   )
 
@@ -1084,7 +1067,7 @@ export default function DeskMode({ profileName, onExit, onOpenTimeline }) {
     function onKey(e) {
       if (e.key !== 'Escape') return
       if (e.defaultPrevented || dragActive.current) return
-      if (achievePop) return setAchievePop(null) // (the popover normally handles this itself)
+      if (achieveOpen) return closeAchieve() // (the popover normally handles this itself)
       if (movePrompt) return skipMoveDetails()
       if (moveMenu) return setMoveMenu(null)
       if (showSettings) return setShowSettings(false)
@@ -1096,7 +1079,7 @@ export default function DeskMode({ profileName, onExit, onOpenTimeline }) {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onExit, showSettings, ideasOverlay, expanded, movePrompt, moveMenu, achievePop])
+  }, [onExit, showSettings, ideasOverlay, expanded, movePrompt, moveMenu, achieveOpen, closeAchieve])
 
   // Cursor hidden while idle; shown on mouse move/touch for 3s
   useEffect(() => {
@@ -1407,8 +1390,7 @@ export default function DeskMode({ profileName, onExit, onOpenTimeline }) {
       </DragOverlay>
 
       {/* Outside .desk-layout too (burn-in transform), like the drag overlay */}
-      {achievePop && <AchievePopover item={achievePop.item} anchor={achievePop.anchor} onSave={saveAchieved} onClose={closeAchieve} touch />}
-      {bursts.map(b => <Burst key={b.id} x={b.x} y={b.y} onDone={() => setBursts(list => list.filter(x => x.id !== b.id))} />)}
+      {timelineOverlays}
 
       {moveMenu && <MoveMenu task={moveMenu} onPick={moveTask} onClose={() => setMoveMenu(null)} />}
       {movePrompt && (

@@ -170,6 +170,7 @@ export default function App() {
 
   // ── Sync status polling (Admin only) ─────────────────────────────────────
   const loadSyncStatus = useCallback(async () => {
+    if (!IS_ELECTRON) return
     try {
       const s = await window.electronAPI.getDriveSyncStatus()
       setSyncStatus(s)
@@ -185,7 +186,7 @@ export default function App() {
 
   // ── Tracker activity refresh ──────────────────────────────────────────────
   useEffect(() => {
-    if (!currentUser || currentUser.role !== 'tracker') return
+    if (!IS_ELECTRON || !currentUser || currentUser.role !== 'tracker') return
     const id = setInterval(() => {
       window.electronAPI.refreshActivity().catch(() => {})
     }, 60_000)
@@ -250,6 +251,7 @@ export default function App() {
         onExit={exitDeskMode}
         // the Life Timeline card: leave Desk Mode for the timeline at a year / filter
         onOpenTimeline={(params) => { exitDeskMode(); navigate('timeline', params) }}
+        isAdmin={currentUser.role === 'admin'}
       />
     )
   }

@@ -6,6 +6,8 @@ import BucketToggle from '../components/BucketToggle'
 import { BUCKET_META, bucketForCategory } from '../lib/bucket'
 import RetirementCountdown from '../components/RetirementCountdown'
 import QuickCapture from '../components/QuickCapture'
+import DeskTimelineCard from '../components/DeskTimelineCard'
+import useTimelineCard from '../components/useTimelineCard'
 import {
   BarChart, Bar, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer,
 } from 'recharts'
@@ -423,6 +425,10 @@ export default function Dashboard({ onNavigate, currentUser }) {
   const [showAddExpense, setShowAddExpense] = useState(false)
   const [showLogWeight, setShowLogWeight]   = useState(false)
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' })
+  // Life Timeline card — Admin only: no request at all for anyone else, and a
+  // failed request leaves timeline null so the card simply isn't shown.
+  const isAdmin = currentUser?.role === 'admin'
+  const { data: timeline, onMark: markTimeline, overlays: timelineOverlays } = useTimelineCard({ enabled: isAdmin })
 
   function showToast(message, type = 'success') {
     setToast({ visible: true, message, type })
@@ -509,6 +515,15 @@ export default function Dashboard({ onNavigate, currentUser }) {
         <RetirementCountdown currentNetWorth={stats.netWorth} onNavigate={onNavigate} />
       )}
 
+      {/* Next on your timeline — Admin only, same component and data as Desk Mode */}
+      {isAdmin && timeline && (
+        <DeskTimelineCard
+          variant="compact" data={timeline}
+          onOpen={(params) => onNavigate?.('timeline', params)}
+          onMark={markTimeline}
+        />
+      )}
+
       {loading ? (
         <div className="space-y-3 sm:space-y-4">
           <div className="grid grid-cols-2 gap-3">
@@ -563,6 +578,8 @@ export default function Dashboard({ onNavigate, currentUser }) {
       {showLogWeight && (
         <QuickLogWeight userId={currentUserId} weightLogs={stats.weightLogs} onSaved={handleAdded} onClose={() => setShowLogWeight(false)} />
       )}
+
+      {timelineOverlays}
 
       <Toast
         message={toast.message}

@@ -570,6 +570,29 @@
 .desk-lt-more { font-size: var(--due); font-weight: 700; letter-spacing: 0.02em; text-transform: none; color: #F0D060; padding: 0 0.2em; min-height: 44px; margin: -12px 0; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
 .desk-lt-more:hover { text-decoration: underline; text-underline-offset: 3px; }
 .dp-lt { flex: 0 0 auto; }
+/* items 2 and 3: one line each (marker · title · date · countdown · percent),
+   so the strip over the task columns only grows by two short rows */
+.desk-lt-nextcol { min-width: 0; }
+.desk-lt-up { margin-top: 0.45em; border-top: 1px solid rgba(255, 255, 255, 0.12); container-type: inline-size; }
+.desk-lt-urow {
+  display: flex; align-items: center; gap: 0.6em; width: 100%; min-width: 0; min-height: max(44px, calc(var(--row-h) * 0.7));
+  padding: 0.1em 0; text-align: left; font-size: var(--due); line-height: 1.25; color: inherit;
+}
+.desk-lt-up li + li .desk-lt-urow { box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.07); }
+.desk-lt-urow .lt-mk { width: 0.8em; height: 0.8em; min-width: 12px; min-height: 12px; }
+.desk-lt-utitle { flex: 0 1 auto; min-width: 0; font-weight: 600; font-size: calc(var(--title) * 0.9); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.desk-lt-uwhen { flex: 0 0 auto; margin-left: auto; padding-left: 0.4em; white-space: nowrap; opacity: 0.9; }
+.desk-lt-uwhen b { color: #F0D060; font-weight: 700; }
+.desk-lt-upct { flex: 0 0 auto; min-width: 2.6em; text-align: right; font-weight: 800; color: #F0D060; }
+.desk-lt-urow:hover .desk-lt-utitle { color: #F0D060; }
+.desk-lt-urow:focus-visible { outline: 2px solid #D4AF37; outline-offset: 2px; border-radius: 6px; }
+/* a narrow column (1024px with overdue beside it, phones): title on line 1,
+   date · countdown on line 2 — two tight lines still fit the 44px row */
+@container (max-width: 440px) {
+  .desk-lt-urow { flex-wrap: wrap; align-content: center; row-gap: 0; padding: 0.2em 0; line-height: 1.2; }
+  .desk-lt-utitle { flex: 1 1 0; }
+  .desk-lt-uwhen { order: 3; flex-basis: 100%; margin-left: calc(max(0.8em, 12px) + 0.6em); padding-left: 0; }
+}
 
 /* stacked narrow landscape: the card is a normal block in the single column */
 @media (max-width: 900px) {

@@ -1,4 +1,4 @@
-// Desk Mode's Life Timeline card: which item is next, which are overdue, and
+// The Life Timeline card (Desk Mode and the Dashboard): which items are next, which are overdue, and
 // the countdown / overdue wording. Pure (no React, no fetch); the states
 // themselves come from the server (achievementState in
 // src/shared/lifeTimeline.js) via buildItems, so nothing here re-derives them.
@@ -15,16 +15,22 @@ const byDate = (a, b) => {
   return ay - by || am - bm || ad - bd
 }
 
-// { next, overdue } from the GET /api/life-timeline payload.
-// next: the earliest upcoming / in-progress item (events, dated goals and the
-// retirement node). An item with those states is never past its due date.
-// overdue: every overdue item, oldest first.
-export function pickDeskItems(data) {
-  if (!data) return { next: null, overdue: [] }
+export const NEXT_COUNT = 3
+
+// { upcoming, next, overdue } from the GET /api/life-timeline payload.
+// upcoming: the NEXT_COUNT earliest upcoming / in-progress items (events,
+// dated goals and the retirement node), ordered by date. Those states mean
+// "not yet due", so an item with them is never past its due date; a year-only
+// item this year (sorted as 1 January) still counts until 31 December. Built
+// from buildItems, so an event linked to a goal is one item carrying the
+// goal's live progress.
+// next: upcoming[0] or null. overdue: every overdue item, oldest first.
+export function pickDeskItems(data, count = NEXT_COUNT) {
+  if (!data) return { upcoming: [], next: null, overdue: [] }
   const items = buildItems(data)
-  const next = items.filter(i => i.state === 'upcoming' || i.state === 'in_progress').sort(byDate)[0] || null
+  const upcoming = items.filter(i => i.state === 'upcoming' || i.state === 'in_progress').sort(byDate).slice(0, count)
   const overdue = items.filter(i => i.state === 'overdue').sort(byDate)
-  return { next, overdue }
+  return { upcoming, next: upcoming[0] || null, overdue }
 }
 
 // "Mar 2027", "12 Mar 2027" or "2028".

@@ -26,19 +26,50 @@ const data = shared.buildTimeline({
   today,
 })
 
-const { next, overdue } = pickDeskItems(data)
+const { upcoming, next, overdue } = pickDeskItems(data)
 // the in-progress goal (Dec 2026) is earlier than everything in 2027; done and dropped are skipped
 assert.equal(next.title, 'Car fund')
 assert.equal(next.state, 'in_progress')
 assert.equal(next.percent, 25)
+assert.equal(upcoming[0], next)
+// ordering + the 3-item limit: a year-only item orders as 1 January, so it beats March of the same year
+assert.deepEqual(upcoming.map(i => i.title), ['Car fund', 'Year-only next year', 'March next year'])
+assert.equal(pickDeskItems(data, 2).upcoming.length, 2)
 assert.deepEqual(overdue.map(i => i.title), ['Missed long ago', 'Missed in September', 'Missed on a day'])
 
-// a year-only item orders as 1 January: it beats March of the same year
+// fewer than 3: only what there is (the two 2027 events, then retirement)
 const later = pickDeskItems({ ...data, goals: [] })
 assert.equal(later.next.title, 'Year-only next year')
+assert.deepEqual(later.upcoming.map(i => i.kind), ['event', 'event', 'retirement'])
+const fewer = pickDeskItems({ ...data, goals: [], events: data.events.filter(e => e.id === 2) })
+assert.deepEqual(fewer.upcoming.map(i => i.title), ['March next year', 'Retire on 12 August'])
 // nothing upcoming
-assert.equal(pickDeskItems({ ...data, events: [], goals: [], retirement: { ...data.retirement, state: 'achieved' } }).next, null)
-assert.deepEqual(pickDeskItems(null), { next: null, overdue: [] })
+const none = pickDeskItems({ ...data, events: [], goals: [], retirement: { ...data.retirement, state: 'achieved' } })
+assert.equal(none.next, null)
+assert.deepEqual(none.upcoming, [])
+assert.deepEqual(pickDeskItems(null), { upcoming: [], next: null, overdue: [] })
+
+// a linked event + goal is ONE item, carrying the goal's live net worth progress
+const linked = shared.buildTimeline({
+  profile: { date_of_birth: '1996-05-02', retirement_date: '2041-08-12' },
+  events: [
+    { id: 20, title: 'Make 1st crore', year: 2028, month: 6, status: 'planned', goal_id: 30 },
+    { id: 21, title: 'Trip', year: 2029, status: 'planned' },
+  ],
+  goals: [
+    { id: 30, title: 'Net worth ₹1 Cr', target_amount: 10000000, current_amount: 0, target_date: '2028-06-30', auto_source: 'net_worth', is_achieved: 0 },
+    { id: 31, title: 'Bike', target_amount: 150000, current_amount: 0, target_date: '2027-05-10', is_achieved: 0 },
+  ],
+  netWorth: 6230000,
+  today,
+})
+const l = pickDeskItems(linked)
+assert.deepEqual(l.upcoming.map(i => i.title), ['Bike', 'Make 1st crore', 'Trip'])
+const crore = l.upcoming[1]
+assert.equal(crore.state, 'in_progress')
+assert.equal(crore.percent, 62)
+assert.equal(crore.amountText, '₹62.3L of ₹1 Cr')
+assert.equal(l.upcoming.filter(i => /crore|1 Cr/.test(i.title)).length, 1)
 
 // countdowns
 assert.equal(countdownText({ year: 2027, month: 3 }, today), 'in 3 months, 11 days')
